@@ -165,7 +165,7 @@ final class HummingbirdJobsTests: XCTestCase {
 
     func testJobParameters() async throws {
         struct TestJobParameters: JobParameters {
-            static let jobID: String = "TestJobParameters"
+            static let jobName: String = "TestJobParameters"
             let id: Int
             let message: String
         }
@@ -185,7 +185,6 @@ final class HummingbirdJobsTests: XCTestCase {
 
     /// Verify test job is cancelled when service group is cancelled
     func testShutdownJob() async throws {
-        let jobIdentifer = JobIdentifier<Int>(#function)
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
 
         let cancelledJobCount = ManagedAtomic(0)
@@ -200,7 +199,10 @@ final class HummingbirdJobsTests: XCTestCase {
             numWorkers: 4,
             logger: logger
         )
-        jobQueue.registerJob(id: jobIdentifer) { _, _ in
+        struct SleepJobParameters: JobParameters {
+            static let jobName = "Sleep"
+        }
+        jobQueue.registerJob(parameters: SleepJobParameters.self) { _, _ in
             expectation.fulfill()
             try await Task.sleep(for: .milliseconds(1000))
         }
@@ -215,7 +217,7 @@ final class HummingbirdJobsTests: XCTestCase {
             group.addTask {
                 try await serviceGroup.run()
             }
-            try await jobQueue.push(id: jobIdentifer, parameters: 0)
+            try await jobQueue.push(SleepJobParameters())
             group.cancelAll()
             await self.wait(for: [expectation], timeout: 5)
         }

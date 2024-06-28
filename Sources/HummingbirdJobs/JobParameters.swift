@@ -14,8 +14,15 @@
 
 /// Defines job parameters and identifier
 public protocol JobParameters: Codable, Sendable {
-    /// Job type identifier
-    static var jobID: String { get }
+    /// Job type name
+    static var jobName: String { get }
+}
+
+extension JobParameters {
+    /// Job type id
+    public static var jobID: JobIdentifier<Self> {
+        .init(Self.jobName)
+    }
 }
 
 extension JobQueue {
@@ -24,7 +31,7 @@ extension JobQueue {
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
     @discardableResult public func push<Parameters: JobParameters>(_ parameters: Parameters) async throws -> Queue.JobID {
-        return try await self.push(id: .init(Parameters.jobID), parameters: parameters)
+        return try await self.push(id: Parameters.jobID, parameters: parameters)
     }
 
     ///  Register job type
@@ -35,21 +42,8 @@ extension JobQueue {
     public func registerJob<Parameters: JobParameters>(
         parameters: Parameters.Type = Parameters.self,
         maxRetryCount: Int = 0,
-        execute: @escaping @Sendable (
-            Parameters,
-            JobContext
-        ) async throws -> Void
+        execute: @escaping @Sendable (Parameters, JobContext) async throws -> Void
     ) {
-        self.registerJob(id: .init(Parameters.jobID), maxRetryCount: maxRetryCount, execute: execute)
-    }
-}
-
-extension JobDefinition where Parameters: JobParameters {
-    ///  Initialize JobDefinition
-    /// - Parameters:
-    ///   - maxRetryCount: Maxiumum times this job will be retried if it fails
-    ///   - execute: Closure that executes job
-    public init(maxRetryCount: Int = 0, execute: @escaping @Sendable (Parameters, JobContext) async throws -> Void) {
-        self.init(id: .init(Parameters.jobID), maxRetryCount: maxRetryCount, execute: execute)
+        self.registerJob(id: Parameters.jobID, maxRetryCount: maxRetryCount, execute: execute)
     }
 }
