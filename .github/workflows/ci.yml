@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - '**.swift'
+    - '**.yml'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        image: ["swift:5.9", "swift:5.10", "swiftlang/swift:nightly-6.0-jammy"]
+    
+    container:
+      image: ${{ matrix.image }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Test
+      run: |
+        swift test --enable-code-coverage
+    - name: Convert coverage files
+      run: |
+        llvm-cov export -format="lcov" \
+          .build/debug/hummingbird-jobsPackageTests.xctest \
+          -ignore-filename-regex="\/Tests\/" \
+          -ignore-filename-regex="\/Benchmarks\/" \
+          -instr-profile .build/debug/codecov/default.profdata > info.lcov
+    - name: Upload to codecov.io
+      uses: codecov/codecov-action@v4
+      with:
+        file: info.lcov
