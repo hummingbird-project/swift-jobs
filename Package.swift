@@ -6,7 +6,7 @@ import PackageDescription
 let swiftSettings: [SwiftSetting] = [.enableExperimentalFeature("StrictConcurrency=complete")]
 
 let package = Package(
-    name: "hummingbird",
+    name: "hummingbird-jobs",
     platforms: [.macOS(.v14), .iOS(.v17), .tvOS(.v17)],
     products: [
         .library(name: "HummingbirdJobs", targets: ["HummingbirdJobs"]),
