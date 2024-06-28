@@ -201,10 +201,11 @@ final class HummingbirdJobsTests: XCTestCase {
         )
         struct SleepJobParameters: JobParameters {
             static let jobName = "Sleep"
+            let length: Duration
         }
-        jobQueue.registerJob(parameters: SleepJobParameters.self) { _, _ in
+        jobQueue.registerJob(parameters: SleepJobParameters.self) { parameters, _ in
             expectation.fulfill()
-            try await Task.sleep(for: .milliseconds(1000))
+            try await Task.sleep(for: parameters.length)
         }
         try await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = ServiceGroup(
@@ -217,7 +218,7 @@ final class HummingbirdJobsTests: XCTestCase {
             group.addTask {
                 try await serviceGroup.run()
             }
-            try await jobQueue.push(SleepJobParameters())
+            try await jobQueue.push(SleepJobParameters(length: .milliseconds(100)))
             group.cancelAll()
             await self.wait(for: [expectation], timeout: 5)
         }
