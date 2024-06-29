@@ -218,7 +218,7 @@ final class HummingbirdJobsTests: XCTestCase {
             group.addTask {
                 try await serviceGroup.run()
             }
-            try await jobQueue.push(SleepJobParameters(length: .milliseconds(100)))
+            try await jobQueue.push(SleepJobParameters(length: .milliseconds(500)))
             group.cancelAll()
             await self.wait(for: [expectation], timeout: 5)
         }
