@@ -34,7 +34,6 @@ let package = Package(
         // test targets
         .testTarget(name: "JobsTests", dependencies: [
             .byName(name: "Jobs"),
-            // .byName(name: "HummingbirdTesting"),
             .product(name: "Atomics", package: "swift-atomics"),
         ]),
     ]
