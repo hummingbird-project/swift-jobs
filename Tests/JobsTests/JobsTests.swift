@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Atomics
-import HummingbirdJobs
+import Jobs
 import Logging
 import NIOConcurrencyHelpers
 import ServiceLifecycle
