@@ -8,8 +8,8 @@
 <a href="https://swift.org">
   <img src="https://img.shields.io/badge/swift-5.9-brightgreen.svg"/>
 </a>
-<a href="https://github.com/hummingbird-project/hummingbird-jobs/actions?query=workflow%3ACI">
-  <img src="https://github.com/hummingbird-project/hummingbird-jobs/actions/workflows/ci.yml/badge.svg?branch=main"/>
+<a href="https://github.com/hummingbird-project/swift-jobs/actions?query=workflow%3ACI">
+  <img src="https://github.com/hummingbird-project/swift-jobs/actions/workflows/ci.yml/badge.svg?branch=main"/>
 </a>
 <a href="https://discord.gg/7ME3nZ7mP2">
   <img src="https://img.shields.io/badge/chat-discord-brightgreen.svg"/>
@@ -78,4 +78,4 @@ When the `JobQueue` service is running it processes jobs as they appear on the q
 
 ## Documentation
 
-You can find documentation for Jobs [here](https://docs.hummingbird.codes/2.0/documentation/hummingbirdjobs). The [hummingbird-examples](https://github.com/hummingbird-project/hummingbird-examples) repository has a number of examples of different uses of the library.
+You can find documentation for Jobs [here](https://docs.hummingbird.codes/2.0/documentation/jobs). The [hummingbird-examples](https://github.com/hummingbird-project/hummingbird-examples) repository has a number of examples of different uses of the library.
