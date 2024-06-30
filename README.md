@@ -16,7 +16,7 @@
 </a>
 </p>
 
-# Hummingbird Jobs
+# Jobs
 
 Offload work from your server to other servers.
 
@@ -78,4 +78,4 @@ When the `JobQueue` service is running it processes jobs as they appear on the q
 
 ## Documentation
 
-You can find documentation for HummingbirdJobs [here](https://docs.hummingbird.codes/2.0/documentation/hummingbirdjobs). The [hummingbird-examples](https://github.com/hummingbird-project/hummingbird-examples) repository has a number of examples of different uses of the library.
+You can find documentation for Jobs [here](https://docs.hummingbird.codes/2.0/documentation/hummingbirdjobs). The [hummingbird-examples](https://github.com/hummingbird-project/hummingbird-examples) repository has a number of examples of different uses of the library.

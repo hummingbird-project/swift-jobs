@@ -6,10 +6,10 @@ import PackageDescription
 let swiftSettings: [SwiftSetting] = [.enableExperimentalFeature("StrictConcurrency=complete")]
 
 let package = Package(
-    name: "hummingbird-jobs",
+    name: "swift-jobs",
     platforms: [.macOS(.v14), .iOS(.v17), .tvOS(.v17)],
     products: [
-        .library(name: "HummingbirdJobs", targets: ["HummingbirdJobs"]),
+        .library(name: "Jobs", targets: ["Jobs"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-atomics.git", from: "1.0.0"),
@@ -20,7 +20,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "HummingbirdJobs",
+            name: "Jobs",
             dependencies: [
                 .product(name: "Collections", package: "swift-collections"),
                 .product(name: "Logging", package: "swift-log"),
@@ -32,9 +32,8 @@ let package = Package(
             swiftSettings: swiftSettings
         ),
         // test targets
-        .testTarget(name: "HummingbirdJobsTests", dependencies: [
-            .byName(name: "HummingbirdJobs"),
-            // .byName(name: "HummingbirdTesting"),
+        .testTarget(name: "JobsTests", dependencies: [
+            .byName(name: "Jobs"),
             .product(name: "Atomics", package: "swift-atomics"),
         ]),
     ]
