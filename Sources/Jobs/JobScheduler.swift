@@ -73,12 +73,13 @@ public struct JobSchedule: Sendable {
         }
 
         public func run() async throws {
-            let (jobAsyncStream, jobCont) = AsyncStream.makeStream(of: StreamScheduledJobValue.self)
+            let (jobStream, jobSource) = AsyncStream.makeStream(of: StreamScheduledJobValue.self)
 
             await withGracefulShutdownHandler {
                 await withThrowingTaskGroup(of: Void.self) { group in
                     var jobSchedule = self.jobSchedule
                     func scheduleJob() {
+                        // get next job to schedule
                         guard let job = jobSchedule.nextJob() else {
                             return
                         }
@@ -89,17 +90,19 @@ public struct JobSchedule: Sendable {
                                 "_job_time": .stringConvertible(job.element.nextScheduledDate),
                             ]
                         )
+                        // add task to add job to queue once it reaches its scheduled date
                         group.addTask {
                             let timeInterval = job.element.nextScheduledDate.timeIntervalSinceNow
-                            try await Task.sleep(for: .seconds(timeInterval))
-                            jobCont.yield(.job(job.offset))
+                            try await Task.sleep(until: .now + .seconds(timeInterval))
+                            jobSource.yield(.job(job.offset))
                         }
                     }
+
                     scheduleJob()
-                    for await value in jobAsyncStream {
+                    loop: for await value in jobStream {
                         switch value {
                         case .gracefulShutdown:
-                            return
+                            break loop
                         case .job(let jobIndex):
                             do {
                                 _ = try await jobSchedule.scheduledJobs[jobIndex].jobParameters.push(to: self.jobQueue)
@@ -110,7 +113,7 @@ public struct JobSchedule: Sendable {
                     }
                 }
             } onGracefulShutdown: {
-                jobCont.yield(.gracefulShutdown)
+                jobSource.yield(.gracefulShutdown)
             }
         }
 
