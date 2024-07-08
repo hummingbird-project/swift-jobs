@@ -98,6 +98,48 @@ public struct JobSchedule: MutableCollection, Sendable {
         }
     }
 
+    /// AsyncSequence of Jobs based on a JobSchedule
+    struct JobSequence: AsyncSequence {
+        typealias Element = JobParameters
+        let jobSchedule: JobSchedule
+        let logger: Logger
+
+        struct AsyncIterator: AsyncIteratorProtocol {
+            var jobSchedule: JobSchedule
+            let logger: Logger
+
+            init(schedule: JobSchedule, logger: Logger) {
+                self.jobSchedule = schedule
+                self.logger = logger
+            }
+
+            mutating func next() async -> JobParameters? {
+                guard let job = self.jobSchedule.nextJob() else {
+                    return nil
+                }
+                self.logger.debug(
+                    "Next Scheduled Job",
+                    metadata: [
+                        "_job_type": .stringConvertible(type(of: job.element.jobParameters).jobName),
+                        "_job_time": .stringConvertible(job.element.nextScheduledDate),
+                    ]
+                )
+                let timeInterval = job.element.nextScheduledDate.timeIntervalSinceNow
+                do {
+                    try await Task.sleep(until: .now + .seconds(timeInterval))
+                    self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
+                    return job.element.jobParameters
+                } catch {
+                    return nil
+                }
+            }
+        }
+
+        func makeAsyncIterator() -> AsyncIterator {
+            .init(schedule: self.jobSchedule, logger: self.logger)
+        }
+    }
+
     /// Job Scheduler Service
     public struct Scheduler<Driver: JobQueueDriver>: Service, CustomStringConvertible {
         let jobQueue: JobQueue<Driver>
@@ -110,43 +152,16 @@ public struct JobSchedule: MutableCollection, Sendable {
 
         /// Run Job scheduler
         public func run() async throws {
-            await withDiscardingTaskGroup { group in
-                var jobSchedule = self.jobSchedule
-                let (jobStream, jobSource) = AsyncStream.makeStream(of: Int.self)
-
-                // get next job to schedule and setup Task to push it to queue at the correct time
-                func scheduleJob() {
-                    guard let job = jobSchedule.nextJob() else {
-                        return
-                    }
-                    self.jobQueue.logger.debug(
-                        "Scheduled Job",
-                        metadata: [
-                            "_job_type": .stringConvertible(type(of: job.element.jobParameters).jobName),
-                            "_job_time": .stringConvertible(job.element.nextScheduledDate),
-                        ]
-                    )
-                    // add task to add job to queue once it reaches its scheduled date
-                    group.addTask {
-                        let timeInterval = job.element.nextScheduledDate.timeIntervalSinceNow
-                        do {
-                            try await Task.sleep(until: .now + .seconds(timeInterval))
-                            jobSource.yield(job.offset)
-                        } catch {}
-                    }
+            let scheduledJobSequence = JobSequence(
+                jobSchedule: self.jobSchedule,
+                logger: self.jobQueue.logger
+            )
+            for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
+                do {
+                    _ = try await job.push(to: self.jobQueue)
+                } catch {
+                    self.jobQueue.logger.debug("Failed: to schedule job")
                 }
-
-                // Schedule first job
-                scheduleJob()
-
-                for await jobIndex in jobStream.cancelOnGracefulShutdown() {
-                    do {
-                        _ = try await jobSchedule[jobIndex].jobParameters.push(to: self.jobQueue)
-                        jobSchedule.updateNextScheduledDate(jobIndex: jobIndex)
-                    } catch {}
-                }
-                // cancel any running tasks
-                group.cancelAll()
             }
         }
 

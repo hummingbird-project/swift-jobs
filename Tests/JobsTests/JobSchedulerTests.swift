@@ -101,6 +101,29 @@ final class JobSchedulerTests: XCTestCase {
         XCTAssert(job.element.jobParameters is Job2)
     }
 
+    func testJobScheduleSequence() async throws {
+        struct Job1: JobParameters {
+            static let jobName = "Job1"
+        }
+        struct Job2: JobParameters {
+            static let jobName = "Job2"
+        }
+        var logger = Logger(label: "JobSequence")
+        logger.logLevel = .debug
+        // create schedule that ensures a job will be run in the next second
+        let dateComponents = Calendar.current.dateComponents([.hour, .minute, .second], from: Date.now + 1)
+        let jobSchedule = try JobSchedule([
+            (job: Job1(), schedule: .everyMinute(second: dateComponents.second!)),
+            (job: Job2(), schedule: .everyMinute(second: (dateComponents.second! + 1) % 60)),
+        ])
+        let sequence = JobSchedule.JobSequence(jobSchedule: jobSchedule, logger: logger)
+        var jobIterator = sequence.makeAsyncIterator()
+        let job = await jobIterator.next()
+        XCTAssert(job is Job1)
+        let job2 = await jobIterator.next()
+        XCTAssertTrue(job2 is Job2)
+    }
+
     func testSchedulerService() async throws {
         let (stream, source) = AsyncStream.makeStream(of: Void.self)
         struct TriggerShutdownParameters: JobParameters {
