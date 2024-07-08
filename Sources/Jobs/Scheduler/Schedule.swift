@@ -29,18 +29,18 @@ public struct Schedule: Sendable {
 
     /// Month of the year
     public enum Month: Int, Sendable {
-        case january = 0
-        case february = 1
-        case march = 2
-        case april = 3
-        case may = 4
-        case june = 5
-        case july = 6
-        case august = 7
-        case september = 8
-        case october = 9
-        case november = 10
-        case december = 11
+        case january = 1
+        case february = 2
+        case march = 3
+        case april = 4
+        case may = 5
+        case june = 6
+        case july = 7
+        case august = 8
+        case september = 9
+        case october = 10
+        case november = 11
+        case december = 12
     }
 
     /// Schedule parameter
@@ -118,6 +118,16 @@ public struct Schedule: Sendable {
     ///   - timeZone: Time zone to use when scheduling
     public static func monthly(date: Int, hour: Int = 0, timeZone: TimeZone = .current) -> Self {
         .init(hour: .specific(hour), date: .specific(date), timeZone: timeZone)
+    }
+
+    ///  Return a schedule that returns a Date once a month
+    /// - Parameters:
+    ///   - month: Month on which it should return Date at
+    ///   - date: Date on which it should return Date at
+    ///   - hour: Hour value is should return Date at
+    ///   - timeZone: Time zone to use when scheduling
+    public static func yearly(month: Month, date: Int, hour: Int = 0, timeZone: TimeZone = .current) -> Self {
+        .init(hour: .specific(hour), date: .specific(date), month: .specific(month), timeZone: timeZone)
     }
 
     ///  Return next date in schedule after the supplied Date
