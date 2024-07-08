@@ -46,7 +46,7 @@ public struct JobSchedule: Sendable {
         .init(jobQueue: jobQueue, jobSchedule: self)
     }
 
-    func nextJob(after date: Date = .now) -> (offset: Int, element: ScheduledJob)? {
+    func nextJob() -> (offset: Int, element: ScheduledJob)? {
         return self.scheduledJobs.lazy.enumerated().min(by: { $0.element.nextScheduledDate < $1.element.nextScheduledDate })
     }
 
@@ -76,7 +76,7 @@ public struct JobSchedule: Sendable {
             let (jobStream, jobSource) = AsyncStream.makeStream(of: StreamScheduledJobValue.self)
 
             await withGracefulShutdownHandler {
-                await withThrowingTaskGroup(of: Void.self) { group in
+                await withDiscardingTaskGroup { group in
                     var jobSchedule = self.jobSchedule
                     func scheduleJob() {
                         // get next job to schedule
@@ -93,8 +93,10 @@ public struct JobSchedule: Sendable {
                         // add task to add job to queue once it reaches its scheduled date
                         group.addTask {
                             let timeInterval = job.element.nextScheduledDate.timeIntervalSinceNow
-                            try await Task.sleep(until: .now + .seconds(timeInterval))
-                            jobSource.yield(.job(job.offset))
+                            do {
+                                try await Task.sleep(until: .now + .seconds(timeInterval))
+                                jobSource.yield(.job(job.offset))
+                            } catch {}
                         }
                     }
 
@@ -111,6 +113,8 @@ public struct JobSchedule: Sendable {
                             scheduleJob()
                         }
                     }
+                    // cancel any running tasks
+                    group.cancelAll()
                 }
             } onGracefulShutdown: {
                 jobSource.yield(.gracefulShutdown)
