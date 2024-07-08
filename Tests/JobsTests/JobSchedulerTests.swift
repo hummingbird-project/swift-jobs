@@ -112,8 +112,8 @@ final class JobSchedulerTests: XCTestCase {
         jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, _ in
             source.yield()
         }
+        // create schedule that ensures a job will be run in the next second
         let dateComponents = Calendar.current.dateComponents([.hour, .minute, .second], from: Date.now + 1)
-
         var jobSchedule = JobSchedule()
         try jobSchedule.addJob(TriggerShutdownParameters(), schedule: .everyMinute(second: dateComponents.second!))
 
