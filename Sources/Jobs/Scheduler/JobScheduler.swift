@@ -37,7 +37,7 @@ public struct JobScheduleError: Error {
 /// generate Jobs on a specified JobQueue when the schedule requires it
 ///
 /// ```swift
-/// let jobSchedule = JobSchedule([(job: RemoveUnusedSessionsJob(), schedule: .weekly(day: .sunday))])
+/// let jobSchedule = JobSchedule([(job: RemoveDeadSessionsJob(), schedule: .weekly(day: .sunday, hour: 4))])
 /// let serviceGroup = ServiceGroup(
 ///     configuration: .init(
 ///         services: [jobQueue, jobSchedule.scheduler(on: jobQueue)]
