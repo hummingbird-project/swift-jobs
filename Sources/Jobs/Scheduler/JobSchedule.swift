@@ -100,11 +100,6 @@ public struct JobSchedule: MutableCollection, Sendable {
 
     /// Job Scheduler Service
     public struct Scheduler<Driver: JobQueueDriver>: Service, CustomStringConvertible {
-        enum StreamScheduledJobValue {
-            case job(Int)
-            case gracefulShutdown
-        }
-
         let jobQueue: JobQueue<Driver>
         let jobSchedule: JobSchedule
 
@@ -115,51 +110,43 @@ public struct JobSchedule: MutableCollection, Sendable {
 
         /// Run Job scheduler
         public func run() async throws {
-            let (jobStream, jobSource) = AsyncStream.makeStream(of: StreamScheduledJobValue.self)
+            await withDiscardingTaskGroup { group in
+                var jobSchedule = self.jobSchedule
+                let (jobStream, jobSource) = AsyncStream.makeStream(of: Int.self)
 
-            await withGracefulShutdownHandler {
-                await withDiscardingTaskGroup { group in
-                    var jobSchedule = self.jobSchedule
-                    func scheduleJob() {
-                        // get next job to schedule
-                        guard let job = jobSchedule.nextJob() else {
-                            return
-                        }
-                        self.jobQueue.logger.debug(
-                            "Scheduled Job",
-                            metadata: [
-                                "_job_type": .stringConvertible(type(of: job.element.jobParameters).jobName),
-                                "_job_time": .stringConvertible(job.element.nextScheduledDate),
-                            ]
-                        )
-                        // add task to add job to queue once it reaches its scheduled date
-                        group.addTask {
-                            let timeInterval = job.element.nextScheduledDate.timeIntervalSinceNow
-                            do {
-                                try await Task.sleep(until: .now + .seconds(timeInterval))
-                                jobSource.yield(.job(job.offset))
-                            } catch {}
-                        }
+                // get next job to schedule and setup Task to push it to queue at the correct time
+                func scheduleJob() {
+                    guard let job = jobSchedule.nextJob() else {
+                        return
                     }
-
-                    scheduleJob()
-                    loop: for await value in jobStream {
-                        switch value {
-                        case .gracefulShutdown:
-                            break loop
-                        case .job(let jobIndex):
-                            do {
-                                _ = try await jobSchedule[jobIndex].jobParameters.push(to: self.jobQueue)
-                                jobSchedule.updateNextScheduledDate(jobIndex: jobIndex)
-                            } catch {}
-                            scheduleJob()
-                        }
+                    self.jobQueue.logger.debug(
+                        "Scheduled Job",
+                        metadata: [
+                            "_job_type": .stringConvertible(type(of: job.element.jobParameters).jobName),
+                            "_job_time": .stringConvertible(job.element.nextScheduledDate),
+                        ]
+                    )
+                    // add task to add job to queue once it reaches its scheduled date
+                    group.addTask {
+                        let timeInterval = job.element.nextScheduledDate.timeIntervalSinceNow
+                        do {
+                            try await Task.sleep(until: .now + .seconds(timeInterval))
+                            jobSource.yield(job.offset)
+                        } catch {}
                     }
-                    // cancel any running tasks
-                    group.cancelAll()
                 }
-            } onGracefulShutdown: {
-                jobSource.yield(.gracefulShutdown)
+
+                // Schedule first job
+                scheduleJob()
+
+                for await jobIndex in jobStream.cancelOnGracefulShutdown() {
+                    do {
+                        _ = try await jobSchedule[jobIndex].jobParameters.push(to: self.jobQueue)
+                        jobSchedule.updateNextScheduledDate(jobIndex: jobIndex)
+                    } catch {}
+                }
+                // cancel any running tasks
+                group.cancelAll()
             }
         }
 
