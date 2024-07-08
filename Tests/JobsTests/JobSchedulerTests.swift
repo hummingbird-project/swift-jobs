@@ -69,13 +69,15 @@ final class JobSchedulerTests: XCTestCase {
         struct Job2: JobParameters {
             static var jobName = "Job1"
         }
-        var schedule = JobSchedule()
+        var schedule = try JobSchedule([
+            (job: Job1(), schedule: .weekly(day: .sunday)),
+        ])
         try schedule.addJob(Job1(), schedule: .hourly(minute: 30))
         try schedule.addJob(Job2(), schedule: .daily(hour: 4))
 
         let startDate = try Date.ISO8601FormatStyle.iso8601(timeZone: .current).parse("2024-04-14T02:00:00")
-        for jobIndex in schedule.scheduledJobs.startIndex..<schedule.scheduledJobs.endIndex {
-            schedule.scheduledJobs[jobIndex].nextScheduledDate = schedule.scheduledJobs[jobIndex].schedule.nextDate(after: startDate)!
+        for jobIndex in schedule.startIndex..<schedule.endIndex {
+            schedule[jobIndex].nextScheduledDate = schedule[jobIndex].schedule.nextDate(after: startDate)!
         }
         // first two jobs should be Job1
         var job = try XCTUnwrap(schedule.nextJob())
