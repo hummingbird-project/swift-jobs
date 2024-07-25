@@ -63,7 +63,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
 
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
-        logger[metadataKey: "_job_id"] = .stringConvertible(queuedJob.id)
+        logger[metadataKey: "JobId"] = .stringConvertible(queuedJob.id)
         let job: any Job
         do {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
@@ -76,7 +76,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
             return
         }
-        logger[metadataKey: "_job_type"] = .string(job.name)
+        logger[metadataKey: "JobName"] = .string(job.name)
 
         var count = job.maxRetryCount
         logger.debug("Starting Job")
