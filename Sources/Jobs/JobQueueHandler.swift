@@ -107,6 +107,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
                     }
                     count -= 1
                     logger.debug("Retrying Job")
+                    Counter(
+                        label: "retry_jobs_counter",
+                        dimensions: [("job_name", job.name)]
+                    ).increment()
                 }
             }
             logger.debug("Finished Job")
@@ -134,31 +138,31 @@ extension JobQueueHandler: CustomStringConvertible {
     ) {
         // Calculate job execution time
         Timer(
-            label: "\(name)_job_duration",
+            label: "swift_jobs_duration",
             dimensions: [
                 ("success", error == nil ? "true" : "false"),
-                ("id", name),
+                ("job_name", name),
             ],
             preferredDisplayUnit: .seconds
         ).recordNanoseconds(DispatchTime.now().uptimeNanoseconds - startTime)
 
         // Increment job counter base on status
-        if error != nil {
+        if let error {
             if error is CancellationError {
                 Counter(
                     label: "cancelled_jobs_counter",
-                    dimensions: [("queue_name", name)]
+                    dimensions: [("job_name", name)]
                 ).increment()
             } else {
                 Counter(
                     label: "failed_jobs_counter",
-                    dimensions: [("queue_name", name)]
+                    dimensions: [("job_name", name)]
                 ).increment()
             }
         } else {
             Counter(
                 label: "successful_jobs_counter",
-                dimensions: [("queue_name", name)]
+                dimensions: [("job_name", name)]
             ).increment()
         }
     }
