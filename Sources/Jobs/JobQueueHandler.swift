@@ -12,7 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Dispatch
 import Logging
+import Metrics
 import ServiceLifecycle
 
 /// Object handling a single job queue
@@ -64,6 +66,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
 
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
+        let startTime = DispatchTime.now().uptimeNanoseconds
         logger[metadataKey: "JobId"] = .stringConvertible(queuedJob.id)
         let job: any Job
         do {
@@ -93,11 +96,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
                     // job queue driver, the process of failing the job might not occur because itself
                     // might get cancelled
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
+                    self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                     return
                 } catch {
                     if count <= 0 {
                         logger.debug("Job failed")
                         try await self.queue.failed(jobId: queuedJob.id, error: error)
+                        self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                         return
                     }
                     count -= 1
@@ -105,9 +110,11 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
                 }
             }
             logger.debug("Finished Job")
+            self.updateJobMetrics(for: job.name, startTime: startTime)
             try await self.queue.finished(jobId: queuedJob.id)
         } catch {
             logger.debug("Failed to set job status")
+            self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
         }
     }
 
@@ -119,4 +126,40 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
 
 extension JobQueueHandler: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
+
+    private func updateJobMetrics(
+        for name: String,
+        startTime: UInt64,
+        error: Error? = nil
+    ) {
+        // Calculate job execution time
+        Timer(
+            label: "\(name)_job_duration",
+            dimensions: [
+                ("success", error == nil ? "true" : "false"),
+                ("id", name),
+            ],
+            preferredDisplayUnit: .seconds
+        ).recordNanoseconds(DispatchTime.now().uptimeNanoseconds - startTime)
+
+        // Increment job counter base on status
+        if error != nil {
+            if error is CancellationError {
+                Counter(
+                    label: "cancelled_jobs_counter",
+                    dimensions: [("queue_name", name)]
+                ).increment()
+            } else {
+                Counter(
+                    label: "failed_jobs_counter",
+                    dimensions: [("queue_name", name)]
+                ).increment()
+            }
+        } else {
+            Counter(
+                label: "successful_jobs_counter",
+                dimensions: [("queue_name", name)]
+            ).increment()
+        }
+    }
 }

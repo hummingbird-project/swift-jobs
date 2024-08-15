@@ -14,6 +14,7 @@
 
 import Foundation
 import Logging
+import Metrics
 import NIOCore
 import NIOFoundationCompat
 import ServiceLifecycle
@@ -47,6 +48,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         let jobRequest = JobRequest(id: id, parameters: parameters)
         let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: self.allocator)
         let id = try await self.queue.push(buffer)
+        Counter(label: "queued_jobs_counter", dimensions: [("queue_name", jobRequest.id.name)]).increment()
         self.handler.logger.debug(
             "Pushed Job",
             metadata: ["_job_id": .stringConvertible(id), "JobName": .string(jobRequest.id.name)]
