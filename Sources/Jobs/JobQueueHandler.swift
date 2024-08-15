@@ -46,8 +46,9 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
                         }
                     }
                 }
-                while let job = try await iterator.next() {
+                while true {
                     try await group.next()
+                    guard let job = try await iterator.next() else { break }
                     group.addTask {
                         try await self.runJob(job)
                     }
@@ -94,7 +95,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
                     return
                 } catch {
-                    if count == 0 {
+                    if count <= 0 {
                         logger.debug("Job failed")
                         try await self.queue.failed(jobId: queuedJob.id, error: error)
                         return
