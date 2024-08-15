@@ -27,14 +27,6 @@ extension XCTestExpectation {
 }
 
 final class JobsTests: XCTestCase {
-    func wait(for expectations: [XCTestExpectation], timeout: TimeInterval) async {
-        #if (os(Linux) && swift(<5.9)) || swift(<5.8)
-        super.wait(for: expectations, timeout: timeout)
-        #else
-        await fulfillment(of: expectations, timeout: timeout)
-        #endif
-    }
-
     /// Helper function for test a server
     ///
     /// Creates test client, runs test function abd ensures everything is
@@ -80,7 +72,7 @@ final class JobsTests: XCTestCase {
             try await jobQueue.push(id: job.id, parameters: 9)
             try await jobQueue.push(id: job.id, parameters: 10)
 
-            await self.wait(for: [expectation], timeout: 5)
+            await fulfillment(of: [expectation], timeout: 5)
         }
     }
 
@@ -113,7 +105,7 @@ final class JobsTests: XCTestCase {
             try await jobQueue.push(id: jobIdentifer, parameters: 9)
             try await jobQueue.push(id: jobIdentifer, parameters: 10)
 
-            await self.wait(for: [expectation], timeout: 5)
+            await fulfillment(of: [expectation], timeout: 5)
 
             XCTAssertGreaterThan(maxRunningJobCounter.load(ordering: .relaxed), 1)
             XCTAssertLessThanOrEqual(maxRunningJobCounter.load(ordering: .relaxed), 4)
@@ -138,7 +130,7 @@ final class JobsTests: XCTestCase {
         try await self.testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer, parameters: 0)
 
-            await self.wait(for: [expectation], timeout: 5)
+            await fulfillment(of: [expectation], timeout: 5)
         }
         XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
     }
@@ -159,7 +151,7 @@ final class JobsTests: XCTestCase {
         try await self.testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer, parameters: .init(id: 23, message: "Hello!"))
 
-            await self.wait(for: [expectation], timeout: 5)
+            await fulfillment(of: [expectation], timeout: 5)
         }
     }
 
@@ -179,7 +171,7 @@ final class JobsTests: XCTestCase {
         try await self.testJobQueue(jobQueue) {
             try await jobQueue.push(TestJobParameters(id: 23, message: "Hello!"))
 
-            await self.wait(for: [expectation], timeout: 5)
+            await fulfillment(of: [expectation], timeout: 5)
         }
     }
 
@@ -219,7 +211,7 @@ final class JobsTests: XCTestCase {
                 try await serviceGroup.run()
             }
             try await jobQueue.push(SleepJobParameters(length: .milliseconds(1000)))
-            await self.wait(for: [expectation], timeout: 5)
+            await fulfillment(of: [expectation], timeout: 5)
             group.cancelAll()
         }
 
@@ -243,7 +235,7 @@ final class JobsTests: XCTestCase {
         try await self.testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer1, parameters: 2)
             try await jobQueue.push(id: jobIdentifer2, parameters: "test")
-            await self.wait(for: [expectation], timeout: 5)
+            await fulfillment(of: [expectation], timeout: 5)
         }
         string.withLockedValue {
             XCTAssertEqual($0, "test")
@@ -283,7 +275,7 @@ final class JobsTests: XCTestCase {
                 for i in 0..<200 {
                     try await jobQueue.push(id: jobIdentifer, parameters: i)
                 }
-                await self.wait(for: [expectation], timeout: 5)
+                await fulfillment(of: [expectation], timeout: 5)
                 await serviceGroup.triggerGracefulShutdown()
             } catch {
                 XCTFail("\(String(reflecting: error))")
