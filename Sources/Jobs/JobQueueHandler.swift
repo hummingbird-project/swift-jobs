@@ -71,6 +71,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         logger[metadataKey: "job_id"] = .stringConvertible(queuedJob.id)
         let job: any Job
         do {
+            // Job name is not available here :(
+            // TODO: update QueueJob name make sure the name of the job is
+            // always available
+            Counter(label: "processing_jobs_counter").increment()
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
         } catch let error as JobQueueError where error == .unrecognisedJobId {
             logger.debug("Failed to find Job with ID while decoding")
@@ -89,6 +93,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         do {
             while true {
                 do {
+                    Counter(label: "running_jobs_counter", dimensions: [("job_name", job.name)]).increment()
                     try await job.execute(context: .init(logger: logger))
                     break
                 } catch let error as CancellationError {

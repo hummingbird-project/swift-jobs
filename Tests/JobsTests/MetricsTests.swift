@@ -248,6 +248,13 @@ final class MetricsTests: XCTestCase {
         XCTAssertEqual(counter.dimensions.count, 1)
         XCTAssertEqual(counter.dimensions[0].0, "job_name")
         XCTAssertEqual(counter.dimensions[0].1, "testBasic")
+        let processingCounter = try XCTUnwrap(Self.testMetrics.counters.withLockedValue { $0 }["processing_jobs_counter"] as? TestCounter)
+        XCTAssertEqual(processingCounter.values.withLockedValue { $0 }.count, 1)
+        XCTAssertEqual(processingCounter.dimensions.count, 0)
+
+        let runningCounter = try XCTUnwrap(Self.testMetrics.counters.withLockedValue { $0 }["running_jobs_counter"] as? TestCounter)
+        XCTAssertEqual(runningCounter.values.withLockedValue { $0 }.count, 1)
+        XCTAssertEqual(runningCounter.dimensions.count, 1)
     }
 
     func testFailedJobs() async throws {
