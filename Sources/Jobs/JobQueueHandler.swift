@@ -81,7 +81,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
             return
         }
-        logger[metadataKey: "JobName"] = .string(job.name)
+        logger[metadataKey: "job_name"] = .string(job.name)
 
         var count = job.maxRetryCount
         logger.debug("Starting Job")

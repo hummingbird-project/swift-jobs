@@ -51,7 +51,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         Counter(label: "queued_jobs_counter", dimensions: [("job_name", jobRequest.id.name)]).increment()
         self.handler.logger.debug(
             "Pushed Job",
-            metadata: ["_job_id": .stringConvertible(id), "JobName": .string(jobRequest.id.name)]
+            metadata: ["_job_id": .stringConvertible(id), "job_name": .string(jobRequest.id.name)]
         )
         return id
     }
@@ -70,7 +70,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         ) async throws -> Void
     ) {
         Gauge(label: "registered_jobs_gauge", dimensions: [("job_name", id.name)]).record(Double(1))
-        self.handler.logger.info("Registered Job", metadata: ["JobName": .string(id.name)])
+        self.handler.logger.info("Registered Job", metadata: ["job_name": .string(id.name)])
         let job = JobDefinition<Parameters>(id: id, maxRetryCount: maxRetryCount, execute: execute)
         self.registerJob(job)
     }
