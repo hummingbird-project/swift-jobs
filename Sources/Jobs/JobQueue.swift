@@ -51,7 +51,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         Counter(label: "queued_jobs_counter", dimensions: [("job_name", jobRequest.id.name)]).increment()
         self.handler.logger.debug(
             "Pushed Job",
-            metadata: ["_job_id": .stringConvertible(id), "job_name": .string(jobRequest.id.name)]
+            metadata: ["job_id": .stringConvertible(id), "job_name": .string(jobRequest.id.name)]
         )
         return id
     }

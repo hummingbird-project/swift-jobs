@@ -68,7 +68,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
-        logger[metadataKey: "JobId"] = .stringConvertible(queuedJob.id)
+        logger[metadataKey: "job_id"] = .stringConvertible(queuedJob.id)
         let job: any Job
         do {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
@@ -158,8 +158,8 @@ extension JobQueueHandler: CustomStringConvertible {
         Timer(
             label: "swift_jobs_duration",
             dimensions: [
-                ("job_status", jobStatus.rawValue),
                 ("job_name", name),
+                ("job_status", jobStatus.rawValue),
             ],
             preferredDisplayUnit: .seconds
         ).recordNanoseconds(DispatchTime.now().uptimeNanoseconds - startTime)
