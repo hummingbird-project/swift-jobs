@@ -69,6 +69,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
             JobContext
         ) async throws -> Void
     ) {
+        Gauge(label: "registered_jobs_gauge", dimensions: [("job_name", id.name)]).record(Double(1))
         self.handler.logger.info("Registered Job", metadata: ["JobName": .string(id.name)])
         let job = JobDefinition<Parameters>(id: id, maxRetryCount: maxRetryCount, execute: execute)
         self.registerJob(job)

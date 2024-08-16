@@ -24,6 +24,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         self.numWorkers = numWorkers
         self.logger = logger
         self.jobRegistry = .init()
+        Gauge(label: "worker_count").record(Double(1))
     }
 
     ///  Register job
@@ -131,16 +132,33 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
 extension JobQueueHandler: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
 
+    /// Used for the histogram which can be useful to see by job status
+    private enum JobStatus: String, Codable, Sendable {
+        case cancelled
+        case failed
+        case succeeded
+    }
+
     private func updateJobMetrics(
         for name: String,
         startTime: UInt64,
         error: Error? = nil
     ) {
+        let jobStatus: JobStatus = if let error {
+            if error is CancellationError {
+                .cancelled
+            } else {
+                .failed
+            }
+        } else {
+            .succeeded
+        }
+
         // Calculate job execution time
         Timer(
             label: "swift_jobs_duration",
             dimensions: [
-                ("success", error == nil ? "true" : "false"),
+                ("job_status", jobStatus.rawValue),
                 ("job_name", name),
             ],
             preferredDisplayUnit: .seconds
