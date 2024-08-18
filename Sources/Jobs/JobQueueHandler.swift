@@ -151,7 +151,8 @@ extension JobQueueHandler: CustomStringConvertible {
     ) {
         
         if retrying {
-            self.updateJobMeters()
+            // dec processing when retried
+            Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
             Counter(
                 label: self.metricsLabel,
                 dimensions: [("name", name), ("status", JobStatus.retried.rawValue)]
