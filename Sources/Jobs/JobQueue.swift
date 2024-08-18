@@ -47,11 +47,11 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     ) async throws -> Queue.JobID {
         let jobRequest = JobRequest(id: id, parameters: parameters)
         let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: self.allocator)
+        Meter(label: "swift_jobs_meter", dimensions: [("status", "queued")]).increment()
         let id = try await self.queue.push(buffer)
-        Counter(label: "queued_jobs_counter", dimensions: [("job_name", jobRequest.id.name)]).increment()
         self.handler.logger.debug(
             "Pushed Job",
-            metadata: ["job_id": .stringConvertible(id), "job_name": .string(jobRequest.id.name)]
+            metadata: ["JobID": .stringConvertible(id), "JobName": .string(jobRequest.id.name)]
         )
         return id
     }
@@ -69,8 +69,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
             JobContext
         ) async throws -> Void
     ) {
-        Gauge(label: "registered_jobs_gauge", dimensions: [("job_name", id.name)]).record(Double(1))
-        self.handler.logger.info("Registered Job", metadata: ["job_name": .string(id.name)])
+        self.handler.logger.info("Registered Job", metadata: ["JobName": .string(id.name)])
         let job = JobDefinition<Parameters>(id: id, maxRetryCount: maxRetryCount, execute: execute)
         self.registerJob(job)
     }

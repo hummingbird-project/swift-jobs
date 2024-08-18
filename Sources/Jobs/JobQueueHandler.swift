@@ -24,7 +24,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         self.numWorkers = numWorkers
         self.logger = logger
         self.jobRegistry = .init()
-        Gauge(label: "worker_count").record(Double(1))
     }
 
     ///  Register job
@@ -68,24 +67,22 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
-        logger[metadataKey: "job_id"] = .stringConvertible(queuedJob.id)
+        logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
         let job: any Job
         do {
-            // Job name is not available here :(
-            // TODO: update QueueJob name make sure the name of the job is
-            // always available
-            Counter(label: "processing_jobs_counter").increment()
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
         } catch let error as JobQueueError where error == .unrecognisedJobId {
             logger.debug("Failed to find Job with ID while decoding")
             try await self.queue.failed(jobId: queuedJob.id, error: error)
+            self.updateJobMeters()
             return
         } catch {
             logger.debug("Job failed to decode")
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
+            self.updateJobMeters()
             return
         }
-        logger[metadataKey: "job_name"] = .string(job.name)
+        logger[metadataKey: "JobName"] = .string(job.name)
 
         var count = job.maxRetryCount
         logger.debug("Starting Job")
@@ -93,7 +90,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         do {
             while true {
                 do {
-                    Counter(label: "running_jobs_counter", dimensions: [("job_name", job.name)]).increment()
+                    Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
                     try await job.execute(context: .init(logger: logger))
                     break
                 } catch let error as CancellationError {
@@ -113,15 +110,12 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
                     }
                     count -= 1
                     logger.debug("Retrying Job")
-                    Counter(
-                        label: "retry_jobs_counter",
-                        dimensions: [("job_name", job.name)]
-                    ).increment()
+                    self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
                 }
             }
             logger.debug("Finished Job")
-            self.updateJobMetrics(for: job.name, startTime: startTime)
             try await self.queue.finished(jobId: queuedJob.id)
+            self.updateJobMetrics(for: job.name, startTime: startTime)
         } catch {
             logger.debug("Failed to set job status")
             self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
@@ -136,9 +130,14 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
 
 extension JobQueueHandler: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
+    private var metricsLabel: String { "swift_jobs" }
+    private var meterLabel: String { "swift_jobs_meter" }
 
     /// Used for the histogram which can be useful to see by job status
     private enum JobStatus: String, Codable, Sendable {
+        case queued
+        case processing
+        case retried
         case cancelled
         case failed
         case succeeded
@@ -147,8 +146,19 @@ extension JobQueueHandler: CustomStringConvertible {
     private func updateJobMetrics(
         for name: String,
         startTime: UInt64,
-        error: Error? = nil
+        error: Error? = nil,
+        retrying: Bool = false
     ) {
+        
+        if retrying {
+            self.updateJobMeters()
+            Counter(
+                label: self.metricsLabel,
+                dimensions: [("name", name), ("status", JobStatus.retried.rawValue)]
+            ).increment()
+            return
+        }
+        
         let jobStatus: JobStatus = if let error {
             if error is CancellationError {
                 .cancelled
@@ -158,35 +168,31 @@ extension JobQueueHandler: CustomStringConvertible {
         } else {
             .succeeded
         }
+        
+        let dimensions: [(String, String)] = [
+            ("name", name),
+            ("status", jobStatus.rawValue)
+        ]
 
         // Calculate job execution time
         Timer(
-            label: "swift_jobs_duration",
-            dimensions: [
-                ("job_name", name),
-                ("job_status", jobStatus.rawValue),
-            ],
+            label: "\(self.metricsLabel)_duration_seconds",
+            dimensions: dimensions,
             preferredDisplayUnit: .seconds
         ).recordNanoseconds(DispatchTime.now().uptimeNanoseconds - startTime)
 
         // Increment job counter base on status
-        if let error {
-            if error is CancellationError {
-                Counter(
-                    label: "cancelled_jobs_counter",
-                    dimensions: [("job_name", name)]
-                ).increment()
-            } else {
-                Counter(
-                    label: "failed_jobs_counter",
-                    dimensions: [("job_name", name)]
-                ).increment()
-            }
-        } else {
-            Counter(
-                label: "successful_jobs_counter",
-                dimensions: [("job_name", name)]
-            ).increment()
-        }
+        Counter(
+            label: self.metricsLabel,
+            dimensions: dimensions
+        ).increment()
+        
+        self.updateJobMeters()
+    }
+    
+    private func updateJobMeters() {
+        // clean up meters
+        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
+        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
     }
 }
