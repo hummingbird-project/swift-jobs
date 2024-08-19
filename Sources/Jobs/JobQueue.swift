@@ -14,6 +14,7 @@
 
 import Foundation
 import Logging
+import Metrics
 import NIOCore
 import NIOFoundationCompat
 import ServiceLifecycle
@@ -41,11 +42,17 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     ///   - id: Job identifier
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
-    @discardableResult public func push<Parameters: Codable & Sendable>(id: JobIdentifier<Parameters>, parameters: Parameters) async throws -> Queue.JobID {
+    @discardableResult public func push<Parameters: Codable & Sendable>(
+        id: JobIdentifier<Parameters>, parameters: Parameters
+    ) async throws -> Queue.JobID {
         let jobRequest = JobRequest(id: id, parameters: parameters)
         let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: self.allocator)
+        Meter(label: "swift_jobs_meter", dimensions: [("status", "queued")]).increment()
         let id = try await self.queue.push(buffer)
-        self.handler.logger.debug("Pushed Job", metadata: ["_job_id": .stringConvertible(id), "_job_type": .string(jobRequest.id.name)])
+        self.handler.logger.debug(
+            "Pushed Job",
+            metadata: ["JobID": .stringConvertible(id), "JobName": .string(jobRequest.id.name)]
+        )
         return id
     }
 
@@ -62,7 +69,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
             JobContext
         ) async throws -> Void
     ) {
-        self.handler.logger.info("Registered Job", metadata: ["_job_type": .string(id.name)])
+        self.handler.logger.info("Registered Job", metadata: ["JobName": .string(id.name)])
         let job = JobDefinition<Parameters>(id: id, maxRetryCount: maxRetryCount, execute: execute)
         self.registerJob(job)
     }
@@ -96,7 +103,8 @@ struct JobRequest<Parameters: Codable & Sendable>: Encodable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: _JobCodingKey.self)
-        let childEncoder = container.superEncoder(forKey: .init(stringValue: self.id.name, intValue: nil))
+        let childEncoder = container.superEncoder(
+            forKey: .init(stringValue: self.id.name, intValue: nil))
         try self.parameters.encode(to: childEncoder)
     }
 }

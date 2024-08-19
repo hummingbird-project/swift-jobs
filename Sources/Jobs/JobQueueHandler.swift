@@ -12,7 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Dispatch
 import Logging
+import Metrics
 import ServiceLifecycle
 
 /// Object handling a single job queue
@@ -64,7 +66,15 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
 
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
-        logger[metadataKey: "_job_id"] = .stringConvertible(queuedJob.id)
+        let startTime = DispatchTime.now().uptimeNanoseconds
+
+        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
+        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
+        defer {
+            Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
+        }
+
+        logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
         let job: any Job
         do {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
@@ -77,7 +87,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
             return
         }
-        logger[metadataKey: "_job_type"] = .string(job.name)
+        logger[metadataKey: "JobName"] = .string(job.name)
 
         var count = job.maxRetryCount
         logger.debug("Starting Job")
@@ -85,6 +95,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         do {
             while true {
                 do {
+                    Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
                     try await job.execute(context: .init(logger: logger))
                     break
                 } catch let error as CancellationError {
@@ -93,21 +104,26 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
                     // job queue driver, the process of failing the job might not occur because itself
                     // might get cancelled
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
+                    self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                     return
                 } catch {
                     if count <= 0 {
                         logger.debug("Job failed")
                         try await self.queue.failed(jobId: queuedJob.id, error: error)
+                        self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                         return
                     }
                     count -= 1
                     logger.debug("Retrying Job")
+                    self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
                 }
             }
             logger.debug("Finished Job")
             try await self.queue.finished(jobId: queuedJob.id)
+            self.updateJobMetrics(for: job.name, startTime: startTime)
         } catch {
             logger.debug("Failed to set job status")
+            self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
         }
     }
 
@@ -119,4 +135,59 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
 
 extension JobQueueHandler: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
+    private var metricsLabel: String { "swift_jobs" }
+    private var meterLabel: String { "swift_jobs_meter" }
+
+    /// Used for the histogram which can be useful to see by job status
+    private enum JobStatus: String, Codable, Sendable {
+        case queued
+        case processing
+        case retried
+        case cancelled
+        case failed
+        case succeeded
+    }
+
+    private func updateJobMetrics(
+        for name: String,
+        startTime: UInt64,
+        error: Error? = nil,
+        retrying: Bool = false
+    ) {
+        if retrying {
+            Counter(
+                label: self.metricsLabel,
+                dimensions: [("name", name), ("status", JobStatus.retried.rawValue)]
+            ).increment()
+            return
+        }
+
+        let jobStatus: JobStatus = if let error {
+            if error is CancellationError {
+                .cancelled
+            } else {
+                .failed
+            }
+        } else {
+            .succeeded
+        }
+
+        let dimensions: [(String, String)] = [
+            ("name", name),
+            ("status", jobStatus.rawValue),
+        ]
+
+        // Calculate job execution time
+        Timer(
+            label: "\(self.metricsLabel)_duration_seconds",
+            dimensions: dimensions,
+            preferredDisplayUnit: .seconds
+        ).recordNanoseconds(DispatchTime.now().uptimeNanoseconds - startTime)
+
+        // Increment job counter base on status
+        Counter(
+            label: self.metricsLabel,
+            dimensions: dimensions
+        ).increment()
+    }
 }
