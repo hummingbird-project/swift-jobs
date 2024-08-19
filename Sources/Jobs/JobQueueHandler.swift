@@ -68,6 +68,12 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
 
+        // Calculate wait time from queued to processing
+        Timer(
+            label: "\(self.metricsLabel)_queued_for_duration_seconds",
+            preferredDisplayUnit: .seconds
+        ).recordNanoseconds(startTime - queuedJob.queuedAt)
+
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
         defer {
