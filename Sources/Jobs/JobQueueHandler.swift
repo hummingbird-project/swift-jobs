@@ -67,6 +67,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
+
+        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
+        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
+        defer {
+            Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
+        }
+
         logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
         let job: any Job
         do {
@@ -74,12 +81,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         } catch let error as JobQueueError where error == .unrecognisedJobId {
             logger.debug("Failed to find Job with ID while decoding")
             try await self.queue.failed(jobId: queuedJob.id, error: error)
-            self.updateJobMeters()
             return
         } catch {
             logger.debug("Job failed to decode")
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
-            self.updateJobMeters()
             return
         }
         logger[metadataKey: "JobName"] = .string(job.name)
@@ -149,17 +154,14 @@ extension JobQueueHandler: CustomStringConvertible {
         error: Error? = nil,
         retrying: Bool = false
     ) {
-        
         if retrying {
-            // dec processing when retried
-            Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
             Counter(
                 label: self.metricsLabel,
                 dimensions: [("name", name), ("status", JobStatus.retried.rawValue)]
             ).increment()
             return
         }
-        
+
         let jobStatus: JobStatus = if let error {
             if error is CancellationError {
                 .cancelled
@@ -169,10 +171,10 @@ extension JobQueueHandler: CustomStringConvertible {
         } else {
             .succeeded
         }
-        
+
         let dimensions: [(String, String)] = [
             ("name", name),
-            ("status", jobStatus.rawValue)
+            ("status", jobStatus.rawValue),
         ]
 
         // Calculate job execution time
@@ -187,13 +189,5 @@ extension JobQueueHandler: CustomStringConvertible {
             label: self.metricsLabel,
             dimensions: dimensions
         ).increment()
-        
-        self.updateJobMeters()
-    }
-    
-    private func updateJobMeters() {
-        // clean up meters
-        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
-        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
     }
 }
