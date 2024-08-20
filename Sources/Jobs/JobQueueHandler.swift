@@ -75,7 +75,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         Timer(
             label: "\(self.metricsLabel)_queued_for_duration_seconds",
             preferredDisplayUnit: .seconds
-        ).recordNanoseconds(Int64(jobQueuedDuration * 100_000))
+        ).recordNanoseconds(Int64(jobQueuedDuration * 1_000_000))
 
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
