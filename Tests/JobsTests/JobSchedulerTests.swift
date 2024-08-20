@@ -19,12 +19,16 @@ import XCTest
 
 final class JobSchedulerTests: XCTestCase {
     func testSchedule(start: String, expectedEnd: String, schedule: Schedule) throws {
-        let iso8601Formatter = ISO8601DateFormatter()
-        guard let startDate = iso8601Formatter.date(from: start),
-            let expectedEndDate = iso8601Formatter.date(from: expectedEnd) else {
-                XCTFail("Failed to parse dates")
-                return
-            }
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        dateFormatter.timeZone = schedule.calendar.timeZone
+        guard let startDate = dateFormatter.date(from: start),
+              let expectedEndDate = dateFormatter.date(from: expectedEnd)
+        else {
+            XCTFail("Failed to parse dates")
+            return
+        }
         let end = schedule.nextDate(after: startDate)
         XCTAssertEqual(expectedEndDate, end)
     }
@@ -79,7 +83,10 @@ final class JobSchedulerTests: XCTestCase {
         try schedule.addJob(Job1(), schedule: .hourly(minute: 30))
         try schedule.addJob(Job2(), schedule: .daily(hour: 4))
 
-        let startDate = ISO8601DateFormatter().date(from: "2024-04-14T02:00:00Z")!
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        let startDate = dateFormatter.date(from: "2024-04-14T02:00:00Z")!
         for jobIndex in schedule.startIndex..<schedule.endIndex {
             schedule[jobIndex].nextScheduledDate = schedule[jobIndex].schedule.nextDate(after: startDate)!
         }
