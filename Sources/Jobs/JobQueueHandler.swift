@@ -1,3 +1,5 @@
+import Dispatch
+
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the Hummingbird server framework project
@@ -12,7 +14,6 @@
 //
 //===----------------------------------------------------------------------===//
 import struct Foundation.Date
-import Dispatch
 import Logging
 import Metrics
 import ServiceLifecycle
@@ -67,9 +68,9 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
-        
+
         let jobQueuedDuration = Date().timeIntervalSince(queuedJob.queuedAt)
-        
+
         // Calculate wait time from queued to processing
         Timer(
             label: "\(self.metricsLabel)_queued_for_duration_seconds",
