@@ -23,6 +23,10 @@ extension JobParameters {
     public static var jobID: JobIdentifier<Self> {
         .init(Self.jobName)
     }
+
+    @discardableResult public func push<Queue: JobQueueDriver>(to jobQueue: JobQueue<Queue>) async throws -> Queue.JobID {
+        try await jobQueue.push(self)
+    }
 }
 
 extension JobQueue {
