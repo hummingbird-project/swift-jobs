@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-
+import struct Foundation.Date
 import Dispatch
 import Logging
 import Metrics
@@ -67,12 +67,14 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
-
+        
+        let jobQueuedDuration = Date().timeIntervalSince(queuedJob.queuedAt)
+        
         // Calculate wait time from queued to processing
         Timer(
             label: "\(self.metricsLabel)_queued_for_duration_seconds",
             preferredDisplayUnit: .seconds
-        ).recordNanoseconds(startTime - queuedJob.queuedAt)
+        ).recordNanoseconds(Int64(jobQueuedDuration * 100_000))
 
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()

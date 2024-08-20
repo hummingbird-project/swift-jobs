@@ -21,13 +21,13 @@ public struct QueuedJob<JobID: Sendable>: Sendable {
     public let id: JobID
     /// Job data
     public let jobBuffer: ByteBuffer
-    /// Job queued at in nano seconds
-    public let queuedAt: UInt64
+    /// Job queued at
+    public let queuedAt: Date
 
     /// Initialize a queue job
-    public init(id: JobID, jobBuffer: ByteBuffer, queuedAt: DispatchTime = .now()) {
+    public init(id: JobID, jobBuffer: ByteBuffer, queuedAt: Date = .init()) {
         self.jobBuffer = jobBuffer
         self.id = id
-        self.queuedAt = queuedAt.uptimeNanoseconds
+        self.queuedAt = queuedAt
     }
 }
