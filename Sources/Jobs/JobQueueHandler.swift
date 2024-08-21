@@ -69,7 +69,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
 
-        let jobQueuedDuration = Date().timeIntervalSince(queuedJob.queuedAt)
+        let jobQueuedDuration = Date.now.timeIntervalSince(queuedJob.queuedAt)
 
         // Calculate wait time from queued to processing
         Timer(
