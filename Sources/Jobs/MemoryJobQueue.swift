@@ -56,7 +56,7 @@ public final class MemoryQueue: JobQueueDriver {
 
     public func failed(jobId: JobID, error: any Error) async throws {
         if let job = await self.queue.clearAndReturnPendingJob(jobId: jobId) {
-            self.onFailedJob(.init(id: jobId, jobBuffer: job), error)
+            self.onFailedJob(.init(id: jobId, jobBuffer: job, queuedAt: Date.now), error)
         }
     }
 
@@ -74,7 +74,7 @@ public final class MemoryQueue: JobQueueDriver {
 
         func push(_ jobBuffer: ByteBuffer) throws -> JobID {
             let id = JobID()
-            self.queue.append(QueuedJob(id: id, jobBuffer: jobBuffer))
+            self.queue.append(QueuedJob(id: id, jobBuffer: jobBuffer, queuedAt: Date.now))
             return id
         }
 

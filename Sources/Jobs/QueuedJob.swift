@@ -25,7 +25,7 @@ public struct QueuedJob<JobID: Sendable>: Sendable {
     public let queuedAt: Date
 
     /// Initialize a queue job
-    public init(id: JobID, jobBuffer: ByteBuffer, queuedAt: Date = .init()) {
+    public init(id: JobID, jobBuffer: ByteBuffer, queuedAt: Date) {
         self.jobBuffer = jobBuffer
         self.id = id
         self.queuedAt = queuedAt
