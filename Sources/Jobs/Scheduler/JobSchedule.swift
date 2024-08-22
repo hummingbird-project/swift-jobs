@@ -121,7 +121,7 @@ public struct JobSchedule: MutableCollection, Sendable {
                     "Next Scheduled Job",
                     metadata: [
                         "JobName": .stringConvertible(type(of: job.element.jobParameters).jobName),
-                        "_job_time": .stringConvertible(job.element.nextScheduledDate),
+                        "JobTime": .stringConvertible(job.element.nextScheduledDate),
                     ]
                 )
                 let timeInterval = job.element.nextScheduledDate.timeIntervalSinceNow
