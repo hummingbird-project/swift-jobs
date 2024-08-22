@@ -120,7 +120,7 @@ public struct JobSchedule: MutableCollection, Sendable {
                 self.logger.debug(
                     "Next Scheduled Job",
                     metadata: [
-                        "_job_type": .stringConvertible(type(of: job.element.jobParameters).jobName),
+                        "JobName": .stringConvertible(type(of: job.element.jobParameters).jobName),
                         "_job_time": .stringConvertible(job.element.nextScheduledDate),
                     ]
                 )
