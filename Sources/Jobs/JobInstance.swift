@@ -68,4 +68,10 @@ struct JobInstanceData<Parameters: Codable & Sendable>: Codable {
     let parameters: Parameters
     /// Date job was queued
     let queuedAt: Date
+
+    // keep JSON strings small to improve decode speed
+    private enum CodingKeys: String, CodingKey {
+        case parameters = "p"
+        case queuedAt = "q"
+    }
 }

@@ -27,7 +27,8 @@ struct EncodabeJob<Parameters: Codable & Sendable>: Encodable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: _JobCodingKey.self)
         let childEncoder = container.superEncoder(
-            forKey: .init(stringValue: self.id.name, intValue: nil))
+            forKey: .init(stringValue: self.id.name, intValue: nil)
+        )
         try self.data.encode(to: childEncoder)
     }
 }
