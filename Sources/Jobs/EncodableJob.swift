@@ -19,12 +19,12 @@ struct EncodabeJob<Parameters: Codable & Sendable>: Encodable, Sendable {
     let id: JobIdentifier<Parameters>
     let data: JobInstanceData<Parameters>
 
-    public init(id: JobIdentifier<Parameters>, parameters: Parameters, queuedAt: Date) {
+    init(id: JobIdentifier<Parameters>, parameters: Parameters, queuedAt: Date) {
         self.id = id
         self.data = .init(parameters: parameters, queuedAt: queuedAt)
     }
 
-    public func encode(to encoder: Encoder) throws {
+    func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: _JobCodingKey.self)
         let childEncoder = container.superEncoder(
             forKey: .init(stringValue: self.id.name, intValue: nil)
