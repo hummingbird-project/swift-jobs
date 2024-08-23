@@ -36,7 +36,7 @@ extension JobInstanceProtocol {
 }
 
 /// Job decoded from Queue
-/// 
+///
 /// Includes everything needed to run the job plus any other data that was encoded
 /// with the job
 struct JobInstance<Parameters: Codable & Sendable>: JobInstanceProtocol {

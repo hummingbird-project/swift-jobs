@@ -50,4 +50,3 @@ struct JobRegistry: Sendable {
 
     let builderTypeMap: NIOLockedValueBox < [String: @Sendable (Decoder) throws -> any JobInstanceProtocol]> = .init([:])
 }
-

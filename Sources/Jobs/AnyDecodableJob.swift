@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-/// Add codable support for decoding/encoding any JobInstance
+/// Add codable support for decoding any JobInstance
 internal struct AnyDecodableJob: DecodableWithUserInfoConfiguration, Sendable {
     typealias DecodingConfiguration = JobRegistry
 
