@@ -77,8 +77,8 @@ public struct JobSchedule: MutableCollection, Sendable {
     ///  Create JobScheduler Service
     /// - Parameter jobQueue: Job queue to place jobs
     /// - Returns: JobScheduler
-    public func scheduler<Queue: JobQueueDriver>(on jobQueue: JobQueue<Queue>) -> Scheduler<Queue> {
-        .init(jobQueue: jobQueue, jobSchedule: self)
+    public func scheduler<Queue: JobQueueDriver>(on jobQueue: JobQueue<Queue>) async -> Scheduler<Queue> {
+        await .init(jobQueue: jobQueue, jobSchedule: self)
     }
 
     func nextJob() -> (offset: Int, element: Element)? {
@@ -99,7 +99,7 @@ public struct JobSchedule: MutableCollection, Sendable {
 
     /// AsyncSequence of Jobs based on a JobSchedule
     struct JobSequence: AsyncSequence {
-        typealias Element = JobParameters
+        typealias Element = (job: JobParameters, date: Date)
         let jobSchedule: JobSchedule
         let logger: Logger
 
@@ -112,7 +112,7 @@ public struct JobSchedule: MutableCollection, Sendable {
                 self.logger = logger
             }
 
-            mutating func next() async -> JobParameters? {
+            mutating func next() async -> Element? {
                 guard let job = self.jobSchedule.nextJob() else {
                     return nil
                 }
@@ -123,11 +123,12 @@ public struct JobSchedule: MutableCollection, Sendable {
                         "JobTime": .stringConvertible(job.element.nextScheduledDate),
                     ]
                 )
-                let timeInterval = job.element.nextScheduledDate.timeIntervalSinceNow
+                let nextScheduledDate = job.element.nextScheduledDate
+                let timeInterval = nextScheduledDate.timeIntervalSinceNow
                 do {
                     try await Task.sleep(until: .now + .seconds(timeInterval))
                     self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
-                    return job.element.jobParameters
+                    return (job.element.jobParameters, nextScheduledDate)
                 } catch {
                     return nil
                 }
@@ -144,8 +145,20 @@ public struct JobSchedule: MutableCollection, Sendable {
         let jobQueue: JobQueue<Driver>
         let jobSchedule: JobSchedule
 
-        init(jobQueue: JobQueue<Driver>, jobSchedule: JobSchedule) {
+        init(jobQueue: JobQueue<Driver>, jobSchedule: JobSchedule) async {
             self.jobQueue = jobQueue
+            var jobSchedule = jobSchedule
+            // Update next scheduled date for each job schedule based off the last scheduled date stored
+            do {
+                if let date = try await self.jobQueue.getMetadata(.jobScheduleLastDate) {
+                    for index in 0..<jobSchedule.count {
+                        jobSchedule[index].nextScheduledDate = jobSchedule[index].schedule.nextDate(after: date) ?? .distantFuture
+                    }
+                }
+            } catch {
+                self.jobQueue.logger.error("Failed to get last scheduled job date.")
+            }
+
             self.jobSchedule = jobSchedule
         }
 
@@ -157,7 +170,8 @@ public struct JobSchedule: MutableCollection, Sendable {
             )
             for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
                 do {
-                    _ = try await job.push(to: self.jobQueue)
+                    _ = try await job.job.push(to: self.jobQueue)
+                    try await self.jobQueue.setMetadata(key: .jobScheduleLastDate, value: job.date)
                 } catch {
                     self.jobQueue.logger.debug("Failed: to schedule job")
                 }
@@ -185,4 +199,8 @@ extension JobSchedule {
 
     /// Returns the index immediately after the given index
     public func index(after index: Index) -> Index { self.elements.index(after: index) }
+}
+
+extension JobMetadataKey where Value == Date {
+    static var jobScheduleLastDate: Self { "_jobScheduleLastDate" }
 }

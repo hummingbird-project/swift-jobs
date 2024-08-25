@@ -128,9 +128,9 @@ final class JobSchedulerTests: XCTestCase {
         let sequence = JobSchedule.JobSequence(jobSchedule: jobSchedule, logger: logger)
         var jobIterator = sequence.makeAsyncIterator()
         let job = await jobIterator.next()
-        XCTAssert(job is Job1)
+        XCTAssert(job?.job is Job1)
         let job2 = await jobIterator.next()
-        XCTAssertTrue(job2 is Job2)
+        XCTAssertTrue(job2?.job is Job2)
     }
 
     func testSchedulerService() async throws {
@@ -152,7 +152,7 @@ final class JobSchedulerTests: XCTestCase {
         jobSchedule.addJob(TriggerShutdownParameters(), schedule: .everyMinute(second: dateComponents.second!))
 
         await withThrowingTaskGroup(of: Void.self) { group in
-            let serviceGroup = ServiceGroup(
+            let serviceGroup = await ServiceGroup(
                 configuration: .init(
                     services: [jobQueue, jobSchedule.scheduler(on: jobQueue)],
                     logger: logger
@@ -164,5 +164,85 @@ final class JobSchedulerTests: XCTestCase {
             await stream.first { _ in true }
             await serviceGroup.triggerGracefulShutdown()
         }
+    }
+
+    func testSchedulerLastDate() async throws {
+        let (stream, source) = AsyncStream.makeStream(of: Void.self)
+        struct TriggerShutdownParameters: JobParameters {
+            static let jobName = "TriggerShutdown"
+        }
+
+        var logger = Logger(label: "jobs")
+        logger.logLevel = .debug
+
+        let jobQueue = JobQueue(MemoryQueue(), logger: logger)
+        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, _ in
+            source.yield()
+        }
+        // create schedule that ensures a job should have been run 15 seconds ago
+        let dateTriggered = Date.now - 15
+        let dateComponents = Calendar.current.dateComponents([.hour, .minute, .second], from: dateTriggered)
+        var jobSchedule = JobSchedule()
+        jobSchedule.addJob(TriggerShutdownParameters(), schedule: .everyMinute(second: dateComponents.second!))
+
+        // Set last date scheduled task ran as 1 seconds before scheduled job triggered
+        try await jobQueue.setMetadata(key: .jobScheduleLastDate, value: dateTriggered - 1)
+        await withThrowingTaskGroup(of: Void.self) { group in
+            let serviceGroup = await ServiceGroup(
+                configuration: .init(
+                    services: [jobQueue, jobSchedule.scheduler(on: jobQueue)],
+                    logger: logger
+                )
+            )
+            group.addTask {
+                try await serviceGroup.run()
+            }
+            await stream.first { _ in true }
+            await serviceGroup.triggerGracefulShutdown()
+        }
+        let lastDate = try await jobQueue.getMetadata(.jobScheduleLastDate)
+        let lastDate2 = try XCTUnwrap(lastDate)
+        XCTAssertEqual(lastDate2.timeIntervalSince1970, dateTriggered.timeIntervalSince1970, accuracy: 1.0)
+    }
+
+    func testSchedulerLastDateAccuracyAll() async throws {
+        let (stream, source) = AsyncStream.makeStream(of: Void.self)
+        struct TriggerShutdownParameters: JobParameters {
+            static let jobName = "TriggerShutdown"
+        }
+
+        var logger = Logger(label: "jobs")
+        logger.logLevel = .debug
+
+        let jobQueue = JobQueue(MemoryQueue(), logger: logger)
+        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, _ in
+            source.yield()
+        }
+        // create schedule that ensures a job should have been run 15 seconds ago
+        let dateTriggered = Date.now - 15
+        let dateComponents = Calendar.current.dateComponents([.hour, .minute, .second], from: dateTriggered)
+        var jobSchedule = JobSchedule()
+        jobSchedule.addJob(TriggerShutdownParameters(), schedule: .everyMinute(second: dateComponents.second!), accuracy: .all)
+
+        // Set last date scheduled task ran as 1 minute and 1 second before scheduled job triggered
+        // so job triggers twice
+        try await jobQueue.setMetadata(key: .jobScheduleLastDate, value: dateTriggered - 61)
+        await withThrowingTaskGroup(of: Void.self) { group in
+            let serviceGroup = await ServiceGroup(
+                configuration: .init(
+                    services: [jobQueue, jobSchedule.scheduler(on: jobQueue)],
+                    logger: logger
+                )
+            )
+            group.addTask {
+                try await serviceGroup.run()
+            }
+            await stream.first { _ in true }
+            await stream.first { _ in true }
+            await serviceGroup.triggerGracefulShutdown()
+        }
+        let lastDate = try await jobQueue.getMetadata(.jobScheduleLastDate)
+        let lastDate2 = try XCTUnwrap(lastDate)
+        XCTAssertEqual(lastDate2.timeIntervalSince1970, dateTriggered.timeIntervalSince1970, accuracy: 1.0)
     }
 }
