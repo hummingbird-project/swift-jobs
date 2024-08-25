@@ -16,21 +16,6 @@ import Foundation
 import Logging
 import ServiceLifecycle
 
-/// Errors thrown by JobSchedule
-public struct JobScheduleError: Error {
-    private enum _Internal {
-        case notScheduled
-    }
-
-    private let _value: _Internal
-    private init(_ value: _Internal) {
-        self._value = value
-    }
-
-    /// Job did not get scheduled due to invalid schedule
-    public static var notScheduled: Self { .init(.notScheduled) }
-}
-
 /// An array of Jobs with schedules detailing when they should be run
 ///
 /// Create your own Job Schedule and then create a scheduler Service to
@@ -45,17 +30,27 @@ public struct JobScheduleError: Error {
 /// )
 /// ```
 public struct JobSchedule: MutableCollection, Sendable {
+    // What to do when JobSchedule gets far behind
+    public enum ScheduleAccuracy: Sendable {
+        /// Only run latest job
+        case latest
+        /// Run all jobs
+        case all
+    }
+
     /// A single scheduled Job
     public struct Element: Sendable {
         var nextScheduledDate: Date
         let schedule: Schedule
         let jobParameters: any JobParameters
+        let accuracy: ScheduleAccuracy
 
-        init(job: JobParameters, schedule: Schedule) throws {
-            guard let nextScheduledDate = schedule.nextDate() else { throw JobScheduleError.notScheduled }
+        init(job: JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
+            let nextScheduledDate = schedule.nextDate() ?? .distantFuture
             self.nextScheduledDate = nextScheduledDate
             self.schedule = schedule
             self.jobParameters = job
+            self.accuracy = accuracy
         }
     }
 
@@ -67,16 +62,16 @@ public struct JobSchedule: MutableCollection, Sendable {
     /// Initialize JobSchedule with array of jobs
     ///
     /// - Parameter elements: Array of Jobs and schedules
-    public init(_ elements: [(job: JobParameters, schedule: Schedule)]) throws {
-        self.elements = try elements.map { try .init(job: $0.job, schedule: $0.schedule) }
+    public init(_ elements: [JobSchedule.Element]) {
+        self.elements = elements
     }
 
     ///  Add Job to Schedule
     /// - Parameters:
     ///   - job: Job parameters
     ///   - schedule: Schedule for job
-    public mutating func addJob(_ job: JobParameters, schedule: Schedule) throws {
-        try self.elements.append(.init(job: job, schedule: schedule))
+    public mutating func addJob(_ job: JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
+        self.elements.append(.init(job: job, schedule: schedule, accuracy: accuracy))
     }
 
     ///  Create JobScheduler Service
@@ -91,7 +86,11 @@ public struct JobSchedule: MutableCollection, Sendable {
     }
 
     mutating func updateNextScheduledDate(jobIndex: Int) {
-        if let nextScheduledDate = self[jobIndex].schedule.nextDate(after: self[jobIndex].nextScheduledDate) {
+        let dateFrom: Date = switch self.self[jobIndex].accuracy {
+        case .latest: .now
+        case .all: self[jobIndex].nextScheduledDate
+        }
+        if let nextScheduledDate = self[jobIndex].schedule.nextDate(after: dateFrom) {
             self[jobIndex].nextScheduledDate = nextScheduledDate
         } else {
             self[jobIndex].nextScheduledDate = .distantFuture

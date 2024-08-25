@@ -77,11 +77,9 @@ final class JobSchedulerTests: XCTestCase {
         struct Job2: JobParameters {
             static var jobName = "Job1"
         }
-        var schedule = try JobSchedule([
-            (job: Job1(), schedule: .weekly(day: .sunday)),
-        ])
-        try schedule.addJob(Job1(), schedule: .hourly(minute: 30))
-        try schedule.addJob(Job2(), schedule: .daily(hour: 4))
+        var schedule = JobSchedule()
+        schedule.addJob(Job1(), schedule: .hourly(minute: 30), accuracy: .all)
+        schedule.addJob(Job2(), schedule: .daily(hour: 4), accuracy: .all)
 
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -123,9 +121,9 @@ final class JobSchedulerTests: XCTestCase {
         logger.logLevel = .debug
         // create schedule that ensures a job will be run in the next second
         let dateComponents = Calendar.current.dateComponents([.hour, .minute, .second], from: Date.now + 1)
-        let jobSchedule = try JobSchedule([
-            (job: Job1(), schedule: .everyMinute(second: dateComponents.second!)),
-            (job: Job2(), schedule: .everyMinute(second: (dateComponents.second! + 1) % 60)),
+        let jobSchedule = JobSchedule([
+            .init(job: Job1(), schedule: .everyMinute(second: dateComponents.second!)),
+            .init(job: Job2(), schedule: .everyMinute(second: (dateComponents.second! + 1) % 60)),
         ])
         let sequence = JobSchedule.JobSequence(jobSchedule: jobSchedule, logger: logger)
         var jobIterator = sequence.makeAsyncIterator()
@@ -151,7 +149,7 @@ final class JobSchedulerTests: XCTestCase {
         // create schedule that ensures a job will be run in the next second
         let dateComponents = Calendar.current.dateComponents([.hour, .minute, .second], from: Date.now + 1)
         var jobSchedule = JobSchedule()
-        try jobSchedule.addJob(TriggerShutdownParameters(), schedule: .everyMinute(second: dateComponents.second!))
+        jobSchedule.addJob(TriggerShutdownParameters(), schedule: .everyMinute(second: dateComponents.second!))
 
         await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = ServiceGroup(
