@@ -17,8 +17,14 @@ internal struct AnyDecodableJob: DecodableWithUserInfoConfiguration, Sendable {
     typealias DecodingConfiguration = JobRegistry
 
     init(from decoder: Decoder, configuration register: DecodingConfiguration) throws {
+        // Job JSON is structured as follows
+        //  {
+        //      "JobName": { job data... }
+        //  }
         let container = try decoder.container(keyedBy: _JobCodingKey.self)
-        let key = container.allKeys.first!
+        guard let key = container.allKeys.first else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "No keys found."))
+        }
         let childDecoder = try container.superDecoder(forKey: key)
         self.job = try register.decode(jobName: key.stringValue, from: childDecoder)
     }
