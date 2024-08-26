@@ -15,7 +15,7 @@
 import Foundation
 
 /// Type used to encode a job
-struct EncodabeJob<Parameters: Codable & Sendable>: Encodable, Sendable {
+struct EncodableJob<Parameters: Codable & Sendable>: Encodable, Sendable {
     let id: JobIdentifier<Parameters>
     let data: JobInstanceData<Parameters>
 
