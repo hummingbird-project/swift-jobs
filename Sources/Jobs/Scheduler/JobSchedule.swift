@@ -31,11 +31,21 @@ import ServiceLifecycle
 /// ```
 public struct JobSchedule: MutableCollection, Sendable {
     // What to do when JobSchedule gets far behind
-    public enum ScheduleAccuracy: Sendable {
+    public struct ScheduleAccuracy: Equatable, Sendable {
+        private enum _Internal: Sendable {
+            case latest
+            case all
+        }
+
+        private let value: _Internal
+        private init(_ value: _Internal) {
+            self.value = value
+        }
+
         /// Only run latest job
-        case latest
+        public static var latest: Self { .init(.latest) }
         /// Run all jobs
-        case all
+        public static var all: Self { .init(.all) }
     }
 
     /// A single scheduled Job
@@ -89,6 +99,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         let dateFrom: Date = switch self.self[jobIndex].accuracy {
         case .latest: .now
         case .all: self[jobIndex].nextScheduledDate
+        default: .now
         }
         if let nextScheduledDate = self[jobIndex].schedule.nextDate(after: dateFrom) {
             self[jobIndex].nextScheduledDate = nextScheduledDate
