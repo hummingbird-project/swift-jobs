@@ -64,7 +64,7 @@ public final class MemoryQueue: JobQueueDriver {
         await self.queue.getMetadata(key)
     }
 
-    public func setMetadata(key: String, value: NIOCore.ByteBuffer) async {
+    public func setMetadata(key: String, value: ByteBuffer) async {
         await self.queue.setMetadata(key: key, value: value)
     }
 
