@@ -177,6 +177,7 @@ public struct JobSchedule: MutableCollection, Sendable {
 
         /// Run Job scheduler
         public func run() async throws {
+            try await self.jobQueue.initializationComplete.waitUntilTriggered()
             let scheduledJobSequence = JobSequence(
                 jobSchedule: self.jobSchedule,
                 logger: self.jobQueue.logger

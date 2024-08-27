@@ -29,12 +29,12 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     /// underlying driver for queue
     public let queue: Queue
     let handler: JobQueueHandler<Queue>
-    let allocator: ByteBufferAllocator
+    let initializationComplete: Trigger
 
     public init(_ queue: Queue, numWorkers: Int = 1, logger: Logger) {
         self.queue = queue
         self.handler = .init(queue: queue, numWorkers: numWorkers, logger: logger)
-        self.allocator = .init()
+        self.initializationComplete = .init()
     }
 
     ///  Push Job onto queue
@@ -46,7 +46,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         id: JobIdentifier<Parameters>, parameters: Parameters
     ) async throws -> Queue.JobID {
         let jobRequest = EncodableJob(id: id, parameters: parameters, queuedAt: .now)
-        let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: self.allocator)
+        let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator())
         Meter(label: "swift_jobs_meter", dimensions: [("status", "queued")]).increment()
         let id = try await self.queue.push(buffer)
         self.logger.debug(
@@ -83,6 +83,12 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
 
     ///  Run queue handler
     public func run() async throws {
+        do {
+            try await self.queue.onInit()
+            self.initializationComplete.trigger()
+        } catch {
+            self.initializationComplete.failed(error)
+        }
         try await self.handler.run()
     }
 

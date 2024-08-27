@@ -19,7 +19,7 @@ import Metrics
 import ServiceLifecycle
 
 /// Object handling a single job queue
-final class JobQueueHandler<Queue: JobQueueDriver>: Service {
+final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     init(queue: Queue, numWorkers: Int, logger: Logger) {
         self.queue = queue
         self.numWorkers = numWorkers
@@ -37,8 +37,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
     }
 
     func run() async throws {
-        try await self.queue.onInit()
-
         try await withGracefulShutdownHandler {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 var iterator = self.queue.makeAsyncIterator()
