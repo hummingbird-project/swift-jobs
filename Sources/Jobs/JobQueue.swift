@@ -45,7 +45,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     @discardableResult public func push<Parameters: Codable & Sendable>(
         id: JobIdentifier<Parameters>, parameters: Parameters
     ) async throws -> Queue.JobID {
-        let jobRequest = JobRequest(id: id, parameters: parameters)
+        let jobRequest = EncodableJob(id: id, parameters: parameters, queuedAt: .now)
         let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: self.allocator)
         Meter(label: "swift_jobs_meter", dimensions: [("status", "queued")]).increment()
         let id = try await self.queue.push(buffer)
@@ -89,22 +89,4 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
 
 extension JobQueue: CustomStringConvertible {
     public var description: String { "JobQueue<\(String(describing: Queue.self))>" }
-}
-
-/// Type used internally to encode a request
-struct JobRequest<Parameters: Codable & Sendable>: Encodable, Sendable {
-    let id: JobIdentifier<Parameters>
-    let parameters: Parameters
-
-    public init(id: JobIdentifier<Parameters>, parameters: Parameters) {
-        self.id = id
-        self.parameters = parameters
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: _JobCodingKey.self)
-        let childEncoder = container.superEncoder(
-            forKey: .init(stringValue: self.id.name, intValue: nil))
-        try self.parameters.encode(to: childEncoder)
-    }
 }

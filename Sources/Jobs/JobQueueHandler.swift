@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Dispatch
+import Foundation
 import Logging
 import Metrics
 import ServiceLifecycle
@@ -73,9 +74,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
         defer {
             Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
         }
-
         logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
-        let job: any Job
+        let job: any JobInstanceProtocol
         do {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
         } catch let error as JobQueueError where error == .unrecognisedJobId {
@@ -88,6 +88,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
             return
         }
         logger[metadataKey: "JobName"] = .string(job.name)
+
+        // Calculate wait time from queued to processing
+        let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
+        Timer(
+            label: "\(self.metricsLabel)_queued_for_duration_seconds",
+            preferredDisplayUnit: .seconds
+        ).recordSeconds(jobQueuedDuration)
 
         var count = job.maxRetryCount
         logger.debug("Starting Job")

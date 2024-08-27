@@ -372,4 +372,24 @@ final class MetricsTests: XCTestCase {
         XCTAssertEqual(timer.dimensions[1].0, "status")
         XCTAssertEqual(timer.dimensions[1].1, "succeeded")
     }
+
+    func testJobQueuedTime() async throws {
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        let job = JobDefinition(id: "testBasic") { (parameters: Int, context) in
+            context.logger.info("Parameters=\(parameters)")
+            try await Task.sleep(for: .milliseconds(parameters))
+            expectation.fulfill()
+        }
+        jobQueue.registerJob(job)
+        try await self.testJobQueue(jobQueue) {
+            // add two jobs. First job ensures the second job is queued for more than 50ms
+            try await jobQueue.push(id: job.id, parameters: 50)
+            try await jobQueue.push(id: job.id, parameters: 5)
+            await self.wait(for: [expectation], timeout: 5)
+        }
+
+        let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift_jobs_queued_for_duration_seconds"] as? TestTimer)
+        XCTAssertGreaterThan(timer.values.withLockedValue { $0 }[0].1, 50_000_000)
+    }
 }
