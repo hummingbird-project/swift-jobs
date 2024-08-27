@@ -22,7 +22,9 @@ import ServiceLifecycle
 /// generate Jobs on a specified JobQueue when the schedule requires it
 ///
 /// ```swift
-/// let jobSchedule = JobSchedule([(job: RemoveDeadSessionsJob(), schedule: .weekly(day: .sunday, hour: 4))])
+/// let jobSchedule = JobSchedule([
+///     (job: RemoveDeadSessionsJob(), schedule: .weekly(day: .sunday, hour: 4))
+/// ])
 /// let serviceGroup = ServiceGroup(
 ///     configuration: .init(
 ///         services: [jobQueue, jobSchedule.scheduler(on: jobQueue)]
@@ -30,7 +32,7 @@ import ServiceLifecycle
 /// )
 /// ```
 public struct JobSchedule: MutableCollection, Sendable {
-    // What to do when JobSchedule gets far behind
+    /// What to do when job scheduler gets behind schedule
     public struct ScheduleAccuracy: Equatable, Sendable {
         private enum _Internal: Sendable {
             case latest
@@ -84,7 +86,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         self.elements.append(.init(job: job, schedule: schedule, accuracy: accuracy))
     }
 
-    ///  Create JobScheduler Service
+    ///  Create Job scheduler Service
     /// - Parameter jobQueue: Job queue to place jobs
     /// - Returns: JobScheduler
     public func scheduler<Queue: JobQueueDriver>(on jobQueue: JobQueue<Queue>) async -> Scheduler<Queue> {

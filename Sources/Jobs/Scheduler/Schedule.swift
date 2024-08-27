@@ -18,7 +18,7 @@
 import Foundation
 #endif
 
-/// Schedule
+/// Generates a Date at regular intervals (hourly, daily, weekly etc)
 public struct Schedule: Sendable {
     /// Day of week
     public enum Day: Int, Sendable {
@@ -85,19 +85,19 @@ public struct Schedule: Sendable {
         }
     }
 
-    /// Return Schedule that returns a Date for every minute
+    /// Return Schedule that generates a Date for every minute
     /// - Parameter second: Second value it should return a Date at
     public static func everyMinute(second: Int = 0) -> Self {
         .init(second: .specific(second))
     }
 
-    ///  Return a schedule that returns a Date for every hour
+    ///  Return a schedule that generates a Date for every hour
     /// - Parameter minute: Minute value it should return the Date at
     public static func hourly(minute: Int = 0) -> Self {
         .init(minute: .specific(minute))
     }
 
-    ///  Return a schedule that returns a Date once a day
+    ///  Return a schedule that generates a Date once a day
     /// - Parameters:
     ///   - hour: Hour value it should return Date at
     ///   - minute: Minute value it should return Date at
@@ -106,7 +106,7 @@ public struct Schedule: Sendable {
         .init(minute: .specific(minute), hour: .specific(hour), timeZone: timeZone)
     }
 
-    ///  Return a schedule that returns a Date once a week
+    ///  Return a schedule that generates a Date once a week
     /// - Parameters:
     ///   - day: Day on which it should return Date at
     ///   - hour: Hour value is should return Date at
@@ -115,7 +115,7 @@ public struct Schedule: Sendable {
         .init(hour: .specific(hour), day: .specific(day), timeZone: timeZone)
     }
 
-    ///  Return a schedule that returns a Date once a month
+    ///  Return a schedule that generates a Date once a month
     /// - Parameters:
     ///   - date: Date on which it should return Date at
     ///   - hour: Hour value is should return Date at
@@ -124,7 +124,7 @@ public struct Schedule: Sendable {
         .init(hour: .specific(hour), date: .specific(date), timeZone: timeZone)
     }
 
-    ///  Return a schedule that returns a Date once a month
+    ///  Return a schedule that generates a Date once a year
     /// - Parameters:
     ///   - month: Month on which it should return Date at
     ///   - date: Date on which it should return Date at

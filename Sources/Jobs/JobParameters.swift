@@ -24,8 +24,7 @@ extension JobParameters {
         .init(jobName)
     }
 
-    /// Added so it is possible to push JobParameters referenced as Existentials can
-    /// be push to a Job queue
+    /// Added so it is possible to push JobParameters referenced as Existentials to a Job queue
     @discardableResult public func push<Queue: JobQueueDriver>(to jobQueue: JobQueue<Queue>) async throws -> Queue.JobID {
         try await jobQueue.push(self)
     }
