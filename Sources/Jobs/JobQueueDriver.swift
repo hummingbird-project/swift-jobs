@@ -35,6 +35,10 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == QueuedJ
     func stop() async
     /// shutdown queue
     func shutdownGracefully() async
+    /// get job queue metadata
+    func getMetadata(_ key: String) async throws -> ByteBuffer?
+    /// set job queue metadata
+    func setMetadata(key: String, value: ByteBuffer) async throws
 }
 
 extension JobQueueDriver {

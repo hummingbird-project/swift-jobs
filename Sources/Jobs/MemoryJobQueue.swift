@@ -60,16 +60,26 @@ public final class MemoryQueue: JobQueueDriver {
         }
     }
 
+    public func getMetadata(_ key: String) async -> ByteBuffer? {
+        await self.queue.getMetadata(key)
+    }
+
+    public func setMetadata(key: String, value: ByteBuffer) async {
+        await self.queue.setMetadata(key: key, value: value)
+    }
+
     /// Internal actor managing the job queue
     fileprivate actor Internal {
         var queue: Deque<QueuedJob<JobID>>
         var pendingJobs: [JobID: ByteBuffer]
+        var metadata: [String: ByteBuffer]
         var isStopped: Bool
 
         init() {
             self.queue = .init()
             self.isStopped = false
             self.pendingJobs = .init()
+            self.metadata = .init()
         }
 
         func push(_ jobBuffer: ByteBuffer) throws -> JobID {
@@ -108,6 +118,14 @@ public final class MemoryQueue: JobQueueDriver {
         func shutdown() {
             assert(self.pendingJobs.count == 0)
             self.isStopped = true
+        }
+
+        func getMetadata(_ key: String) -> ByteBuffer? {
+            self.metadata[key]
+        }
+
+        func setMetadata(key: String, value: NIOCore.ByteBuffer) {
+            self.metadata[key] = value
         }
     }
 }

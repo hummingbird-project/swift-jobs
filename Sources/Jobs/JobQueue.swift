@@ -49,7 +49,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: self.allocator)
         Meter(label: "swift_jobs_meter", dimensions: [("status", "queued")]).increment()
         let id = try await self.queue.push(buffer)
-        self.handler.logger.debug(
+        self.logger.debug(
             "Pushed Job",
             metadata: ["JobID": .stringConvertible(id), "JobName": .string(jobRequest.id.name)]
         )
@@ -84,6 +84,22 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     ///  Run queue handler
     public func run() async throws {
         try await self.handler.run()
+    }
+
+    var logger: Logger { self.handler.logger }
+}
+
+extension JobQueue {
+    /// Get JobQueue metadata
+    func getMetadata<Value: Codable>(_ key: JobMetadataKey<Value>) async throws -> Value? {
+        guard let buffer = try await self.queue.getMetadata(key.name) else { return nil }
+        return try JSONDecoder().decode(Value.self, from: buffer)
+    }
+
+    /// Set JobQueue metadata
+    func setMetadata<Value: Codable>(key: JobMetadataKey<Value>, value: Value) async throws {
+        let buffer = try JSONEncoder().encodeAsByteBuffer(value, allocator: ByteBufferAllocator())
+        try await self.queue.setMetadata(key: key.name, value: buffer)
     }
 }
 
