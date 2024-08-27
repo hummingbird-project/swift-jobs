@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Atomics
 import NIOConcurrencyHelpers
 
 class Trigger: @unchecked Sendable {
