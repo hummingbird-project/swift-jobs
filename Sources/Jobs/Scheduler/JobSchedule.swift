@@ -160,7 +160,13 @@ public struct JobSchedule: MutableCollection, Sendable {
 
         init(jobQueue: JobQueue<Driver>, jobSchedule: JobSchedule) async {
             self.jobQueue = jobQueue
-            var jobSchedule = jobSchedule
+            self.jobSchedule = jobSchedule
+        }
+
+        /// Run Job scheduler
+        public func run() async throws {
+            try await self.jobQueue.initializationComplete.waitUntilTriggered()
+            var jobSchedule = self.jobSchedule
             // Update next scheduled date for each job schedule based off the last scheduled date stored
             do {
                 if let date = try await self.jobQueue.getMetadata(.jobScheduleLastDate) {
@@ -171,15 +177,8 @@ public struct JobSchedule: MutableCollection, Sendable {
             } catch {
                 self.jobQueue.logger.error("Failed to get last scheduled job date.")
             }
-
-            self.jobSchedule = jobSchedule
-        }
-
-        /// Run Job scheduler
-        public func run() async throws {
-            try await self.jobQueue.initializationComplete.waitUntilTriggered()
             let scheduledJobSequence = JobSequence(
-                jobSchedule: self.jobSchedule,
+                jobSchedule: jobSchedule,
                 logger: self.jobQueue.logger
             )
             for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
