@@ -57,7 +57,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         let jobParameters: any JobParameters
         let accuracy: ScheduleAccuracy
 
-        init(job: JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
+        public init(job: JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
             let nextScheduledDate = schedule.nextDate() ?? .distantFuture
             self.nextScheduledDate = nextScheduledDate
             self.schedule = schedule
