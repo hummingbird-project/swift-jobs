@@ -121,6 +121,9 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     count -= 1
                     logger.debug("Retrying Job")
                     self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
+                    /// Should we enque the job with delay until instead of sleeping?
+                    /// This would give us the benefit of allowing jobs to be pushed now and get processed later
+                    try await Task.sleep(nanoseconds: self.backoff(attempts: count))
                 }
             }
             logger.debug("Finished Job")
@@ -194,5 +197,12 @@ extension JobQueueHandler: CustomStringConvertible {
             label: self.metricsLabel,
             dimensions: dimensions
         ).increment()
+    }
+}
+
+extension JobQueueHandler {
+    func backoff(attempts: Int, baseDelay: Double = 0.25, maxInterval: Double = 60) -> UInt64 {
+        let delay = baseDelay * pow(2, Double(attempts))
+        return UInt64(Double.random(in: 0...min(maxInterval, delay)) * 1_000_000_000)
     }
 }
