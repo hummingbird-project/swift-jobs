@@ -24,6 +24,10 @@ protocol JobInstanceProtocol: Sendable {
     var maxRetryCount: Int { get }
     /// Time job was queued
     var queuedAt: Date { get }
+    /// Time to execute a job
+    var delayUntil: Date? { get }
+    /// Number of attempts so far
+    var attempts: Int { get }
     /// Function to execute the job
     func execute(context: JobContext) async throws
 }
@@ -32,6 +36,10 @@ extension JobInstanceProtocol {
     /// name of job type
     public var name: String {
         id.name
+    }
+
+    public var remainingAttempts: Int {
+        maxRetryCount - attempts
     }
 }
 
@@ -44,13 +52,16 @@ struct JobInstance<Parameters: Codable & Sendable>: JobInstanceProtocol {
     let job: JobDefinition<Parameters>
     /// job parameters
     let data: JobInstanceData<Parameters>
-
     /// job identifier
     var id: JobIdentifier<Parameters> { self.job.id }
     /// max retry count for a job
     var maxRetryCount: Int { self.job.maxRetryCount }
     /// Time job was queued
     var queuedAt: Date { self.data.queuedAt }
+    /// Number of attempts so far
+    var attempts: Int { self.data.attempts }
+    /// When to execute a job
+    var delayUntil: Date? { self.data.delayUntil }
 
     func execute(context: JobContext) async throws {
         try await self.job.execute(self.data.parameters, context: context)
@@ -68,10 +79,16 @@ struct JobInstanceData<Parameters: Codable & Sendable>: Codable {
     let parameters: Parameters
     /// Date job was queued
     let queuedAt: Date
+    /// When to execute a job in the future
+    let delayUntil: Date?
+    /// Number of attempts so far
+    let attempts: Int
 
     // keep JSON strings small to improve decode speed
     private enum CodingKeys: String, CodingKey {
         case parameters = "p"
         case queuedAt = "q"
+        case delayUntil = "d"
+        case attempts = "a"
     }
 }

@@ -87,6 +87,15 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         }
         logger[metadataKey: "JobName"] = .string(job.name)
 
+        guard (job.delayUntil ?? .distantPast) < Date() else {
+            logger.debug("Requeueing Job for later execution, it's delayed", metadata: [
+                "DelayedUntil": "\(job.delayUntil ?? .distantPast)",
+                "JobName": "\(job.name)",
+            ])
+            // TODO: requeue Job with the exact same parameters
+            return
+        }
+
         // Calculate wait time from queued to processing
         let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
         Timer(
@@ -94,7 +103,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             preferredDisplayUnit: .seconds
         ).recordSeconds(jobQueuedDuration)
 
-        var count = job.maxRetryCount
+        // var count = job.maxRetryCount
         logger.debug("Starting Job")
 
         do {
@@ -112,18 +121,33 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                     return
                 } catch {
-                    if count <= 0 {
+                    if job.remainingAttempts <= 0 {
                         logger.debug("Job failed")
                         try await self.queue.failed(jobId: queuedJob.id, error: error)
                         self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                         return
                     }
-                    count -= 1
+                    // count -= 1
                     logger.debug("Retrying Job")
                     self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
+                    let attempts = job.attempts + 1
+                    let delay = self.backoff(attempts: attempts)
+                    // let nextJobQueueDuration = Date.now.timeIntervalSince(job.queuedAt) + delay
+                    // once this is parameters are figured out. extact into a function so it can be used for both
+                    // delayed and retries
+                    let jobBuffer = EncodableJob(
+                        id: JobIdentifier(job.name),
+                        // TODO: How do I get job parameters from here?
+                        parameters: queuedJob,
+                        queuedAt: job.queuedAt,
+                        delayUntil: .init(timeIntervalSinceNow: TimeInterval(delay)),
+                        attempts: attempts
+                    )
+                    try await self.queue.push(jobBuffer)
+
                     /// Should we enque the job with delay until instead of sleeping?
                     /// This would give us the benefit of allowing jobs to be pushed now and get processed later
-                    try await Task.sleep(nanoseconds: self.backoff(attempts: count))
+                    // try await Task.sleep(nanoseconds: self.backoff(attempts: count))
                 }
             }
             logger.debug("Finished Job")
