@@ -43,7 +43,6 @@ final class JobSchedulerTests: XCTestCase {
         let expectedEndDate = try XCTUnwrap(dateFormatter.date(from: expectedEnd))
         let end = try XCTUnwrap(schedule.setInitialNextDate(after: startDate))
         XCTAssertEqual(expectedEndDate, end)
-        print(end)
         return end
     }
 
@@ -55,7 +54,6 @@ final class JobSchedulerTests: XCTestCase {
         let expectedEndDate = try XCTUnwrap(dateFormatter.date(from: expectedEnd))
         let end = try XCTUnwrap(schedule.nextDate(after: date))
         XCTAssertEqual(expectedEndDate, end)
-        print(end)
         return end
     }
 
