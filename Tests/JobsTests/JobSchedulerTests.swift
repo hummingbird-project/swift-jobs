@@ -19,6 +19,7 @@ import XCTest
 
 final class JobSchedulerTests: XCTestCase {
     func testSchedule(start: String, expectedEnd: String, schedule: Schedule) throws {
+        var schedule = schedule
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
@@ -31,6 +32,31 @@ final class JobSchedulerTests: XCTestCase {
         }
         let end = schedule.nextDate(after: startDate)
         XCTAssertEqual(expectedEndDate, end)
+    }
+
+    func testInitMutatingSchedule(start: String, expectedEnd: String, schedule: inout Schedule) throws -> Date {
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        dateFormatter.timeZone = schedule.calendar.timeZone
+        let startDate = try XCTUnwrap(dateFormatter.date(from: start))
+        let expectedEndDate = try XCTUnwrap(dateFormatter.date(from: expectedEnd))
+        let end = try XCTUnwrap(schedule.setInitialNextDate(after: startDate))
+        XCTAssertEqual(expectedEndDate, end)
+        print(end)
+        return end
+    }
+
+    func testMutatingSchedule(date: Date, expectedEnd: String, schedule: inout Schedule) throws -> Date {
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        dateFormatter.timeZone = schedule.calendar.timeZone
+        let expectedEndDate = try XCTUnwrap(dateFormatter.date(from: expectedEnd))
+        let end = try XCTUnwrap(schedule.nextDate(after: date))
+        XCTAssertEqual(expectedEndDate, end)
+        print(end)
+        return end
     }
 
     func testMinuteSchedule() throws {
@@ -62,9 +88,44 @@ final class JobSchedulerTests: XCTestCase {
         try self.testSchedule(start: "1999-12-31T23:59:25Z", expectedEnd: "2000-01-14T04:00:00Z", schedule: .monthly(date: 14, hour: 4))
     }
 
+    func testMinutesSchedule() throws {
+        var schedule = Schedule.onMinutes([0, 15, 30, 45], second: 0)
+        let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-21T21:15:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-21T21:30:00Z", schedule: &schedule)
+    }
+
+    func testHoursSchedule() throws {
+        var schedule = Schedule.onHours([8, 20], minute: 0)
+        var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-22T08:00:00Z", schedule: &schedule)
+        date = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-22T20:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-23T08:00:00Z", schedule: &schedule)
+    }
+
+    func testDaysSchedule() throws {
+        var schedule = Schedule.onDays([.saturday, .sunday], hour: 4, minute: 0)
+        var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-26T04:00:00Z", schedule: &schedule)
+        date = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-27T04:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-03T04:00:00Z", schedule: &schedule)
+    }
+
+    func testDatesSchedule() throws {
+        var schedule = Schedule.onDates([1, 2, 24], hour: 4, minute: 0)
+        var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-24T04:00:00Z", schedule: &schedule)
+        date = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-01T04:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-02T04:00:00Z", schedule: &schedule)
+    }
+
+    func testMonthsSchedule() throws {
+        var schedule = Schedule.onMonths([.january, .july], date: 2, hour: 4, minute: 0)
+        var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-07-02T04:00:00Z", schedule: &schedule)
+        date = try self.testMutatingSchedule(date: date, expectedEnd: "2022-01-02T04:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2022-07-02T04:00:00Z", schedule: &schedule)
+    }
+
     func testScheduleTimeZone() throws {
         let startDate = ISO8601DateFormatter().date(from: "2021-06-21T21:10:15Z")!
-        let scheduledDate = try XCTUnwrap(Schedule.daily(hour: 4, timeZone: .init(secondsFromGMT: 0)!).nextDate(after: startDate))
+        var schedule = Schedule.daily(hour: 4, timeZone: .init(secondsFromGMT: 0)!)
+        let scheduledDate = try XCTUnwrap(schedule.nextDate(after: startDate))
         let dateComponents = Calendar.current.dateComponents([.hour], from: scheduledDate)
         // check timezone difference is the same as the difference in the schedule
         XCTAssertEqual(TimeZone.current.secondsFromGMT(), (dateComponents.hour! - 4) * 3600)
