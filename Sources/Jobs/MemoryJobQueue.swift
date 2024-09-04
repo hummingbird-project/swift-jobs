@@ -46,8 +46,8 @@ public final class MemoryQueue: JobQueueDriver {
     ///   - job: Job
     ///   - eventLoop: Eventloop to run process on (ignored in this case)
     /// - Returns: Queued job
-    @discardableResult public func push(_ buffer: ByteBuffer) async throws -> JobID {
-        return try await self.queue.push(buffer)
+    @discardableResult public func push(_ buffer: ByteBuffer, delayUntil: Date?) async throws -> JobID {
+        return try await self.queue.push(buffer, delayUntil: delayUntil)
     }
 
     public func finished(jobId: JobID) async throws {
@@ -72,6 +72,7 @@ public final class MemoryQueue: JobQueueDriver {
     fileprivate actor Internal {
         var queue: Deque<QueuedJob<JobID>>
         var pendingJobs: [JobID: ByteBuffer]
+        var delayedJobs: [JobID: Date]
         var metadata: [String: ByteBuffer]
         var isStopped: Bool
 
@@ -80,11 +81,15 @@ public final class MemoryQueue: JobQueueDriver {
             self.isStopped = false
             self.pendingJobs = .init()
             self.metadata = .init()
+            self.delayedJobs = .init()
         }
 
-        func push(_ jobBuffer: ByteBuffer) throws -> JobID {
+        func push(_ jobBuffer: ByteBuffer, delayUntil: Date?) throws -> JobID {
             let id = JobID()
             self.queue.append(QueuedJob(id: id, jobBuffer: jobBuffer))
+            if let delayUntil {
+                self.delayedJobs[id] = delayUntil
+            }
             return id
         }
 
@@ -104,6 +109,13 @@ public final class MemoryQueue: JobQueueDriver {
                     return nil
                 }
                 if let request = queue.popFirst() {
+                    if let delayedJob = self.delayedJobs.removeValue(forKey: request.id) {
+                        if delayedJob > Date() {
+                            self.delayedJobs[request.id] = delayedJob
+                            self.queue.append(request)
+                            continue
+                        }
+                    }
                     self.pendingJobs[request.id] = request.jobBuffer
                     return request
                 }

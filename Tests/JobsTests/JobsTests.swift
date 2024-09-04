@@ -137,6 +137,19 @@ final class JobsTests: XCTestCase {
         XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
     }
 
+    func testDelayedJob() async throws {
+        let jobIdentifer = JobIdentifier<Int>(#function)
+        let expectation = XCTestExpectation(description: "TestJob.execute was called")
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        jobQueue.registerJob(id: jobIdentifer) { _, _ in
+            expectation.fulfill()
+        }
+        try await self.testJobQueue(jobQueue) {
+            try await jobQueue.push(id: jobIdentifer, parameters: 0, delayedUntil: .now.addingTimeInterval(5))
+            await fulfillment(of: [expectation], timeout: 10)
+        }
+    }
+
     func testJobSerialization() async throws {
         struct TestJobParameters: Codable {
             let id: Int
