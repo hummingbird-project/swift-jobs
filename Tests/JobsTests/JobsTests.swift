@@ -138,16 +138,31 @@ final class JobsTests: XCTestCase {
     }
 
     func testDelayedJob() async throws {
-        let jobIdentifer = JobIdentifier<Int>(#function)
-        let expectation = XCTestExpectation(description: "TestJob.execute was called")
+        let job1 = JobIdentifier<Int>(#function)
+        let job2 = JobIdentifier<Int>(#function)
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
-        jobQueue.registerJob(id: jobIdentifer) { _, _ in
+        let delayedJob = ManagedAtomic(0)
+        let jobExecutionSequence: NIOLockedValueBox<[Int]> = .init([])
+        jobQueue.registerJob(id: job1) { parameters, context in
+            context.logger.info("Parameters=\(parameters)")
+            jobExecutionSequence.withLockedValue {
+                $0.append(parameters)
+            }
             expectation.fulfill()
+            delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
         }
         try await self.testJobQueue(jobQueue) {
-            try await jobQueue.push(id: jobIdentifer, parameters: 0, delayedUntil: .now.addingTimeInterval(5))
+            delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
+            try await jobQueue.push(id: job1, parameters: 0, delayedUntil: Date.now.addingTimeInterval(5))
+            delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
+            try await jobQueue.push(id: job2, parameters: 10)
+            XCTAssertEqual(delayedJob.load(ordering: .relaxed), 2)
             await fulfillment(of: [expectation], timeout: 10)
+            XCTAssertEqual(delayedJob.load(ordering: .relaxed), 1)
         }
+
+        XCTAssertEqual(jobExecutionSequence.withLockedValue { $0 }, [10, 0])
     }
 
     func testJobSerialization() async throws {

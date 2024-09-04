@@ -70,9 +70,8 @@ public final class MemoryQueue: JobQueueDriver {
 
     /// Internal actor managing the job queue
     fileprivate actor Internal {
-        var queue: Deque<QueuedJob<JobID>>
+        var queue: Deque<(job: QueuedJob<JobID>, delayedUntil: Date?)>
         var pendingJobs: [JobID: ByteBuffer]
-        var delayedJobs: [JobID: Date]
         var metadata: [String: ByteBuffer]
         var isStopped: Bool
 
@@ -81,15 +80,11 @@ public final class MemoryQueue: JobQueueDriver {
             self.isStopped = false
             self.pendingJobs = .init()
             self.metadata = .init()
-            self.delayedJobs = .init()
         }
 
         func push(_ jobBuffer: ByteBuffer, delayUntil: Date?) throws -> JobID {
             let id = JobID()
-            self.queue.append(QueuedJob(id: id, jobBuffer: jobBuffer))
-            if let delayUntil {
-                self.delayedJobs[id] = delayUntil
-            }
+            self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer), delayedUntil: delayUntil))
             return id
         }
 
@@ -109,15 +104,14 @@ public final class MemoryQueue: JobQueueDriver {
                     return nil
                 }
                 if let request = queue.popFirst() {
-                    if let delayedJob = self.delayedJobs.removeValue(forKey: request.id) {
-                        if delayedJob > Date() {
-                            self.delayedJobs[request.id] = delayedJob
+                    if let delayedJob = request.delayedUntil {
+                        if delayedJob >= Date.now {
                             self.queue.append(request)
                             continue
                         }
                     }
-                    self.pendingJobs[request.id] = request.jobBuffer
-                    return request
+                    self.pendingJobs[request.job.id] = request.job.jobBuffer
+                    return request.job
                 }
                 try await Task.sleep(for: .milliseconds(100))
             }
