@@ -92,10 +92,22 @@ final class JobSchedulerTests: XCTestCase {
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-21T21:30:00Z", schedule: &schedule)
     }
 
+    func testMinutesScheduleWithOneValue() throws {
+        var schedule = Schedule.onMinutes([0], second: 0)
+        let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-21T22:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-21T23:00:00Z", schedule: &schedule)
+    }
+
     func testHoursSchedule() throws {
         var schedule = Schedule.onHours([8, 20], minute: 0)
         var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-22T08:00:00Z", schedule: &schedule)
         date = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-22T20:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-23T08:00:00Z", schedule: &schedule)
+    }
+
+    func testHoursScheduleWithOneValue() throws {
+        var schedule = Schedule.onHours([8], minute: 0)
+        let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-22T08:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-23T08:00:00Z", schedule: &schedule)
     }
 
@@ -106,6 +118,12 @@ final class JobSchedulerTests: XCTestCase {
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-03T04:00:00Z", schedule: &schedule)
     }
 
+    func testDaysScheduleWithOneValue() throws {
+        var schedule = Schedule.onDays([.saturday], hour: 4, minute: 0)
+        let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-26T04:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-03T04:00:00Z", schedule: &schedule)
+    }
+
     func testDatesSchedule() throws {
         var schedule = Schedule.onDates([1, 2, 24], hour: 4, minute: 0)
         var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-24T04:00:00Z", schedule: &schedule)
@@ -113,11 +131,29 @@ final class JobSchedulerTests: XCTestCase {
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-02T04:00:00Z", schedule: &schedule)
     }
 
+    func testDatesScheduleWithOneValue() throws {
+        var schedule = Schedule.onDates([1], hour: 4, minute: 0)
+        let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-07-01T04:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-08-01T04:00:00Z", schedule: &schedule)
+    }
+
     func testMonthsSchedule() throws {
         var schedule = Schedule.onMonths([.january, .july], date: 2, hour: 4, minute: 0)
         var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-07-02T04:00:00Z", schedule: &schedule)
         date = try self.testMutatingSchedule(date: date, expectedEnd: "2022-01-02T04:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2022-07-02T04:00:00Z", schedule: &schedule)
+    }
+
+    func testMonthsScheduleWithOneValue() throws {
+        var schedule = Schedule.onMonths([.april], date: 2, hour: 4, minute: 0)
+        let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2022-04-02T04:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2023-04-02T04:00:00Z", schedule: &schedule)
+    }
+
+    func testScheduleWithNoValues() throws {
+        var schedule = Schedule.onMonths([], date: 2, hour: 4, minute: 0)
+        let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-07-02T04:00:00Z", schedule: &schedule)
+        _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-08-02T04:00:00Z", schedule: &schedule)
     }
 
     func testScheduleTimeZone() throws {

@@ -121,8 +121,11 @@ public struct Schedule: Sendable {
     /// - Parameters
     ///   - minutes: Array of minutes if should return Dates for
     ///   - second: Second value it should return a Date at
-    public static func onMinutes(_ minutes: some Sequence<Int>, second: Int = 0) -> Self {
-        .init(second: .specific(second), minute: .selection(Deque(minutes.sorted())))
+    public static func onMinutes(_ minutes: some Collection<Int>, second: Int = 0) -> Self {
+        let parameter: Parameter = minutes.count != 1 ?
+            .selection(Deque(minutes.sorted())) :
+            .specific(minutes.first!)
+        return .init(second: .specific(second), minute: parameter)
     }
 
     ///  Return a schedule that generates a Date for every hour
@@ -136,8 +139,11 @@ public struct Schedule: Sendable {
     ///   - hours: Array of hours if should return Dates for
     ///   - minute: Minute value it should return a Date at
     ///   - timeZone: TimeZone to run schedule in
-    public static func onHours(_ hours: some Sequence<Int>, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
-        .init(minute: .specific(minute), hour: .selection(Deque(hours.sorted())), timeZone: timeZone)
+    public static func onHours(_ hours: some Collection<Int>, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
+        let parameter: Parameter = hours.count != 1 ?
+            .selection(Deque(hours.sorted())) :
+            .specific(hours.first!)
+        return .init(minute: .specific(minute), hour: parameter, timeZone: timeZone)
     }
 
     ///  Return a schedule that generates a Date once a day
@@ -155,8 +161,11 @@ public struct Schedule: Sendable {
     ///   - hour: Hour it should return a Date at
     ///   - minute: Minute value it should return a Date at
     ///   - timeZone: TimeZone to run schedule in
-    public static func onDays(_ days: some Sequence<Day>, hour: Int = 0, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
-        .init(minute: .specific(minute), hour: .specific(hour), day: .selection(Deque(days.sorted())), timeZone: timeZone)
+    public static func onDays(_ days: some Collection<Day>, hour: Int = 0, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
+        let parameter: Parameter = days.count != 1 ?
+            .selection(Deque(days.sorted())) :
+            .specific(days.first!)
+        return .init(minute: .specific(minute), hour: .specific(hour), day: parameter, timeZone: timeZone)
     }
 
     ///  Return a schedule that generates a Date once a week
@@ -175,8 +184,11 @@ public struct Schedule: Sendable {
     ///   - minute: Minute value it should return a Date at
     ///   - timeZone: TimeZone to run schedule in
     /// - Returns:
-    public static func onDates(_ dates: some Sequence<Int>, hour: Int = 0, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
-        .init(minute: .specific(minute), hour: .specific(hour), date: .selection(Deque(dates.sorted())), timeZone: timeZone)
+    public static func onDates(_ dates: some Collection<Int>, hour: Int = 0, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
+        let parameter: Parameter = dates.count != 1 ?
+            .selection(Deque(dates.sorted())) :
+            .specific(dates.first!)
+        return .init(minute: .specific(minute), hour: .specific(hour), date: parameter, timeZone: timeZone)
     }
 
     ///  Return a schedule that generates a Date once a month
@@ -197,8 +209,11 @@ public struct Schedule: Sendable {
     ///   - minute: Minute value it should return a Date at
     ///   - timeZone: TimeZone to run schedule in
     /// - Returns:
-    public static func onMonths(_ months: some Sequence<Month>, date: Int, hour: Int = 0, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
-        .init(minute: .specific(minute), hour: .specific(hour), date: .specific(date), month: .selection(Deque(months.sorted())), timeZone: timeZone)
+    public static func onMonths(_ months: some Collection<Month>, date: Int, hour: Int = 0, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
+        let parameter: Parameter = months.count != 1 ?
+            .selection(Deque(months.sorted())) :
+            .specific(months.first!)
+        return .init(minute: .specific(minute), hour: .specific(hour), date: .specific(date), month: parameter, timeZone: timeZone)
     }
 
     ///  Return a schedule that generates a Date once a year
