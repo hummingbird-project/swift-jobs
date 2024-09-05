@@ -26,8 +26,8 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == QueuedJ
     func onInit() async throws
     /// Push Job onto queue
     /// - options: JobExecutionOptions
-    /// - Returns: Identifier of queued job
-    func push(_ buffer: ByteBuffer, options: JobExecutionOptions) async throws -> JobID
+    /// - Returns: Identifier of queued jobs
+    func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID
     /// This is called to say job has finished processing and it can be deleted
     func finished(jobId: JobID) async throws
     /// This is called to say job has failed to run and should be put aside

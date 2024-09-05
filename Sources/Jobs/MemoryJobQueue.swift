@@ -46,7 +46,7 @@ public final class MemoryQueue: JobQueueDriver {
     ///   - job: Job
     ///   - eventLoop: Eventloop to run process on (ignored in this case)
     /// - Returns: Queued job
-    @discardableResult public func push(_ buffer: ByteBuffer, options: JobExecutionOptions) async throws -> JobID {
+    @discardableResult public func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID {
         return try await self.queue.push(buffer, options: options)
     }
 
@@ -70,7 +70,7 @@ public final class MemoryQueue: JobQueueDriver {
 
     /// Internal actor managing the job queue
     fileprivate actor Internal {
-        var queue: Deque<(job: QueuedJob<JobID>, options: JobExecutionOptions)>
+        var queue: Deque<(job: QueuedJob<JobID>, options: JobOptions)>
         var pendingJobs: [JobID: ByteBuffer]
         var metadata: [String: ByteBuffer]
         var isStopped: Bool
@@ -82,7 +82,7 @@ public final class MemoryQueue: JobQueueDriver {
             self.metadata = .init()
         }
 
-        func push(_ jobBuffer: ByteBuffer, options: JobExecutionOptions) throws -> JobID {
+        func push(_ jobBuffer: ByteBuffer, options: JobOptions) throws -> JobID {
             let id = JobID()
             self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer), options: options))
             return id
@@ -104,7 +104,7 @@ public final class MemoryQueue: JobQueueDriver {
                     return nil
                 }
                 if let request = queue.popFirst() {
-                    if let date = request.options.delayedUntil() {
+                    if let date = request.options.delayUntil {
                         guard date <= Date.now else {
                             self.queue.append(request)
                             continue

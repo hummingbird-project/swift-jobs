@@ -45,7 +45,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     @discardableResult public func push<Parameters: Codable & Sendable>(
         id: JobIdentifier<Parameters>,
         parameters: Parameters,
-        options: JobExecutionOptions = []
+        options: JobOptions = .init()
     ) async throws -> Queue.JobID {
         let jobRequest = EncodableJob(id: id, parameters: parameters, queuedAt: .now)
         let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator())
