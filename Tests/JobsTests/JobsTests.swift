@@ -161,7 +161,7 @@ final class JobsTests: XCTestCase {
             try await jobQueue.push(id: job2, parameters: 10)
             XCTAssertEqual(delayedJob.load(ordering: .relaxed), 2)
             await fulfillment(of: [expectation], timeout: 10)
-            // XCTAssertEqual(delayedJob.load(ordering: .relaxed), 1)
+            XCTAssertEqual(delayedJob.load(ordering: .relaxed), 1)
         }
 
         XCTAssertEqual(jobExecutionSequence.withLockedValue { $0 }, [10, 0])
