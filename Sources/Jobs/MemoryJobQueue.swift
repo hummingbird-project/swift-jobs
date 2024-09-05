@@ -46,8 +46,8 @@ public final class MemoryQueue: JobQueueDriver {
     ///   - job: Job
     ///   - eventLoop: Eventloop to run process on (ignored in this case)
     /// - Returns: Queued job
-    @discardableResult public func push(_ buffer: ByteBuffer, delayUntil: Date?) async throws -> JobID {
-        return try await self.queue.push(buffer, delayUntil: delayUntil)
+    @discardableResult public func push(_ buffer: ByteBuffer, executionOptions: JobExecutionOptions) async throws -> JobID {
+        return try await self.queue.push(buffer, executionOptions: executionOptions)
     }
 
     public func finished(jobId: JobID) async throws {
@@ -70,7 +70,7 @@ public final class MemoryQueue: JobQueueDriver {
 
     /// Internal actor managing the job queue
     fileprivate actor Internal {
-        var queue: Deque<(job: QueuedJob<JobID>, delayedUntil: Date?)>
+        var queue: Deque<(job: QueuedJob<JobID>, executionOptions: JobExecutionOptions)>
         var pendingJobs: [JobID: ByteBuffer]
         var metadata: [String: ByteBuffer]
         var isStopped: Bool
@@ -82,9 +82,9 @@ public final class MemoryQueue: JobQueueDriver {
             self.metadata = .init()
         }
 
-        func push(_ jobBuffer: ByteBuffer, delayUntil: Date?) throws -> JobID {
+        func push(_ jobBuffer: ByteBuffer, executionOptions: JobExecutionOptions) throws -> JobID {
             let id = JobID()
-            self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer), delayedUntil: delayUntil))
+            self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer), executionOptions: executionOptions))
             return id
         }
 
@@ -104,12 +104,13 @@ public final class MemoryQueue: JobQueueDriver {
                     return nil
                 }
                 if let request = queue.popFirst() {
-                    if let delayedJob = request.delayedUntil {
-                        if delayedJob >= Date.now {
+                    if let date = request.executionOptions.delayedUntil() {
+                        guard date <= Date.now else {
                             self.queue.append(request)
                             continue
                         }
                     }
+
                     self.pendingJobs[request.job.id] = request.job.jobBuffer
                     return request.job
                 }
