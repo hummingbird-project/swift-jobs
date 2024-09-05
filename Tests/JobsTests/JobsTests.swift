@@ -154,7 +154,6 @@ final class JobsTests: XCTestCase {
         }
         try await self.testJobQueue(jobQueue) {
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
-            // .init(delayUntil: Date.now.addingTimeInterval(1))
             try await jobQueue.push(id: job1, parameters: 0, options: .init(delayUntil: Date.now.addingTimeInterval(1)))
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
             try await jobQueue.push(id: job2, parameters: 10)
