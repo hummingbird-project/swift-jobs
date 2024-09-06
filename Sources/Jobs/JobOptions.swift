@@ -17,7 +17,7 @@ import struct Foundation.Date
 /// Job options
 public struct JobOptions: Sendable {
     /// When to execute the job
-    let delayUntil: Date?
+    public let delayUntil: Date?
 
     public init(delayUntil: Date? = nil) {
         self.delayUntil = delayUntil
