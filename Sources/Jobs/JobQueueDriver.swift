@@ -25,7 +25,9 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == QueuedJ
     /// Called when JobQueueHandler is initialised with this queue
     func onInit() async throws
     /// Push Job onto queue
-    /// - Parameter options: JobExecutionOptions
+    /// - Parameters
+    ///   - buffer: ByteBuffer
+    ///   - options: JobOptions
     /// - Returns: Identifier of queued jobs
     func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID
     /// Retry a job that's been in a queue
