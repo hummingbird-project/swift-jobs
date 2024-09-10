@@ -220,7 +220,7 @@ extension JobQueueHandler {
     // It would be nice to provide different retry different algorithms options
     // or no backoff retries at all
     private func jitter() -> Double {
-        Double(arc4random_uniform(500))
+        Double.random(in: 5.0..<15.0)
     }
 
     func backoff(
