@@ -43,12 +43,14 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
     @discardableResult public func push<Parameters: Codable & Sendable>(
-        id: JobIdentifier<Parameters>, parameters: Parameters
+        id: JobIdentifier<Parameters>,
+        parameters: Parameters,
+        options: JobOptions = .init()
     ) async throws -> Queue.JobID {
         let jobRequest = EncodableJob(id: id, parameters: parameters, queuedAt: .now)
         let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator())
         Meter(label: "swift_jobs_meter", dimensions: [("status", "queued")]).increment()
-        let id = try await self.queue.push(buffer)
+        let id = try await self.queue.push(buffer, options: options)
         self.logger.debug(
             "Pushed Job",
             metadata: ["JobID": .stringConvertible(id), "JobName": .string(jobRequest.id.name)]
