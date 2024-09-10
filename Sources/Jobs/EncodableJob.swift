@@ -19,18 +19,9 @@ struct EncodableJob<Parameters: Codable & Sendable>: Encodable, Sendable {
     let id: JobIdentifier<Parameters>
     let data: JobInstanceData<Parameters>
 
-    init(
-        id: JobIdentifier<Parameters>,
-        parameters: Parameters,
-        queuedAt: Date,
-        attempts: Int
-    ) {
+    init(id: JobIdentifier<Parameters>, parameters: Parameters, queuedAt: Date, attempts: Int) {
         self.id = id
-        self.data = .init(
-            parameters: parameters,
-            queuedAt: queuedAt,
-            attempts: attempts
-        )
+        self.data = .init(parameters: parameters, queuedAt: queuedAt, attempts: attempts)
     }
 
     func encode(to encoder: Encoder) throws {

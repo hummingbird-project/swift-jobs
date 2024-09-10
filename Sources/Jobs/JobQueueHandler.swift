@@ -16,6 +16,7 @@ import Dispatch
 import Foundation
 import Logging
 import Metrics
+import NIOCore
 import ServiceLifecycle
 
 /// Object handling a single job queue
@@ -65,12 +66,14 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
+        var didRetry = false
         let startTime = DispatchTime.now().uptimeNanoseconds
 
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
         defer {
             Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
+            didRetry = false
         }
         logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
         let job: any JobInstanceProtocol
@@ -87,15 +90,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         }
         logger[metadataKey: "JobName"] = .string(job.name)
 
-        guard (job.delayUntil ?? .distantPast) < Date() else {
-            logger.debug("Requeueing Job for later execution, it's delayed", metadata: [
-                "DelayedUntil": "\(job.delayUntil ?? .distantPast)",
-                "JobName": "\(job.name)",
-            ])
-            // TODO: requeue Job with the exact same parameters
-            return
-        }
-
         // Calculate wait time from queued to processing
         let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
         Timer(
@@ -103,7 +97,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             preferredDisplayUnit: .seconds
         ).recordSeconds(jobQueuedDuration)
 
-        // var count = job.maxRetryCount
         logger.debug("Starting Job")
 
         do {
@@ -121,38 +114,36 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                     return
                 } catch {
-                    if job.remainingAttempts <= 0 {
-                        logger.debug("Job failed")
+                    if job.didFail {
+                        logger.debug("Job: failed")
                         try await self.queue.failed(jobId: queuedJob.id, error: error)
                         self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                         return
                     }
-                    // count -= 1
-                    logger.debug("Retrying Job")
-                    self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
-                    let attempts = job.attempts + 1
-                    let delay = self.backoff(attempts: attempts)
-                    // let nextJobQueueDuration = Date.now.timeIntervalSince(job.queuedAt) + delay
-                    // once this is parameters are figured out. extact into a function so it can be used for both
-                    // delayed and retries
-                    let jobBuffer = EncodableJob(
-                        id: JobIdentifier(job.name),
-                        // TODO: How do I get job parameters from here?
-                        parameters: queuedJob,
-                        queuedAt: job.queuedAt,
-                        delayUntil: .init(timeIntervalSinceNow: TimeInterval(delay)),
-                        attempts: attempts
-                    )
-                    try await self.queue.push(jobBuffer)
 
-                    /// Should we enque the job with delay until instead of sleeping?
-                    /// This would give us the benefit of allowing jobs to be pushed now and get processed later
-                    // try await Task.sleep(nanoseconds: self.backoff(attempts: count))
+                    let attempts = job.attempts + 1
+
+                    let delay = self.backoff(attempts: attempts)
+
+                    try await self.queue.retry(
+                        jobId: queuedJob.id,
+                        buffer: self.queue.encode(job, attempts: attempts),
+                        options: .init(
+                            delayUntil: delay
+                        )
+                    )
+
+                    didRetry = true
+                    self.updateJobMetrics(for: job.name, startTime: startTime, retrying: didRetry)
+                    logger.debug("Retrying Job with attempts: \(attempts) and delayed until: \(delay)")
+                    return
                 }
             }
-            logger.debug("Finished Job")
-            try await self.queue.finished(jobId: queuedJob.id)
-            self.updateJobMetrics(for: job.name, startTime: startTime)
+            if !didRetry {
+                logger.debug("Finished Job")
+                try await self.queue.finished(jobId: queuedJob.id)
+                self.updateJobMetrics(for: job.name, startTime: startTime)
+            }
         } catch {
             logger.debug("Failed to set job status")
             self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
@@ -225,8 +216,26 @@ extension JobQueueHandler: CustomStringConvertible {
 }
 
 extension JobQueueHandler {
-    func backoff(attempts: Int, baseDelay: Double = 0.25, maxInterval: Double = 60) -> UInt64 {
-        let delay = baseDelay * pow(2, Double(attempts))
-        return UInt64(Double.random(in: 0...min(maxInterval, delay)) * 1_000_000_000)
+    // Should this func be in the JobOptions struct?
+    // It would be nice to provide different retry different algorithms options
+    // or no backoff retries at all
+    private func jitter() -> Double {
+        Double(arc4random_uniform(500))
+    }
+
+    func backoff(
+        attempts: Int,
+        initialBackoff: TimeInterval = 1.0,
+        maximumBackoff: TimeInterval = 120.0
+    ) -> Date {
+        // Is this the best way to detect that we are in test mode?
+        let jitter = if NSClassFromString("XCTest") != nil {
+            Double.random(in: 0.01..<0.25)
+        } else {
+            jitter()
+        }
+
+        let delay = min(jitter * Double(pow(Double(2), Double(attempts))), maximumBackoff)
+        return Date.now.addingTimeInterval(TimeInterval(delay))
     }
 }

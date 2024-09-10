@@ -24,22 +24,28 @@ protocol JobInstanceProtocol: Sendable {
     var maxRetryCount: Int { get }
     /// Time job was queued
     var queuedAt: Date { get }
-    /// Time to execute a job
-    var delayUntil: Date? { get }
     /// Number of attempts so far
     var attempts: Int { get }
+    /// Job parameters
+    var parameters: Parameters { get }
     /// Function to execute the job
     func execute(context: JobContext) async throws
 }
 
 extension JobInstanceProtocol {
-    /// name of job type
+    /// Name of job type
     public var name: String {
         id.name
     }
 
+    /// Number of remaining attempts
     public var remainingAttempts: Int {
         maxRetryCount - attempts
+    }
+
+    /// If job failed after n number of attempts
+    public var didFail: Bool {
+        attempts >= maxRetryCount
     }
 }
 
@@ -60,8 +66,8 @@ struct JobInstance<Parameters: Codable & Sendable>: JobInstanceProtocol {
     var queuedAt: Date { self.data.queuedAt }
     /// Number of attempts so far
     var attempts: Int { self.data.attempts }
-    /// When to execute a job
-    var delayUntil: Date? { self.data.delayUntil }
+    /// Job parameters
+    var parameters: Parameters { self.data.parameters }
 
     func execute(context: JobContext) async throws {
         try await self.job.execute(self.data.parameters, context: context)

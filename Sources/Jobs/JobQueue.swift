@@ -47,18 +47,12 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         parameters: Parameters,
         options: JobOptions = .init()
     ) async throws -> Queue.JobID {
-        let jobRequest = EncodableJob(
-            id: id,
-            parameters: parameters,
-            queuedAt: .now,
-            attempts: 0
-        )
-        let buffer = try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator())
+        let (buffer, jobName) = try self.queue.encode(id: id, parameters: parameters)
         Meter(label: "swift_jobs_meter", dimensions: [("status", "queued")]).increment()
         let id = try await self.queue.push(buffer, options: options)
         self.logger.debug(
             "Pushed Job",
-            metadata: ["JobID": .stringConvertible(id), "JobName": .string(jobRequest.id.name)]
+            metadata: ["JobID": .stringConvertible(id), "JobName": .string(jobName)]
         )
         return id
     }

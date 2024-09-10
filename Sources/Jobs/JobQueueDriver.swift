@@ -25,9 +25,12 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == QueuedJ
     /// Called when JobQueueHandler is initialised with this queue
     func onInit() async throws
     /// Push Job onto queue
-    /// - options: JobExecutionOptions
+    /// - Parameter options: JobExecutionOptions
     /// - Returns: Identifier of queued jobs
     func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID
+    /// Retry a job that's been in a queue
+    ///  - Parameter jobId: JobID
+    func retry(jobId: JobID, buffer: ByteBuffer, options: JobOptions) async throws
     /// This is called to say job has finished processing and it can be deleted
     func finished(jobId: JobID) async throws
     /// This is called to say job has failed to run and should be put aside
@@ -45,4 +48,22 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == QueuedJ
 extension JobQueueDriver {
     // default version of onInit doing nothing
     public func onInit() async throws {}
+
+    func encode(_ job: some JobInstanceProtocol, attempts: Int) throws -> ByteBuffer {
+        let data = EncodableJob(
+            id: job.id,
+            parameters: job.parameters,
+            queuedAt: job.queuedAt,
+            attempts: attempts
+        )
+        return try JSONEncoder().encodeAsByteBuffer(data, allocator: ByteBufferAllocator())
+    }
+
+    func encode<Parameters: Codable & Sendable>(
+        id: JobIdentifier<Parameters>,
+        parameters: Parameters
+    ) throws -> (buffer: ByteBuffer, jobName: String) {
+        let jobRequest = EncodableJob(id: id, parameters: parameters, queuedAt: .now, attempts: 0)
+        return try (buffer: JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator()), jobName: id.name)
+    }
 }

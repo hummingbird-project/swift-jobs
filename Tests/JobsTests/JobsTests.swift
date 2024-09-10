@@ -114,6 +114,34 @@ final class JobsTests: XCTestCase {
         }
     }
 
+    func testErrorRetryAndThenSucceed() async throws {
+        let jobIdentifer = JobIdentifier<Int>(#function)
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
+        struct FailedError: Error {}
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(.memory, logger: logger)
+        jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
+
+            defer {
+                currentJobTryCount.withLockedValue {
+                    $0 += 1
+                }
+            }
+
+            expectation.fulfill()
+            if (currentJobTryCount.withLockedValue { $0 }) == 0 {
+                throw FailedError()
+            }
+        }
+        try await self.testJobQueue(jobQueue) {
+            try await jobQueue.push(id: jobIdentifer, parameters: 0)
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+        XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 2)
+    }
+
     func testErrorRetryCount() async throws {
         let jobIdentifer = JobIdentifier<Int>(#function)
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 4)
