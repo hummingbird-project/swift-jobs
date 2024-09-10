@@ -79,8 +79,6 @@ struct JobInstanceData<Parameters: Codable & Sendable>: Codable {
     let parameters: Parameters
     /// Date job was queued
     let queuedAt: Date
-    /// When to execute a job in the future
-    let delayUntil: Date?
     /// Number of attempts so far
     let attempts: Int
 
@@ -88,7 +86,6 @@ struct JobInstanceData<Parameters: Codable & Sendable>: Codable {
     private enum CodingKeys: String, CodingKey {
         case parameters = "p"
         case queuedAt = "q"
-        case delayUntil = "d"
         case attempts = "a"
     }
 }

@@ -23,14 +23,12 @@ struct EncodableJob<Parameters: Codable & Sendable>: Encodable, Sendable {
         id: JobIdentifier<Parameters>,
         parameters: Parameters,
         queuedAt: Date,
-        delayUntil: Date?,
         attempts: Int
     ) {
         self.id = id
         self.data = .init(
             parameters: parameters,
             queuedAt: queuedAt,
-            delayUntil: delayUntil,
             attempts: attempts
         )
     }

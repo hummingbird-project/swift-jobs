@@ -53,12 +53,13 @@ public struct JobSchedule: MutableCollection, Sendable {
     /// A single scheduled Job
     public struct Element: Sendable {
         var nextScheduledDate: Date
-        let schedule: Schedule
+        var schedule: Schedule
         let jobParameters: any JobParameters
         let accuracy: ScheduleAccuracy
 
         public init(job: JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
-            let nextScheduledDate = schedule.nextDate() ?? .distantFuture
+            var schedule = schedule
+            let nextScheduledDate = schedule.nextDate(after: .now) ?? .distantFuture
             self.nextScheduledDate = nextScheduledDate
             self.schedule = schedule
             self.jobParameters = job
@@ -171,7 +172,7 @@ public struct JobSchedule: MutableCollection, Sendable {
             do {
                 if let date = try await self.jobQueue.getMetadata(.jobScheduleLastDate) {
                     for index in 0..<jobSchedule.count {
-                        jobSchedule[index].nextScheduledDate = jobSchedule[index].schedule.nextDate(after: date) ?? .distantFuture
+                        jobSchedule[index].nextScheduledDate = jobSchedule[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
                     }
                 }
             } catch {
