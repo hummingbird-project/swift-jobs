@@ -191,7 +191,7 @@ final class JobsTests: XCTestCase {
                 $0.append(parameters)
             }
             expectation.fulfill()
-            // swift 5.9 test fix
+
             if parameters == delayedJobParameterValue {
                 delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
             }
@@ -202,7 +202,7 @@ final class JobsTests: XCTestCase {
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
             try await jobQueue.push(id: job2, parameters: 10)
             XCTAssertEqual(delayedJob.load(ordering: .relaxed), 2)
-            await fulfillment(of: [expectation], timeout: 10)
+            await fulfillment(of: [expectation], timeout: 5)
             XCTAssertEqual(delayedJob.load(ordering: .relaxed), 1)
         }
 
