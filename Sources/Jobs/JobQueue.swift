@@ -31,9 +31,9 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     let handler: JobQueueHandler<Queue>
     let initializationComplete: Trigger
 
-    public init(_ queue: Queue, numWorkers: Int = 1, logger: Logger) {
+    public init(_ queue: Queue, numWorkers: Int = 1, logger: Logger, options: JobQueueOptions = .init()) {
         self.queue = queue
-        self.handler = .init(queue: queue, numWorkers: numWorkers, logger: logger)
+        self.handler = .init(queue: queue, numWorkers: numWorkers, logger: logger, options: options)
         self.initializationComplete = .init()
     }
 
@@ -47,8 +47,9 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         parameters: Parameters,
         options: JobOptions = .init()
     ) async throws -> Queue.JobID {
-        let (buffer, jobName) = try self.queue.encode(id: id, parameters: parameters)
+        let buffer = try self.queue.encode(id: id, parameters: parameters)
         Meter(label: "swift_jobs_meter", dimensions: [("status", "queued")]).increment()
+        let jobName = id.name
         let id = try await self.queue.push(buffer, options: options)
         self.logger.debug(
             "Pushed Job",

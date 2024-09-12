@@ -24,13 +24,11 @@ public final class MemoryQueue: JobQueueDriver {
     /// queue of jobs
     fileprivate let queue: Internal
     private let onFailedJob: @Sendable (QueuedJob<JobID>, any Error) -> Void
-    private let onRetryJob: @Sendable (QueuedJob<JobID>) -> Void
 
     /// Initialise In memory job queue
     public init(onFailedJob: @escaping @Sendable (QueuedJob<JobID>, any Error) -> Void = { _, _ in }) {
         self.queue = .init()
         self.onFailedJob = onFailedJob
-        self.onRetryJob = { _ in }
     }
 
     /// Stop queue serving more jobs
@@ -54,7 +52,6 @@ public final class MemoryQueue: JobQueueDriver {
 
     public func retry(jobId: JobID, buffer: ByteBuffer, options: JobOptions) async throws {
         await self.queue.updateJob(jobId, buffer: buffer, options: options)
-        self.onRetryJob(.init(id: jobId, jobBuffer: buffer))
     }
 
     public func finished(jobId: JobID) async throws {

@@ -25,7 +25,7 @@ protocol JobInstanceProtocol: Sendable {
     /// Time job was queued
     var queuedAt: Date { get }
     /// Number of attempts so far
-    var attempts: Int { get }
+    var attempts: Int? { get }
     /// Job parameters
     var parameters: Parameters { get }
     /// Function to execute the job
@@ -40,12 +40,12 @@ extension JobInstanceProtocol {
 
     /// Number of remaining attempts
     public var remainingAttempts: Int {
-        maxRetryCount - attempts
+        maxRetryCount - (attempts ?? 0)
     }
 
     /// If job failed after n number of attempts
     public var didFail: Bool {
-        attempts >= maxRetryCount
+        (attempts ?? 0) >= maxRetryCount
     }
 }
 
@@ -65,7 +65,7 @@ struct JobInstance<Parameters: Codable & Sendable>: JobInstanceProtocol {
     /// Time job was queued
     var queuedAt: Date { self.data.queuedAt }
     /// Number of attempts so far
-    var attempts: Int { self.data.attempts }
+    var attempts: Int? { self.data.attempts ?? 0 }
     /// Job parameters
     var parameters: Parameters { self.data.parameters }
 
@@ -86,7 +86,7 @@ struct JobInstanceData<Parameters: Codable & Sendable>: Codable {
     /// Date job was queued
     let queuedAt: Date
     /// Number of attempts so far
-    let attempts: Int
+    let attempts: Int?
 
     // keep JSON strings small to improve decode speed
     private enum CodingKeys: String, CodingKey {

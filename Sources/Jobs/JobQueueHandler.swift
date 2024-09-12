@@ -21,11 +21,12 @@ import ServiceLifecycle
 
 /// Object handling a single job queue
 final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
-    init(queue: Queue, numWorkers: Int, logger: Logger) {
+    init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueOptions) {
         self.queue = queue
         self.numWorkers = numWorkers
         self.logger = logger
         self.jobRegistry = .init()
+        self.options = options
     }
 
     ///  Register job
@@ -121,7 +122,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                         return
                     }
 
-                    let attempts = job.attempts + 1
+                    let attempts = (job.attempts ?? 0) + 1
 
                     let delay = self.backoff(attempts: attempts)
 
@@ -152,6 +153,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
     private let jobRegistry: JobRegistry
     private let queue: Queue
+    private let options: JobQueueOptions
     private let numWorkers: Int
     let logger: Logger
 }
@@ -216,26 +218,9 @@ extension JobQueueHandler: CustomStringConvertible {
 }
 
 extension JobQueueHandler {
-    // Should this func be in the JobOptions struct?
-    // It would be nice to provide different retry different algorithms options
-    // or no backoff retries at all
-    private func jitter() -> Double {
-        Double.random(in: 5.0..<15.0)
-    }
-
-    func backoff(
-        attempts: Int,
-        initialBackoff: TimeInterval = 1.0,
-        maximumBackoff: TimeInterval = 120.0
-    ) -> Date {
-        // Is this the best way to detect that we are in test mode?
-        let jitter = if NSClassFromString("XCTest") != nil {
-            Double.random(in: 0.01..<0.25)
-        } else {
-            jitter()
-        }
-
-        let delay = min(jitter * Double(pow(Double(2), Double(attempts))), maximumBackoff)
-        return Date.now.addingTimeInterval(TimeInterval(delay))
+    func backoff(attempts: Int) -> Date {
+        let exp = Double(exp2(Double(attempts)))
+        let delay = min(exp, self.options.maximumBackoff)
+        return Date.now.addingTimeInterval(TimeInterval(self.options.jitter + delay))
     }
 }

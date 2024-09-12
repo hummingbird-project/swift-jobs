@@ -121,7 +121,14 @@ final class JobsTests: XCTestCase {
         struct FailedError: Error {}
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
-        let jobQueue = JobQueue(.memory, logger: logger)
+        let jobQueue = JobQueue(
+            .memory,
+            logger: logger,
+            options: .init(
+                maxJitter: 0.25,
+                minJitter: 0.01
+            )
+        )
         jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
 
             defer {
@@ -151,7 +158,12 @@ final class JobsTests: XCTestCase {
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             MemoryQueue { _, _ in failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed) },
-            logger: logger
+            logger: logger,
+            options: .init(
+                maximumBackoff: 0.5,
+                maxJitter: 0.01,
+                minJitter: 0.0
+            )
         )
         jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
             expectation.fulfill()

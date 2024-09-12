@@ -64,8 +64,8 @@ extension JobQueueDriver {
     func encode<Parameters: Codable & Sendable>(
         id: JobIdentifier<Parameters>,
         parameters: Parameters
-    ) throws -> (buffer: ByteBuffer, jobName: String) {
+    ) throws -> ByteBuffer {
         let jobRequest = EncodableJob(id: id, parameters: parameters, queuedAt: .now, attempts: 0)
-        return try (buffer: JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator()), jobName: id.name)
+        return try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator())
     }
 }
