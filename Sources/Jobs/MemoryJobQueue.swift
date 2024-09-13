@@ -43,7 +43,7 @@ public final class MemoryQueue: JobQueueDriver {
 
     /// Push job onto queue
     /// - Parameters:
-    ///   - buffer: buffer containing job data 
+    ///   - buffer: buffer containing job data
     ///   - options: Job options
     /// - Returns: Job ID
     @discardableResult public func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID {
