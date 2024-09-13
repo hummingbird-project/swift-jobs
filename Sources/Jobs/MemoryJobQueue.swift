@@ -50,10 +50,6 @@ public final class MemoryQueue: JobQueueDriver {
         return try await self.queue.push(buffer, options: options)
     }
 
-    public func retry(jobId: JobID, buffer: ByteBuffer, options: JobOptions) async throws {
-        await self.queue.updateJob(jobId, buffer: buffer, options: options)
-    }
-
     public func finished(jobId: JobID) async throws {
         await self.queue.clearPendingJob(jobId: jobId)
     }
@@ -90,11 +86,6 @@ public final class MemoryQueue: JobQueueDriver {
             let id = JobID()
             self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer), options: options))
             return id
-        }
-
-        func updateJob(_ jobId: JobID, buffer: ByteBuffer, options: JobOptions) {
-            self.clearPendingJob(jobId: jobId)
-            self.queue.append((job: QueuedJob(id: jobId, jobBuffer: buffer), options: options))
         }
 
         func clearPendingJob(jobId: JobID) {

@@ -30,9 +30,6 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == QueuedJ
     ///   - options: JobOptions
     /// - Returns: Identifier of queued jobs
     func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID
-    /// Retry a job that's been in a queue
-    ///  - Parameter jobId: JobID
-    func retry(jobId: JobID, buffer: ByteBuffer, options: JobOptions) async throws
     /// This is called to say job has finished processing and it can be deleted
     func finished(jobId: JobID) async throws
     /// This is called to say job has failed to run and should be put aside

@@ -122,9 +122,11 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
                 let delay = self.backoff(attempts: attempts)
 
-                try await self.queue.retry(
-                    jobId: queuedJob.id,
-                    buffer: self.queue.encode(job, attempts: attempts),
+                // remove from processing lists
+                try await self.queue.finished(jobId: queuedJob.id)
+                // push new job in the queue
+                _ = try await self.queue.push(
+                    self.queue.encode(job, attempts: attempts),
                     options: .init(
                         delayUntil: delay
                     )
