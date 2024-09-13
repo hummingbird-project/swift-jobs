@@ -67,14 +67,12 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
-        var didRetry = false
         let startTime = DispatchTime.now().uptimeNanoseconds
 
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
         defer {
             Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
-            didRetry = false
         }
         logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
         let job: any JobInstanceProtocol
@@ -101,50 +99,43 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         logger.debug("Starting Job")
 
         do {
-            while true {
-                do {
-                    Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
-                    try await job.execute(context: .init(logger: logger))
-                    break
-                } catch let error as CancellationError {
-                    logger.debug("Job cancelled")
-                    // Job failed is called but due to the fact the task is cancelled, depending on the
-                    // job queue driver, the process of failing the job might not occur because itself
-                    // might get cancelled
+            do {
+                Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
+                try await job.execute(context: .init(logger: logger))
+            } catch let error as CancellationError {
+                logger.debug("Job cancelled")
+                // Job failed is called but due to the fact the task is cancelled, depending on the
+                // job queue driver, the process of failing the job might not occur because itself
+                // might get cancelled
+                try await self.queue.failed(jobId: queuedJob.id, error: error)
+                self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
+                return
+            } catch {
+                if job.didFail {
+                    logger.debug("Job: failed")
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
                     self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                     return
-                } catch {
-                    if job.didFail {
-                        logger.debug("Job: failed")
-                        try await self.queue.failed(jobId: queuedJob.id, error: error)
-                        self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
-                        return
-                    }
-
-                    let attempts = (job.attempts ?? 0) + 1
-
-                    let delay = self.backoff(attempts: attempts)
-
-                    try await self.queue.retry(
-                        jobId: queuedJob.id,
-                        buffer: self.queue.encode(job, attempts: attempts),
-                        options: .init(
-                            delayUntil: delay
-                        )
-                    )
-
-                    didRetry = true
-                    self.updateJobMetrics(for: job.name, startTime: startTime, retrying: didRetry)
-                    logger.debug("Retrying Job with attempts: \(attempts) and delayed until: \(delay)")
-                    return
                 }
+
+                let attempts = (job.attempts ?? 0) + 1
+
+                let delay = self.backoff(attempts: attempts)
+
+                try await self.queue.retry(
+                    jobId: queuedJob.id,
+                    buffer: self.queue.encode(job, attempts: attempts),
+                    options: .init(
+                        delayUntil: delay
+                    )
+                )
+                self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
+                logger.debug("Retrying Job with attempts: \(attempts) and delayed until: \(delay)")
+                return
             }
-            if !didRetry {
-                logger.debug("Finished Job")
-                try await self.queue.finished(jobId: queuedJob.id)
-                self.updateJobMetrics(for: job.name, startTime: startTime)
-            }
+            logger.debug("Finished Job")
+            try await self.queue.finished(jobId: queuedJob.id)
+            self.updateJobMetrics(for: job.name, startTime: startTime)
         } catch {
             logger.debug("Failed to set job status")
             self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
