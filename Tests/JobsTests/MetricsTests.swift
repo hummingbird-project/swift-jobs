@@ -300,7 +300,7 @@ final class MetricsTests: XCTestCase {
             await self.wait(for: [expectation], timeout: 5)
         }
 
-        let counter = try XCTUnwrap(Self.testMetrics.counters.withLockedValue { $0 }["swift_jobs"] as? TestCounter)
+        let counter = try XCTUnwrap(Self.testMetrics.counters.withLockedValue { $0 }["swift.jobs"] as? TestCounter)
         XCTAssertEqual(counter.values.withLockedValue { $0 }[0].1, 1)
         XCTAssertEqual(counter.values.withLockedValue { $0 }.count, 1) // This technically 5, need to figueout how to await the results to get 5
         XCTAssertEqual(counter.dimensions.count, 2)
@@ -309,7 +309,7 @@ final class MetricsTests: XCTestCase {
         XCTAssertEqual(counter.dimensions[1].0, "status")
         XCTAssertEqual(counter.dimensions[1].1, "succeeded")
 
-        let queuedMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift_jobs_meter"] as? TestMeter)
+        let queuedMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
         XCTAssertEqual(queuedMeter.values.withLockedValue { $0 }.count, 1)
     }
 
@@ -339,19 +339,19 @@ final class MetricsTests: XCTestCase {
             await self.wait(for: [expectation], timeout: 5)
         }
         XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
-        let counter = try XCTUnwrap(Self.testMetrics.counters.withLockedValue { $0 }["swift_jobs"] as? TestCounter)
+        let counter = try XCTUnwrap(Self.testMetrics.counters.withLockedValue { $0 }["swift.jobs"] as? TestCounter)
         XCTAssertEqual(counter.values.withLockedValue { $0 }.count, 1)
         XCTAssertEqual(counter.values.withLockedValue { $0 }[0].1, 1)
         XCTAssertEqual(counter.dimensions[0].0, "name")
         XCTAssertEqual(counter.dimensions[0].1, "testFailedJobs()")
         XCTAssertEqual(counter.dimensions[1].0, "status")
         XCTAssertEqual(counter.dimensions[1].1, "failed")
-        let meter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift_jobs_meter"] as? TestMeter)
+        let meter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
         XCTAssertEqual(meter.values.withLockedValue { $0 }.count, 1)
         XCTAssertEqual(meter.values.withLockedValue { $0 }[0].1, 0)
         XCTAssertEqual(meter.dimensions[0].0, "status")
         XCTAssertEqual(meter.dimensions[0].1, "processing")
-        let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift_jobs_duration_seconds"] as? TestTimer)
+        let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift.jobs.duration"] as? TestTimer)
         XCTAssertEqual(timer.dimensions[1].0, "status")
         XCTAssertEqual(timer.dimensions[1].1, "failed")
     }
@@ -370,7 +370,7 @@ final class MetricsTests: XCTestCase {
             await self.wait(for: [expectation], timeout: 5)
         }
 
-        let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift_jobs_duration_seconds"] as? TestTimer)
+        let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift.jobs.duration"] as? TestTimer)
         XCTAssertGreaterThan(timer.values.withLockedValue { $0 }[0].1, 5_000_000)
         XCTAssertEqual(timer.dimensions[0].0, "name")
         XCTAssertEqual(timer.dimensions[0].1, "testBasic")
@@ -394,7 +394,7 @@ final class MetricsTests: XCTestCase {
             await self.wait(for: [expectation], timeout: 5)
         }
 
-        let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift_jobs_queued_for_duration_seconds"] as? TestTimer)
+        let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift.jobs.queued.duration"] as? TestTimer)
         XCTAssertGreaterThan(timer.values.withLockedValue { $0 }[0].1, 50_000_000)
     }
 }

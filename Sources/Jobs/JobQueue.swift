@@ -48,7 +48,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         options: JobOptions = .init()
     ) async throws -> Queue.JobID {
         let buffer = try self.queue.encode(id: id, parameters: parameters)
-        Meter(label: "swift_jobs_meter", dimensions: [("status", "queued")]).increment()
+        Meter(label: "swift.jobs.meter", dimensions: [("status", "queued")]).increment()
         let jobName = id.name
         let id = try await self.queue.push(buffer, options: options)
         self.logger.debug(
