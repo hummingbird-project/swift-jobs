@@ -43,9 +43,9 @@ public final class MemoryQueue: JobQueueDriver {
 
     /// Push job onto queue
     /// - Parameters:
-    ///   - job: Job
-    ///   - eventLoop: Eventloop to run process on (ignored in this case)
-    /// - Returns: Queued job
+    ///   - buffer: buffer containing job data
+    ///   - options: Job options
+    /// - Returns: Job ID
     @discardableResult public func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID {
         return try await self.queue.push(buffer, options: options)
     }
