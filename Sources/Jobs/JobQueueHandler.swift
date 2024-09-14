@@ -16,15 +16,17 @@ import Dispatch
 import Foundation
 import Logging
 import Metrics
+import NIOCore
 import ServiceLifecycle
 
 /// Object handling a single job queue
 final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
-    init(queue: Queue, numWorkers: Int, logger: Logger) {
+    init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueOptions) {
         self.queue = queue
         self.numWorkers = numWorkers
         self.logger = logger
         self.jobRegistry = .init()
+        self.options = options
     }
 
     ///  Register job
@@ -94,34 +96,47 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             preferredDisplayUnit: .seconds
         ).recordSeconds(jobQueuedDuration)
 
-        var count = job.maxRetryCount
         logger.debug("Starting Job")
 
         do {
-            while true {
-                do {
-                    Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
-                    try await job.execute(context: .init(logger: logger))
-                    break
-                } catch let error as CancellationError {
-                    logger.debug("Job cancelled")
-                    // Job failed is called but due to the fact the task is cancelled, depending on the
-                    // job queue driver, the process of failing the job might not occur because itself
-                    // might get cancelled
+            do {
+                Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
+                try await job.execute(context: .init(logger: logger))
+            } catch let error as CancellationError {
+                logger.debug("Job cancelled")
+                // Job failed is called but due to the fact the task is cancelled, depending on the
+                // job queue driver, the process of failing the job might not occur because itself
+                // might get cancelled
+                try await self.queue.failed(jobId: queuedJob.id, error: error)
+                self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
+                return
+            } catch {
+                if job.didFail {
+                    logger.debug("Job: failed")
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
                     self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
                     return
-                } catch {
-                    if count <= 0 {
-                        logger.debug("Job failed")
-                        try await self.queue.failed(jobId: queuedJob.id, error: error)
-                        self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
-                        return
-                    }
-                    count -= 1
-                    logger.debug("Retrying Job")
-                    self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
                 }
+
+                let attempts = (job.attempts ?? 0) + 1
+
+                let delay = self.calculateBackoff(attempts: attempts)
+
+                // remove from processing lists
+                try await self.queue.finished(jobId: queuedJob.id)
+                // push new job in the queue
+                _ = try await self.queue.push(
+                    self.queue.encode(job, attempts: attempts),
+                    options: .init(
+                        delayUntil: delay
+                    )
+                )
+                self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
+                logger.debug("Retrying Job", metadata: [
+                    "attempts": .stringConvertible(attempts),
+                    "delayedUntil": .stringConvertible(delay),
+                ])
+                return
             }
             logger.debug("Finished Job")
             try await self.queue.finished(jobId: queuedJob.id)
@@ -134,6 +149,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
     private let jobRegistry: JobRegistry
     private let queue: Queue
+    private let options: JobQueueOptions
     private let numWorkers: Int
     let logger: Logger
 }
@@ -194,5 +210,13 @@ extension JobQueueHandler: CustomStringConvertible {
             label: self.metricsLabel,
             dimensions: dimensions
         ).increment()
+    }
+}
+
+extension JobQueueHandler {
+    func calculateBackoff(attempts: Int) -> Date {
+        let exp = exp2(Double(attempts))
+        let delay = min(exp, self.options.maximumBackoff)
+        return Date.now.addingTimeInterval(TimeInterval(self.options.jitter + delay))
     }
 }

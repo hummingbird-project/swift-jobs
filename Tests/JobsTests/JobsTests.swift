@@ -114,6 +114,41 @@ final class JobsTests: XCTestCase {
         }
     }
 
+    func testErrorRetryAndThenSucceed() async throws {
+        let jobIdentifer = JobIdentifier<Int>(#function)
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
+        struct FailedError: Error {}
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            .memory,
+            logger: logger,
+            options: .init(
+                maxJitter: 0.25,
+                minJitter: 0.01
+            )
+        )
+        jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
+
+            defer {
+                currentJobTryCount.withLockedValue {
+                    $0 += 1
+                }
+            }
+
+            expectation.fulfill()
+            if (currentJobTryCount.withLockedValue { $0 }) == 0 {
+                throw FailedError()
+            }
+        }
+        try await self.testJobQueue(jobQueue) {
+            try await jobQueue.push(id: jobIdentifer, parameters: 0)
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+        XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 2)
+    }
+
     func testErrorRetryCount() async throws {
         let jobIdentifer = JobIdentifier<Int>(#function)
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 4)
@@ -123,7 +158,12 @@ final class JobsTests: XCTestCase {
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             MemoryQueue { _, _ in failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed) },
-            logger: logger
+            logger: logger,
+            options: .init(
+                maximumBackoff: 0.5,
+                maxJitter: 0.01,
+                minJitter: 0.0
+            )
         )
         jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
             expectation.fulfill()
@@ -140,9 +180,10 @@ final class JobsTests: XCTestCase {
     func testDelayedJob() async throws {
         let job1 = JobIdentifier<Int>(#function)
         let job2 = JobIdentifier<Int>(#function)
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
         let delayedJob = ManagedAtomic(0)
+        let delayedJobParameterValue = 0
         let jobExecutionSequence: NIOLockedValueBox<[Int]> = .init([])
         jobQueue.registerJob(id: job1) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
@@ -150,15 +191,18 @@ final class JobsTests: XCTestCase {
                 $0.append(parameters)
             }
             expectation.fulfill()
-            delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
+
+            if parameters == delayedJobParameterValue {
+                delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
+            }
         }
         try await self.testJobQueue(jobQueue) {
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
-            try await jobQueue.push(id: job1, parameters: 0, options: .init(delayUntil: Date.now.addingTimeInterval(1)))
+            try await jobQueue.push(id: job1, parameters: delayedJobParameterValue, options: .init(delayUntil: Date.now.addingTimeInterval(1)))
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
             try await jobQueue.push(id: job2, parameters: 10)
             XCTAssertEqual(delayedJob.load(ordering: .relaxed), 2)
-            await fulfillment(of: [expectation], timeout: 10)
+            await fulfillment(of: [expectation], timeout: 5)
             XCTAssertEqual(delayedJob.load(ordering: .relaxed), 1)
         }
 

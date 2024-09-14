@@ -24,14 +24,28 @@ protocol JobInstanceProtocol: Sendable {
     var maxRetryCount: Int { get }
     /// Time job was queued
     var queuedAt: Date { get }
+    /// Number of attempts so far
+    var attempts: Int? { get }
+    /// Job parameters
+    var parameters: Parameters { get }
     /// Function to execute the job
     func execute(context: JobContext) async throws
 }
 
 extension JobInstanceProtocol {
-    /// name of job type
+    /// Name of job type
     public var name: String {
         id.name
+    }
+
+    /// Number of remaining attempts
+    public var remainingAttempts: Int {
+        maxRetryCount - (attempts ?? 0)
+    }
+
+    /// If job failed after n number of attempts
+    public var didFail: Bool {
+        (attempts ?? 0) >= maxRetryCount
     }
 }
 
@@ -44,13 +58,16 @@ struct JobInstance<Parameters: Codable & Sendable>: JobInstanceProtocol {
     let job: JobDefinition<Parameters>
     /// job parameters
     let data: JobInstanceData<Parameters>
-
     /// job identifier
     var id: JobIdentifier<Parameters> { self.job.id }
     /// max retry count for a job
     var maxRetryCount: Int { self.job.maxRetryCount }
     /// Time job was queued
     var queuedAt: Date { self.data.queuedAt }
+    /// Number of attempts so far
+    var attempts: Int? { self.data.attempts ?? 0 }
+    /// Job parameters
+    var parameters: Parameters { self.data.parameters }
 
     func execute(context: JobContext) async throws {
         try await self.job.execute(self.data.parameters, context: context)
@@ -68,10 +85,13 @@ struct JobInstanceData<Parameters: Codable & Sendable>: Codable {
     let parameters: Parameters
     /// Date job was queued
     let queuedAt: Date
+    /// Number of attempts so far
+    let attempts: Int?
 
     // keep JSON strings small to improve decode speed
     private enum CodingKeys: String, CodingKey {
         case parameters = "p"
         case queuedAt = "q"
+        case attempts = "a"
     }
 }

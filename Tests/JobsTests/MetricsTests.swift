@@ -322,7 +322,12 @@ final class MetricsTests: XCTestCase {
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             MemoryQueue { _, _ in failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed) },
-            logger: logger
+            logger: logger,
+            options: .init(
+                maximumBackoff: 0.5,
+                maxJitter: 0.01,
+                minJitter: 0.0
+            )
         )
         jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
             expectation.fulfill()
