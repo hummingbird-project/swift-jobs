@@ -16,9 +16,6 @@ import struct Foundation.TimeInterval
 
 /// JobQueueOptions
 public struct JobQueueOptions: Sendable {
-    /// Backoff factor default 2, but isn't used
-    /// since we ar esuing exp2 instead of pow
-    public var backoffFactor: Double
     /// Maximum Backoff - default is 120.0 seconds
     public var maximumBackoff: TimeInterval
     /// Maximum jitter - default is 15 seconds
@@ -30,13 +27,18 @@ public struct JobQueueOptions: Sendable {
         Double.random(in: self.minJitter..<self.maxJitter)
     }
 
+    /// Initialize a JobQueueOptions
+    /// The current backoff computation uses jitters
+    /// see Wikipedia if  not familiar  with the topic https://en.wikipedia.org/wiki/Exponential_backoff
+    /// - Parameters:
+    ///   - maximumBackoff: maximum backoff allowed, default 120 seconds
+    ///   - maxJitter: maximum jitter
+    ///   - minJitter: minimum jitter
     public init(
-        backoffFactor: Double = 2,
         maximumBackoff: TimeInterval = 120.0,
         maxJitter: TimeInterval = 15.0,
         minJitter: TimeInterval = 5.0
     ) {
-        self.backoffFactor = backoffFactor
         self.maximumBackoff = maximumBackoff
         self.maxJitter = maxJitter
         self.minJitter = minJitter

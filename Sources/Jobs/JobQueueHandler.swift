@@ -120,7 +120,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
                 let attempts = (job.attempts ?? 0) + 1
 
-                let delay = self.backoff(attempts: attempts)
+                let delay = self.calculateBackoff(attempts: attempts)
 
                 // remove from processing lists
                 try await self.queue.finished(jobId: queuedJob.id)
@@ -132,7 +132,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     )
                 )
                 self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
-                logger.debug("Retrying Job with attempts: \(attempts) and delayed until: \(delay)")
+                logger.debug("Retrying Job", metadata: [
+                    "attempts": .stringConvertible(attempts),
+                    "delayedUntil": .stringConvertible(delay),
+                ])
                 return
             }
             logger.debug("Finished Job")
@@ -211,8 +214,8 @@ extension JobQueueHandler: CustomStringConvertible {
 }
 
 extension JobQueueHandler {
-    func backoff(attempts: Int) -> Date {
-        let exp = Double(exp2(Double(attempts)))
+    func calculateBackoff(attempts: Int) -> Date {
+        let exp = exp2(Double(attempts))
         let delay = min(exp, self.options.maximumBackoff)
         return Date.now.addingTimeInterval(TimeInterval(self.options.jitter + delay))
     }
