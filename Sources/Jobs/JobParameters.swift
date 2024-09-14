@@ -25,8 +25,8 @@ extension JobParameters {
     }
 
     /// Added so it is possible to push JobParameters referenced as Existentials to a Job queue
-    @discardableResult public func push<Queue: JobQueueDriver>(to jobQueue: JobQueue<Queue>) async throws -> Queue.JobID {
-        try await jobQueue.push(self)
+    @discardableResult public func push<Queue: JobQueueDriver>(to jobQueue: JobQueue<Queue>, options: JobOptions = .init()) async throws -> Queue.JobID {
+        try await jobQueue.push(self, options: options)
     }
 }
 
@@ -34,9 +34,10 @@ extension JobQueue {
     ///  Push Job onto queue
     /// - Parameters:
     ///   - parameters: parameters for the job
+    ///   - options: JobOptions
     /// - Returns: Identifier of queued job
-    @discardableResult public func push<Parameters: JobParameters>(_ parameters: Parameters) async throws -> Queue.JobID {
-        return try await self.push(id: Parameters.jobID, parameters: parameters)
+    @discardableResult public func push<Parameters: JobParameters>(_ parameters: Parameters, options: JobOptions = .init()) async throws -> Queue.JobID {
+        return try await self.push(id: Parameters.jobID, parameters: parameters, options: options)
     }
 
     ///  Register job type
