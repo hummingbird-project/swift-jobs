@@ -92,7 +92,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         // Calculate wait time from queued to processing
         let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
         Timer(
-            label: "\(self.metricsLabel)_queued_for_duration_seconds",
+            label: "\(self.metricsLabel).queued.duration",
+            dimensions: [("name", job.name)],
             preferredDisplayUnit: .seconds
         ).recordSeconds(jobQueuedDuration)
 
@@ -156,8 +157,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
 extension JobQueueHandler: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
-    private var metricsLabel: String { "swift_jobs" }
-    private var meterLabel: String { "swift_jobs_meter" }
+    private var metricsLabel: String { "swift.jobs" }
+    private var meterLabel: String { "swift.jobs.meter" }
 
     /// Used for the histogram which can be useful to see by job status
     private enum JobStatus: String, Codable, Sendable {
@@ -200,7 +201,7 @@ extension JobQueueHandler: CustomStringConvertible {
 
         // Calculate job execution time
         Timer(
-            label: "\(self.metricsLabel)_duration_seconds",
+            label: "\(self.metricsLabel).duration",
             dimensions: dimensions,
             preferredDisplayUnit: .seconds
         ).recordNanoseconds(DispatchTime.now().uptimeNanoseconds - startTime)
