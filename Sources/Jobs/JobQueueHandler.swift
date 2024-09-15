@@ -67,18 +67,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
-        // Decrement the current job by 1
-        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-            ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-        ]).decrement()
-        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-            ("status", JobMetricsHelper.JobStatus.processing.rawValue),
-        ]).increment()
-        defer {
-            Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-                ("status", JobMetricsHelper.JobStatus.processing.rawValue),
-            ]).decrement()
-        }
         logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
         let job: any JobInstanceProtocol
         do {
@@ -101,6 +89,12 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             return
         }
         logger[metadataKey: "JobName"] = .string(job.name)
+        
+        defer {
+            Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+                ("status", JobMetricsHelper.JobStatus.processing.rawValue),
+            ]).decrement()
+        }
 
         // Calculate wait time from queued to processing
         let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
@@ -109,8 +103,19 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             dimensions: [("name", job.name)],
             preferredDisplayUnit: .seconds
         ).recordSeconds(jobQueuedDuration)
+        
+        // Decrement the current job by 1
+        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+            ("status", JobMetricsHelper.JobStatus.queued.rawValue),
+            ("name", job.name)
+        ]).decrement()
 
         logger.debug("Starting Job")
+        // Processing start here
+        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+            ("status", JobMetricsHelper.JobStatus.processing.rawValue),
+            ("name", job.name)
+        ]).increment()
 
         do {
             do {
