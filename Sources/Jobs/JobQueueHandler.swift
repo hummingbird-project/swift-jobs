@@ -68,8 +68,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
-
-        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue)]).decrement()
         Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
         defer {
             Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
@@ -80,14 +78,19 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
         } catch let error as JobQueueError where error == .unrecognisedJobId {
             logger.debug("Failed to find Job with ID while decoding")
+            // TODO: add failed metrics for orphan jobs?
             try await self.queue.failed(jobId: queuedJob.id, error: error)
             return
         } catch {
             logger.debug("Job failed to decode")
+            // TODO: add failed metrics for orphan jobs?
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
             return
         }
         logger[metadataKey: "JobName"] = .string(job.name)
+
+        // Decrement the current job by 1
+        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue), ("name", job.name)]).decrement()
 
         // Calculate wait time from queued to processing
         let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
