@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Metrics
+
 /// Defines job parameters and identifier
 public protocol JobParameters: Codable, Sendable {
     /// Job type name
@@ -26,7 +28,13 @@ extension JobParameters {
 
     /// Added so it is possible to push JobParameters referenced as Existentials to a Job queue
     @discardableResult public func push<Queue: JobQueueDriver>(to jobQueue: JobQueue<Queue>, options: JobOptions = .init()) async throws -> Queue.JobID {
-        try await jobQueue.push(self, options: options)
+        let jobId = try await jobQueue.push(self, options: options)
+        // Scheduled jobs never increment the queued meter.
+        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+            ("status", JobMetricsHelper.JobStatus.queued.rawValue),
+            ("name", type(of: self).jobName),
+        ]).increment()
+        return jobId
     }
 }
 

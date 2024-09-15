@@ -317,9 +317,6 @@ final class MetricsTests: XCTestCase {
         XCTAssertEqual(processingMeter.dimensions.count, 1)
         XCTAssertEqual(processingMeter.dimensions[0].0, "status")
         XCTAssertEqual(processingMeter.dimensions[0].1, "processing")
-
-        let workerCountMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.worker.count"] as? TestMeter)
-        XCTAssertEqual(workerCountMeter.values.withLockedValue { $0 }.count, 1)
     }
 
     func testFailToDecode() async throws {
@@ -374,12 +371,6 @@ final class MetricsTests: XCTestCase {
             }
 
             expectation.fulfill()
-
-            let meter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
-            XCTAssertEqual(meter.values.withLockedValue { $0 }.count, 1)
-            XCTAssertEqual(meter.values.withLockedValue { $0 }[0].1, 0)
-            XCTAssertEqual(meter.dimensions[0].0, "status")
-            XCTAssertEqual(meter.dimensions[0].1, "queued")
 
             if (currentJobTryCount.withLockedValue { $0 }) == 0 {
                 throw FailedError()

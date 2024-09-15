@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Dispatch
 import Foundation
 import Logging
 import Metrics
@@ -27,7 +26,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         self.logger = logger
         self.jobRegistry = .init()
         self.options = options
-        Meter(label: "swift.jobs.worker.count").increment(by: Double(numWorkers))
     }
 
     ///  Register job
@@ -69,9 +67,17 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
-        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
+        // Decrement the current job by 1
+        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+            ("status", JobMetricsHelper.JobStatus.queued.rawValue),
+        ]).decrement()
+        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+            ("status", JobMetricsHelper.JobStatus.processing.rawValue),
+        ]).increment()
         defer {
-            Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).decrement()
+            Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+                ("status", JobMetricsHelper.JobStatus.processing.rawValue),
+            ]).decrement()
         }
         logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
         let job: any JobInstanceProtocol
@@ -80,7 +86,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         } catch let error as JobQueueError where error == .unrecognisedJobId {
             logger.debug("Failed to find Job with ID while decoding")
             try await self.queue.failed(jobId: queuedJob.id, error: error)
-            Meter(label: self.discardedMeter, dimensions: [
+            Meter(label: JobMetricsHelper.discardedMeter, dimensions: [
                 ("reason", "INVALID_JOB_ID"),
                 ("jobID", queuedJob.id.description),
             ]).increment()
@@ -88,7 +94,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         } catch {
             logger.debug("Job failed to decode")
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
-            Meter(label: self.discardedMeter, dimensions: [
+            Meter(label: JobMetricsHelper.discardedMeter, dimensions: [
                 ("reason", "DECODE_FAILED"),
                 ("jobID", queuedJob.id.description),
             ]).increment()
@@ -96,13 +102,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         }
         logger[metadataKey: "JobName"] = .string(job.name)
 
-        // Decrement the current job by 1
-        Meter(label: self.meterLabel, dimensions: [("status", JobStatus.queued.rawValue), ("name", job.name)]).decrement()
-
         // Calculate wait time from queued to processing
         let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
         Timer(
-            label: "\(self.metricsLabel).queued.duration",
+            label: "\(JobMetricsHelper.metricsLabel).queued.duration",
             dimensions: [("name", job.name)],
             preferredDisplayUnit: .seconds
         ).recordSeconds(jobQueuedDuration)
@@ -118,13 +121,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 // job queue driver, the process of failing the job might not occur because itself
                 // might get cancelled
                 try await self.queue.failed(jobId: queuedJob.id, error: error)
-                self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
+                JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, error: error)
                 return
             } catch {
                 if job.didFail {
                     logger.debug("Job: failed")
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
-                    self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
+                    JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, error: error)
                     return
                 }
 
@@ -141,7 +144,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                         delayUntil: delay
                     )
                 )
-                self.updateJobMetrics(for: job.name, startTime: startTime, retrying: true)
+                JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, retrying: true)
                 logger.debug("Retrying Job", metadata: [
                     "attempts": .stringConvertible(attempts),
                     "delayedUntil": .stringConvertible(delay),
@@ -150,10 +153,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             }
             logger.debug("Finished Job")
             try await self.queue.finished(jobId: queuedJob.id)
-            self.updateJobMetrics(for: job.name, startTime: startTime)
+            JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime)
         } catch {
             logger.debug("Failed to set job status")
-            self.updateJobMetrics(for: job.name, startTime: startTime, error: error)
+            JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, error: error)
         }
     }
 
@@ -166,64 +169,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
 extension JobQueueHandler: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
-    private var metricsLabel: String { "swift.jobs" }
-    private var meterLabel: String { "swift.jobs.meter" }
-    private var discardedMeter: String { "swift.jobs.discarded" }
-
-    /// Used for the histogram which can be useful to see by job status
-    private enum JobStatus: String, Codable, Sendable {
-        case queued
-        case processing
-        case retried
-        case cancelled
-        case failed
-        case succeeded
-    }
-
-    private func updateJobMetrics(
-        for name: String,
-        startTime: UInt64,
-        error: Error? = nil,
-        retrying: Bool = false
-    ) {
-        if retrying {
-            Counter(
-                label: self.metricsLabel,
-                dimensions: [("name", name), ("status", JobStatus.retried.rawValue)]
-            ).increment()
-            // increment queued meter else we will get negative values
-            Meter(label: self.meterLabel, dimensions: [("status", "queued"), ("name", name)]).increment()
-            return
-        }
-
-        let jobStatus: JobStatus = if let error {
-            if error is CancellationError {
-                .cancelled
-            } else {
-                .failed
-            }
-        } else {
-            .succeeded
-        }
-
-        let dimensions: [(String, String)] = [
-            ("name", name),
-            ("status", jobStatus.rawValue),
-        ]
-
-        // Calculate job execution time
-        Timer(
-            label: "\(self.metricsLabel).duration",
-            dimensions: dimensions,
-            preferredDisplayUnit: .seconds
-        ).recordNanoseconds(DispatchTime.now().uptimeNanoseconds - startTime)
-
-        // Increment job counter base on status
-        Counter(
-            label: self.metricsLabel,
-            dimensions: dimensions
-        ).increment()
-    }
 }
 
 extension JobQueueHandler {
