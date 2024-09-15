@@ -191,6 +191,8 @@ extension JobQueueHandler: CustomStringConvertible {
                 label: self.metricsLabel,
                 dimensions: [("name", name), ("status", JobStatus.retried.rawValue)]
             ).increment()
+            // increment queued meter else we will get negative values
+            Meter(label: self.meterLabel, dimensions: [("status", "queued"), ("name", name)]).increment()
             return
         }
 
