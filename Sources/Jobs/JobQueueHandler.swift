@@ -27,6 +27,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         self.logger = logger
         self.jobRegistry = .init()
         self.options = options
+        Meter(label: "swift.jobs.worker.count").increment(by: Double(numWorkers))
     }
 
     ///  Register job
@@ -78,13 +79,19 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
         } catch let error as JobQueueError where error == .unrecognisedJobId {
             logger.debug("Failed to find Job with ID while decoding")
-            // TODO: add failed metrics for orphan jobs?
             try await self.queue.failed(jobId: queuedJob.id, error: error)
+            Meter(label: self.discardedMeter, dimensions: [
+                ("reason", "INVALID_JOB_ID"),
+                ("jobID", queuedJob.id.description),
+            ]).increment()
             return
         } catch {
             logger.debug("Job failed to decode")
-            // TODO: add failed metrics for orphan jobs?
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
+            Meter(label: self.discardedMeter, dimensions: [
+                ("reason", "DECODE_FAILED"),
+                ("jobID", queuedJob.id.description),
+            ]).increment()
             return
         }
         logger[metadataKey: "JobName"] = .string(job.name)
@@ -161,6 +168,7 @@ extension JobQueueHandler: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
     private var metricsLabel: String { "swift.jobs" }
     private var meterLabel: String { "swift.jobs.meter" }
+    private var discardedMeter: String { "swift.jobs.discarded" }
 
     /// Used for the histogram which can be useful to see by job status
     private enum JobStatus: String, Codable, Sendable {

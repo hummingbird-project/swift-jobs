@@ -317,6 +317,37 @@ final class MetricsTests: XCTestCase {
         XCTAssertEqual(processingMeter.dimensions.count, 1)
         XCTAssertEqual(processingMeter.dimensions[0].0, "status")
         XCTAssertEqual(processingMeter.dimensions[0].1, "processing")
+
+        let workerCountMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.worker.count"] as? TestMeter)
+        XCTAssertEqual(workerCountMeter.values.withLockedValue { $0 }.count, 1)
+    }
+
+    func testFailToDecode() async throws {
+        let string: NIOLockedValueBox<String> = .init("")
+        let jobIdentifer1 = JobIdentifier<Int>(#function)
+        let jobIdentifer2 = JobIdentifier<String>(#function)
+        let expectation = XCTestExpectation(description: "job was called", expectedFulfillmentCount: 1)
+
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .debug
+        let jobQueue = JobQueue(.memory, numWorkers: 2, logger: Logger(label: "JobsTests"))
+        jobQueue.registerJob(id: jobIdentifer2) { parameters, _ in
+            string.withLockedValue { $0 = parameters }
+            expectation.fulfill()
+        }
+        try await self.testJobQueue(jobQueue) {
+            try await jobQueue.push(id: jobIdentifer1, parameters: 2)
+            try await jobQueue.push(id: jobIdentifer2, parameters: "test")
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+        string.withLockedValue {
+            XCTAssertEqual($0, "test")
+        }
+
+        let queuedMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.discarded"] as? TestMeter)
+        XCTAssertEqual(queuedMeter.dimensions.count, 2)
+        XCTAssertEqual(queuedMeter.dimensions[0].0, "reason")
+        XCTAssertEqual(queuedMeter.dimensions[0].1, "DECODE_FAILED")
     }
 
     func testFailedJobs() async throws {
