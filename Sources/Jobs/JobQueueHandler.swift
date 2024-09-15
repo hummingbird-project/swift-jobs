@@ -101,7 +101,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
         do {
             do {
-                Meter(label: self.meterLabel, dimensions: [("status", JobStatus.processing.rawValue)]).increment()
                 try await job.execute(context: .init(logger: logger))
             } catch let error as CancellationError {
                 logger.debug("Job cancelled")
