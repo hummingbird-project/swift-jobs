@@ -314,7 +314,7 @@ final class MetricsTests: XCTestCase {
 
         let processingMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
         XCTAssertEqual(processingMeter.values.withLockedValue { $0 }.count, 1)
-        XCTAssertEqual(processingMeter.dimensions.count, 1)
+        XCTAssertEqual(processingMeter.dimensions.count, 2)
         XCTAssertEqual(processingMeter.dimensions[0].0, "status")
         XCTAssertEqual(processingMeter.dimensions[0].1, "processing")
     }

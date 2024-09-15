@@ -89,12 +89,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             return
         }
         logger[metadataKey: "JobName"] = .string(job.name)
-        
-        defer {
-            Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-                ("status", JobMetricsHelper.JobStatus.processing.rawValue),
-            ]).decrement()
-        }
 
         // Calculate wait time from queued to processing
         let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
@@ -103,18 +97,18 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             dimensions: [("name", job.name)],
             preferredDisplayUnit: .seconds
         ).recordSeconds(jobQueuedDuration)
-        
+
         // Decrement the current job by 1
         Meter(label: JobMetricsHelper.meterLabel, dimensions: [
             ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-            ("name", job.name)
+            ("name", job.name),
         ]).decrement()
 
         logger.debug("Starting Job")
         // Processing start here
         Meter(label: JobMetricsHelper.meterLabel, dimensions: [
             ("status", JobMetricsHelper.JobStatus.processing.rawValue),
-            ("name", job.name)
+            ("name", job.name),
         ]).increment()
 
         do {

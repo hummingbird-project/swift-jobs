@@ -45,6 +45,13 @@ internal enum JobMetricsHelper {
         error: Error? = nil,
         retrying: Bool = false
     ) {
+        // We can decrement processing jobs here because this func called
+        // on complete, failed e.t.c
+        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+            ("status", JobMetricsHelper.JobStatus.processing.rawValue),
+            ("name", name),
+        ]).decrement()
+
         if retrying {
             Counter(
                 label: Self.metricsLabel,
