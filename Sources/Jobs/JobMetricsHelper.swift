@@ -36,6 +36,7 @@ internal enum JobMetricsHelper {
     /// Update job metrics
     /// - Parameters:
     ///   - name: String Job name
+    ///   - jobID: String is only used for the completed meter
     ///   - startTime: UInt64 when the job started
     ///   - error: Error? job error
     ///   - retrying: Bool if the job is being retried
