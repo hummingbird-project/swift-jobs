@@ -30,6 +30,7 @@ internal enum JobMetricsHelper {
         case cancelled
         case failed
         case succeeded
+        case completed
     }
 
     /// Update job metrics
@@ -41,28 +42,26 @@ internal enum JobMetricsHelper {
     ///
     static func updateMetrics(
         for name: String,
+        jobID: String,
         startTime: UInt64,
         error: Error? = nil,
         retrying: Bool = false
     ) {
-        // We can decrement processing jobs here because this func called
-        // on complete, failed e.t.c
+        // This meter can be used to display total job
+        // Or decrement processing vector in Prometheus UI or Grafana
+        // with something like count(swif_jobs_meter{status="processing"}
+        // unless on(jobID) (swif_jobs_meter{status="queued"})
+        // or (swif_jobs_meter{status="completed")) or vector(0)
         Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-            ("status", JobMetricsHelper.JobStatus.processing.rawValue),
-            ("name", name),
-        ]).decrement()
+            ("status", JobMetricsHelper.JobStatus.completed.rawValue),
+            ("jobID", jobID),
+        ]).increment()
 
         if retrying {
             Counter(
                 label: Self.metricsLabel,
                 dimensions: [("name", name), ("status", JobStatus.retried.rawValue)]
             ).increment()
-            // Guard against negative queue values, this is needed because we call
-            // the job queue directly in the retrying step
-            Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-                ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-                ("name", name),
-            ]).increment()
             return
         }
 

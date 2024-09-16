@@ -71,7 +71,21 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         // Decrement the current queue by 1
         Meter(label: JobMetricsHelper.meterLabel, dimensions: [
             ("status", JobMetricsHelper.JobStatus.queued.rawValue),
+            ("jobID", queuedJob.id.description),
         ]).decrement()
+
+        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+            ("status", JobMetricsHelper.JobStatus.processing.rawValue),
+            ("jobID", queuedJob.id.description),
+        ]).increment()
+
+        defer {
+            Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+                ("status", JobMetricsHelper.JobStatus.processing.rawValue),
+                ("jobID", queuedJob.id.description),
+            ]).decrement()
+        }
+
         let job: any JobInstanceProtocol
         do {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
@@ -103,11 +117,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         ).recordSeconds(jobQueuedDuration)
 
         logger.debug("Starting Job")
-        // Processing start here
-        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-            ("status", JobMetricsHelper.JobStatus.processing.rawValue),
-            ("name", job.name),
-        ]).increment()
 
         do {
             do {
@@ -118,13 +127,23 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 // job queue driver, the process of failing the job might not occur because itself
                 // might get cancelled
                 try await self.queue.failed(jobId: queuedJob.id, error: error)
-                JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, error: error)
+                JobMetricsHelper.updateMetrics(
+                    for: job.name,
+                    jobID: queuedJob.id.description,
+                    startTime: startTime,
+                    error: error
+                )
                 return
             } catch {
                 if job.didFail {
                     logger.debug("Job: failed")
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
-                    JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, error: error)
+                    JobMetricsHelper.updateMetrics(
+                        for: job.name,
+                        jobID: queuedJob.id.description,
+                        startTime: startTime,
+                        error: error
+                    )
                     return
                 }
 
@@ -135,13 +154,26 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 // remove from processing lists
                 try await self.queue.finished(jobId: queuedJob.id)
                 // push new job in the queue
-                _ = try await self.queue.push(
+                let newJobId = try await self.queue.push(
                     self.queue.encode(job, attempts: attempts),
                     options: .init(
                         delayUntil: delay
                     )
                 )
-                JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, retrying: true)
+
+                // Guard against negative queue values, this is needed because we call
+                // the job queue directly in the retrying step
+                Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+                    ("status", JobMetricsHelper.JobStatus.queued.rawValue),
+                    ("jobID", newJobId.description),
+                ]).increment()
+
+                JobMetricsHelper.updateMetrics(
+                    for: job.name,
+                    jobID: queuedJob.id.description,
+                    startTime: startTime,
+                    retrying: true
+                )
                 logger.debug("Retrying Job", metadata: [
                     "attempts": .stringConvertible(attempts),
                     "delayedUntil": .stringConvertible(delay),
@@ -150,10 +182,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             }
             logger.debug("Finished Job")
             try await self.queue.finished(jobId: queuedJob.id)
-            JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime)
+            JobMetricsHelper.updateMetrics(for: job.name, jobID: queuedJob.id.description, startTime: startTime)
         } catch {
             logger.debug("Failed to set job status")
-            JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, error: error)
+            JobMetricsHelper.updateMetrics(for: job.name, jobID: queuedJob.id.description, startTime: startTime, error: error)
         }
     }
 
