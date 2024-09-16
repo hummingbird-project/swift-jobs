@@ -68,6 +68,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         var logger = logger
         let startTime = DispatchTime.now().uptimeNanoseconds
         logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
+        // Decrement the current queue by 1
+        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+            ("status", JobMetricsHelper.JobStatus.queued.rawValue),
+        ]).decrement()
         let job: any JobInstanceProtocol
         do {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
@@ -97,12 +101,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             dimensions: [("name", job.name)],
             preferredDisplayUnit: .seconds
         ).recordSeconds(jobQueuedDuration)
-
-        // Decrement the current job by 1
-        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-            ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-            ("name", job.name),
-        ]).decrement()
 
         logger.debug("Starting Job")
         // Processing start here
