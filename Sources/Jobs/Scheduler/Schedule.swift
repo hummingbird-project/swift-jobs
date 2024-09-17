@@ -120,8 +120,8 @@ public struct Schedule: Sendable {
     /// Return schedule that generates a Date for minutes, hours or seconds
     /// - Parameter minute: minute value e.g 5
     /// - Parameter hour: hour value e.g 3
-    /// - Parameter timeZone defaults to GMT
-    public static func every(minute: Int = 5, hour: Int = 0, timeZone: TimeZone = .gmt) -> Self {
+    /// - Parameter timeZone defaults to current timezone
+    public static func every(minute: Int = 5, hour: Int = 0, timeZone: TimeZone = .current) -> Self {
         let maxNumber = if minute > 0, hour == 0 {
             60 / minute
         } else {
