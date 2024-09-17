@@ -62,6 +62,15 @@ final class JobSchedulerTests: XCTestCase {
         try self.testSchedule(start: "1999-12-31T23:59:25Z", expectedEnd: "2000-01-01T00:00:15Z", schedule: .everyMinute(second: 15))
     }
 
+    func testEverySchedule() throws {
+        try self.testSchedule(start: "2021-06-21T21:00:00Z", expectedEnd: "2021-06-21T22:00:00Z", schedule: .every(minute: 5))
+        try self.testSchedule(start: "2021-06-21T21:10:15Z", expectedEnd: "2021-06-21T22:00:00Z", schedule: .every(minute: 5))
+        try self.testSchedule(start: "2024-02-22T20:00:00Z", expectedEnd: "2024-02-23T00:00:00Z", schedule: .every(hour: 3))
+        try self.testSchedule(start: "2024-02-22T20:00:00Z", expectedEnd: "2024-02-23T00:00:00Z", schedule: .every(hour: 12))
+        try self.testSchedule(start: "2024-02-22T00:00:00Z", expectedEnd: "2024-02-23T00:00:00Z", schedule: .every(hour: 12))
+        try self.testSchedule(start: "2024-02-22T01:00:00Z", expectedEnd: "2024-02-23T00:00:00Z", schedule: .every(hour: 24))
+    }
+
     func testHourlySchedule() throws {
         try self.testSchedule(start: "2021-06-21T21:10:15Z", expectedEnd: "2021-06-21T21:58:00Z", schedule: .hourly(minute: 58))
         try self.testSchedule(start: "1999-12-31T23:59:25Z", expectedEnd: "2000-01-01T00:01:00Z", schedule: .hourly(minute: 1))

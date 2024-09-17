@@ -117,6 +117,39 @@ public struct Schedule: Sendable {
         .init(second: .specific(second))
     }
 
+    /// Return schedule that generates a Date for minutes, hours or seconds
+    /// - Parameter minute: minute value e.g 5
+    /// - Parameter hour: hour value e.g 3
+    /// - Parameter timeZone defaults to GMT
+    public static func every(minute: Int = 5, hour: Int = 0, timeZone: TimeZone = .gmt) -> Self {
+        let maxNumber = if minute > 0, hour == 0 {
+            60 / minute
+        } else {
+            24 / hour
+        }
+
+        var multiples: [Int] = []
+        var index = 0
+        let number = hour > 0 ? hour : minute
+        repeat {
+            let multiple = number * index
+
+            if hour > 0, multiple > 24 {
+                let remainder = multiple % 24
+                multiples.append(remainder - hour)
+            } else {
+                multiples.append(multiple)
+            }
+
+            index = index + 1
+        } while index < maxNumber
+
+        if hour == 0 {
+            return .onMinutes(multiples)
+        }
+        return .onHours(multiples, timeZone: timeZone)
+    }
+
     /// Return Schedule that generates a Date for a selection of minutes
     /// - Parameters
     ///   - minutes: Array of minutes if should return Dates for
