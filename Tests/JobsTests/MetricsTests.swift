@@ -311,6 +311,87 @@ final class MetricsTests: XCTestCase {
 
         let queuedMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
         XCTAssertEqual(queuedMeter.values.withLockedValue { $0 }.count, 1)
+
+        let processingMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
+        XCTAssertEqual(processingMeter.values.withLockedValue { $0 }.count, 1)
+        XCTAssertEqual(processingMeter.dimensions.count, 2)
+        XCTAssertEqual(processingMeter.dimensions[0].0, "status")
+        XCTAssertEqual(processingMeter.dimensions[0].1, "processing")
+    }
+
+    func testFailToDecode() async throws {
+        let string: NIOLockedValueBox<String> = .init("")
+        let jobIdentifer1 = JobIdentifier<Int>(#function)
+        let jobIdentifer2 = JobIdentifier<String>(#function)
+        let expectation = XCTestExpectation(description: "job was called", expectedFulfillmentCount: 1)
+
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .debug
+        let jobQueue = JobQueue(.memory, numWorkers: 2, logger: Logger(label: "JobsTests"))
+        jobQueue.registerJob(id: jobIdentifer2) { parameters, _ in
+            string.withLockedValue { $0 = parameters }
+            expectation.fulfill()
+        }
+        try await self.testJobQueue(jobQueue) {
+            try await jobQueue.push(id: jobIdentifer1, parameters: 2)
+            try await jobQueue.push(id: jobIdentifer2, parameters: "test")
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+        string.withLockedValue {
+            XCTAssertEqual($0, "test")
+        }
+
+        let queuedMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.discarded"] as? TestMeter)
+        XCTAssertEqual(queuedMeter.dimensions.count, 2)
+        XCTAssertEqual(queuedMeter.dimensions[0].0, "reason")
+        XCTAssertEqual(queuedMeter.dimensions[0].1, "DECODE_FAILED")
+    }
+
+    func testErrorRetryAndThenSucceed() async throws {
+        let jobIdentifer = JobIdentifier<Int>(#function)
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
+        struct FailedError: Error {}
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            .memory,
+            logger: logger,
+            options: .init(
+                maxJitter: 0.25,
+                minJitter: 0.01
+            )
+        )
+        jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
+
+            defer {
+                currentJobTryCount.withLockedValue {
+                    $0 += 1
+                }
+            }
+
+            expectation.fulfill()
+
+            if (currentJobTryCount.withLockedValue { $0 }) == 0 {
+                throw FailedError()
+            }
+        }
+        try await self.testJobQueue(jobQueue) {
+            try await jobQueue.push(id: jobIdentifer, parameters: 0)
+            let meter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
+            XCTAssertEqual(meter.values.withLockedValue { $0 }.count, 1)
+            XCTAssertEqual(meter.values.withLockedValue { $0 }[0].1, 1.0)
+            XCTAssertEqual(meter.dimensions[0].0, "status")
+            XCTAssertEqual(meter.dimensions[0].1, "queued")
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+        XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 2)
+
+        let meter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
+        XCTAssertEqual(meter.values.withLockedValue { $0 }.count, 1)
+        XCTAssertEqual(meter.values.withLockedValue { $0 }[0].1, 0)
+        XCTAssertEqual(meter.dimensions[0].0, "status")
+        XCTAssertEqual(meter.dimensions[0].1, "processing")
     }
 
     func testFailedJobs() async throws {
