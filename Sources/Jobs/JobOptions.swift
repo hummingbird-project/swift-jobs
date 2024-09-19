@@ -18,8 +18,12 @@ import struct Foundation.Date
 public struct JobOptions: Sendable {
     /// When to execute the job
     public let delayUntil: Date?
-
-    public init(delayUntil: Date? = nil) {
+    /// Job Priority, execute from lowest to highest
+    /// 0 - 10
+    public let priority: Int
+    
+    public init(delayUntil: Date? = nil, priority: Int = 10) {
         self.delayUntil = delayUntil
+        self.priority = priority
     }
 }

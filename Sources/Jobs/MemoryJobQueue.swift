@@ -74,17 +74,24 @@ public final class MemoryQueue: JobQueueDriver {
         var pendingJobs: [JobID: ByteBuffer]
         var metadata: [String: ByteBuffer]
         var isStopped: Bool
+        var currentPriority: Int
 
         init() {
             self.queue = .init()
             self.isStopped = false
             self.pendingJobs = .init()
             self.metadata = .init()
+            self.currentPriority = 10
         }
 
         func push(_ jobBuffer: ByteBuffer, options: JobOptions) throws -> JobID {
             let id = JobID()
-            self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer), options: options))
+            if options.priority >= self.currentPriority {
+                self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer), options: options))
+            } else {
+                self.queue.prepend((job: QueuedJob(id: id, jobBuffer: jobBuffer), options: options))
+            }
+            self.currentPriority = Swift.min(self.currentPriority, options.priority)
             return id
         }
 
