@@ -21,7 +21,7 @@ public struct JobOptions: Sendable {
     /// Job Priority, execute from lowest to highest
     /// 0 - 10
     public let priority: Int
-    
+
     public init(delayUntil: Date? = nil, priority: Int = 10) {
         self.delayUntil = delayUntil
         self.priority = priority

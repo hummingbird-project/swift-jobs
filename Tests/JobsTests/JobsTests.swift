@@ -208,7 +208,7 @@ final class JobsTests: XCTestCase {
 
         XCTAssertEqual(jobExecutionSequence.withLockedValue { $0 }, [10, 0])
     }
-    
+
     func testPriorityJob() async throws {
         let job1 = JobIdentifier<Int>(#function)
         let job2 = JobIdentifier<Int>(#function)
@@ -223,7 +223,7 @@ final class JobsTests: XCTestCase {
                 $0.append(parameters)
             }
             expectation.fulfill()
-            
+
             if parameters == delayedJobParameterValue {
                 delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
             }
@@ -237,7 +237,7 @@ final class JobsTests: XCTestCase {
             await fulfillment(of: [expectation], timeout: 5)
             XCTAssertEqual(delayedJob.load(ordering: .relaxed), 1)
         }
-        
+
         XCTAssertEqual(jobExecutionSequence.withLockedValue { $0 }, [0, 10])
     }
 
