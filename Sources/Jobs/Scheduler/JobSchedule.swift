@@ -170,11 +170,16 @@ public struct JobSchedule: MutableCollection, Sendable {
             var jobSchedule = self.jobSchedule
             // Update next scheduled date for each job schedule based off the last scheduled date stored
             do {
-                if let date = try await self.jobQueue.getMetadata(.jobScheduleLastDate) {
-                    self.jobQueue.logger.debug("Last scheduled date \(date).")
-                    for index in 0..<jobSchedule.count {
-                        jobSchedule[index].nextScheduledDate = jobSchedule[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
-                    }
+                let date: Date
+                if let lastDate = try await self.jobQueue.getMetadata(.jobScheduleLastDate) {
+                    self.jobQueue.logger.debug("Last scheduled date \(lastDate).")
+                    date = lastDate
+                } else {
+                    date = .now
+                }
+                self.jobQueue.logger.debug("Last scheduled date \(date).")
+                for index in 0..<jobSchedule.count {
+                    jobSchedule[index].nextScheduledDate = jobSchedule[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
                 }
             } catch {
                 self.jobQueue.logger.error("Failed to get last scheduled job date.")
