@@ -69,21 +69,30 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         let startTime = DispatchTime.now().uptimeNanoseconds
         logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
         // Decrement the current queue by 1
-        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-            ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-            ("jobID", queuedJob.id.description),
-        ]).decrement()
+        Meter(
+            label: JobMetricsHelper.meterLabel,
+            dimensions: [
+                ("status", JobMetricsHelper.JobStatus.queued.rawValue),
+                ("jobID", queuedJob.id.description),
+            ]
+        ).decrement()
 
-        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-            ("status", JobMetricsHelper.JobStatus.processing.rawValue),
-            ("jobID", queuedJob.id.description),
-        ]).increment()
-
-        defer {
-            Meter(label: JobMetricsHelper.meterLabel, dimensions: [
+        Meter(
+            label: JobMetricsHelper.meterLabel,
+            dimensions: [
                 ("status", JobMetricsHelper.JobStatus.processing.rawValue),
                 ("jobID", queuedJob.id.description),
-            ]).decrement()
+            ]
+        ).increment()
+
+        defer {
+            Meter(
+                label: JobMetricsHelper.meterLabel,
+                dimensions: [
+                    ("status", JobMetricsHelper.JobStatus.processing.rawValue),
+                    ("jobID", queuedJob.id.description),
+                ]
+            ).decrement()
         }
 
         let job: any JobInstanceProtocol
@@ -92,18 +101,24 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         } catch let error as JobQueueError where error == .unrecognisedJobId {
             logger.debug("Failed to find Job with ID while decoding")
             try await self.queue.failed(jobId: queuedJob.id, error: error)
-            Meter(label: JobMetricsHelper.discardedMeter, dimensions: [
-                ("reason", "INVALID_JOB_ID"),
-                ("jobID", queuedJob.id.description),
-            ]).increment()
+            Meter(
+                label: JobMetricsHelper.discardedMeter,
+                dimensions: [
+                    ("reason", "INVALID_JOB_ID"),
+                    ("jobID", queuedJob.id.description),
+                ]
+            ).increment()
             return
         } catch {
             logger.debug("Job failed to decode")
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
-            Meter(label: JobMetricsHelper.discardedMeter, dimensions: [
-                ("reason", "DECODE_FAILED"),
-                ("jobID", queuedJob.id.description),
-            ]).increment()
+            Meter(
+                label: JobMetricsHelper.discardedMeter,
+                dimensions: [
+                    ("reason", "DECODE_FAILED"),
+                    ("jobID", queuedJob.id.description),
+                ]
+            ).increment()
             return
         }
         logger[metadataKey: "JobName"] = .string(job.name)
@@ -163,10 +178,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
                 // Guard against negative queue values, this is needed because we call
                 // the job queue directly in the retrying step
-                Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-                    ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-                    ("jobID", newJobId.description),
-                ]).increment()
+                Meter(
+                    label: JobMetricsHelper.meterLabel,
+                    dimensions: [
+                        ("status", JobMetricsHelper.JobStatus.queued.rawValue),
+                        ("jobID", newJobId.description),
+                    ]
+                ).increment()
 
                 JobMetricsHelper.updateMetrics(
                     for: job.name,
@@ -174,10 +192,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     startTime: startTime,
                     retrying: true
                 )
-                logger.debug("Retrying Job", metadata: [
-                    "attempts": .stringConvertible(attempts),
-                    "delayedUntil": .stringConvertible(delay),
-                ])
+                logger.debug(
+                    "Retrying Job",
+                    metadata: [
+                        "attempts": .stringConvertible(attempts),
+                        "delayedUntil": .stringConvertible(delay),
+                    ]
+                )
                 return
             }
             logger.debug("Finished Job")

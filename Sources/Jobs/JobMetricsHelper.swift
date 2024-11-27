@@ -53,10 +53,13 @@ internal enum JobMetricsHelper {
         // with something like count(swif_jobs_meter{status="processing"}
         // unless on(jobID) (swif_jobs_meter{status="queued"})
         // or (swif_jobs_meter{status="completed")) or vector(0)
-        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-            ("status", JobMetricsHelper.JobStatus.completed.rawValue),
-            ("jobID", jobID),
-        ]).increment()
+        Meter(
+            label: JobMetricsHelper.meterLabel,
+            dimensions: [
+                ("status", JobMetricsHelper.JobStatus.completed.rawValue),
+                ("jobID", jobID),
+            ]
+        ).increment()
 
         if retrying {
             Counter(
@@ -66,15 +69,16 @@ internal enum JobMetricsHelper {
             return
         }
 
-        let jobStatus: JobStatus = if let error {
-            if error is CancellationError {
-                .cancelled
+        let jobStatus: JobStatus =
+            if let error {
+                if error is CancellationError {
+                    .cancelled
+                } else {
+                    .failed
+                }
             } else {
-                .failed
+                .succeeded
             }
-        } else {
-            .succeeded
-        }
 
         let dimensions: [(String, String)] = [
             ("name", name),

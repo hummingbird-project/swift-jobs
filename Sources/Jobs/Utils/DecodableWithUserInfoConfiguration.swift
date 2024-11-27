@@ -26,7 +26,10 @@ protocol DecodableWithUserInfoConfiguration: Decodable, DecodableWithConfigurati
 extension DecodableWithUserInfoConfiguration {
     init(from decoder: Decoder) throws {
         guard let configuration = decoder.userInfo[.configuration] as? DecodingConfiguration else {
-            throw DecodingError.valueNotFound(DecodingConfiguration.self, .init(codingPath: decoder.codingPath, debugDescription: "Failed to find Decoding configuration"))
+            throw DecodingError.valueNotFound(
+                DecodingConfiguration.self,
+                .init(codingPath: decoder.codingPath, debugDescription: "Failed to find Decoding configuration")
+            )
         }
         try self.init(from: decoder, configuration: configuration)
     }
@@ -34,7 +37,7 @@ extension DecodableWithUserInfoConfiguration {
 
 extension CodingUserInfoKey {
     /// Coding UserInfo key used to store DecodableWithUserInfoConfiguration configuration
-    static var configuration: Self { return .init(rawValue: "_configuration_")! }
+    static var configuration: Self { .init(rawValue: "_configuration_")! }
 }
 
 extension JSONDecoder {

@@ -37,7 +37,7 @@ struct JobRegistry: Sendable {
     }
 
     func decode(_ buffer: ByteBuffer) throws -> any JobInstanceProtocol {
-        return try JSONDecoder().decode(AnyDecodableJob.self, from: buffer, userInfoConfiguration: self).job
+        try JSONDecoder().decode(AnyDecodableJob.self, from: buffer, userInfoConfiguration: self).job
     }
 
     func decode(jobName: String, from decoder: Decoder) throws -> any JobInstanceProtocol {
@@ -48,5 +48,5 @@ struct JobRegistry: Sendable {
         return try jobDefinitionBuilder(decoder)
     }
 
-    let builderTypeMap: NIOLockedValueBox < [String: @Sendable (Decoder) throws -> any JobInstanceProtocol]> = .init([:])
+    let builderTypeMap: NIOLockedValueBox<[String: @Sendable (Decoder) throws -> any JobInstanceProtocol]> = .init([:])
 }

@@ -9,7 +9,7 @@ let package = Package(
     name: "swift-jobs",
     platforms: [.macOS(.v14), .iOS(.v17), .tvOS(.v17)],
     products: [
-        .library(name: "Jobs", targets: ["Jobs"]),
+        .library(name: "Jobs", targets: ["Jobs"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-atomics.git", from: "1.0.0"),
@@ -34,9 +34,12 @@ let package = Package(
             swiftSettings: swiftSettings
         ),
         // test targets
-        .testTarget(name: "JobsTests", dependencies: [
-            .byName(name: "Jobs"),
-            .product(name: "Atomics", package: "swift-atomics"),
-        ]),
+        .testTarget(
+            name: "JobsTests",
+            dependencies: [
+                .byName(name: "Jobs"),
+                .product(name: "Atomics", package: "swift-atomics"),
+            ]
+        ),
     ]
 )

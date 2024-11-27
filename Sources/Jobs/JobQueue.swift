@@ -50,10 +50,13 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         let buffer = try self.queue.encode(id: id, parameters: parameters)
         let jobName = id.name
         let id = try await self.queue.push(buffer, options: options)
-        Meter(label: JobMetricsHelper.meterLabel, dimensions: [
-            ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-            ("jobID", id.description),
-        ]).increment()
+        Meter(
+            label: JobMetricsHelper.meterLabel,
+            dimensions: [
+                ("status", JobMetricsHelper.JobStatus.queued.rawValue),
+                ("jobID", id.description),
+            ]
+        ).increment()
         self.logger.debug(
             "Pushed Job",
             metadata: ["JobID": .stringConvertible(id), "JobName": .string(jobName)]
