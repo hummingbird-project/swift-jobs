@@ -47,7 +47,7 @@ public final class MemoryQueue: JobQueueDriver {
     ///   - options: Job options
     /// - Returns: Job ID
     @discardableResult public func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID {
-        return try await self.queue.push(buffer, options: options)
+        try await self.queue.push(buffer, options: options)
     }
 
     public func finished(jobId: JobID) async throws {

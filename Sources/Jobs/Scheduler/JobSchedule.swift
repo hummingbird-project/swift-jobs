@@ -95,15 +95,16 @@ public struct JobSchedule: MutableCollection, Sendable {
     }
 
     func nextJob() -> (offset: Int, element: Element)? {
-        return self.lazy.enumerated().min(by: { $0.element.nextScheduledDate < $1.element.nextScheduledDate })
+        self.lazy.enumerated().min(by: { $0.element.nextScheduledDate < $1.element.nextScheduledDate })
     }
 
     mutating func updateNextScheduledDate(jobIndex: Int) {
-        let dateFrom: Date = switch self.self[jobIndex].accuracy {
-        case .latest: .now
-        case .all: self[jobIndex].nextScheduledDate
-        default: .now
-        }
+        let dateFrom: Date =
+            switch self.self[jobIndex].accuracy {
+            case .latest: .now
+            case .all: self[jobIndex].nextScheduledDate
+            default: .now
+            }
         if let nextScheduledDate = self[jobIndex].schedule.nextDate(after: dateFrom) {
             self[jobIndex].nextScheduledDate = nextScheduledDate
         } else {
@@ -213,7 +214,7 @@ extension JobSchedule {
     public var endIndex: Index { self.elements.endIndex }
     /// Access element at specific position
     public subscript(_ index: Index) -> Element {
-        get { return self.elements[index] }
+        get { self.elements[index] }
         set { self.elements[index] = newValue }
     }
 

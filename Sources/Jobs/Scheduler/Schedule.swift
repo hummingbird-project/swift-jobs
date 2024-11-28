@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Collections
+
 #if os(Linux)
 @preconcurrency import Foundation
 #else
@@ -122,9 +123,7 @@ public struct Schedule: Sendable {
     ///   - minutes: Array of minutes if should return Dates for
     ///   - second: Second value it should return a Date at
     public static func onMinutes(_ minutes: some Collection<Int>, second: Int = 0) -> Self {
-        let parameter: Parameter = minutes.count != 1 ?
-            .selection(Deque(minutes.sorted())) :
-            .specific(minutes.first!)
+        let parameter: Parameter = minutes.count != 1 ? .selection(Deque(minutes.sorted())) : .specific(minutes.first!)
         return .init(second: .specific(second), minute: parameter)
     }
 
@@ -140,9 +139,7 @@ public struct Schedule: Sendable {
     ///   - minute: Minute value it should return a Date at
     ///   - timeZone: TimeZone to run schedule in
     public static func onHours(_ hours: some Collection<Int>, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
-        let parameter: Parameter = hours.count != 1 ?
-            .selection(Deque(hours.sorted())) :
-            .specific(hours.first!)
+        let parameter: Parameter = hours.count != 1 ? .selection(Deque(hours.sorted())) : .specific(hours.first!)
         return .init(minute: .specific(minute), hour: parameter, timeZone: timeZone)
     }
 
@@ -162,9 +159,7 @@ public struct Schedule: Sendable {
     ///   - minute: Minute value it should return a Date at
     ///   - timeZone: TimeZone to run schedule in
     public static func onDays(_ days: some Collection<Day>, hour: Int = 0, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
-        let parameter: Parameter = days.count != 1 ?
-            .selection(Deque(days.sorted())) :
-            .specific(days.first!)
+        let parameter: Parameter = days.count != 1 ? .selection(Deque(days.sorted())) : .specific(days.first!)
         return .init(minute: .specific(minute), hour: .specific(hour), day: parameter, timeZone: timeZone)
     }
 
@@ -185,9 +180,7 @@ public struct Schedule: Sendable {
     ///   - timeZone: TimeZone to run schedule in
     /// - Returns:
     public static func onDates(_ dates: some Collection<Int>, hour: Int = 0, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
-        let parameter: Parameter = dates.count != 1 ?
-            .selection(Deque(dates.sorted())) :
-            .specific(dates.first!)
+        let parameter: Parameter = dates.count != 1 ? .selection(Deque(dates.sorted())) : .specific(dates.first!)
         return .init(minute: .specific(minute), hour: .specific(hour), date: parameter, timeZone: timeZone)
     }
 
@@ -210,9 +203,7 @@ public struct Schedule: Sendable {
     ///   - timeZone: TimeZone to run schedule in
     /// - Returns:
     public static func onMonths(_ months: some Collection<Month>, date: Int, hour: Int = 0, minute: Int = 0, timeZone: TimeZone = .current) -> Self {
-        let parameter: Parameter = months.count != 1 ?
-            .selection(Deque(months.sorted())) :
-            .specific(months.first!)
+        let parameter: Parameter = months.count != 1 ? .selection(Deque(months.sorted())) : .specific(months.first!)
         return .init(minute: .specific(minute), hour: .specific(hour), date: .specific(date), month: parameter, timeZone: timeZone)
     }
 

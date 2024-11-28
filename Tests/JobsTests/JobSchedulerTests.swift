@@ -12,10 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-@testable import Jobs
 import Logging
 import ServiceLifecycle
 import XCTest
+
+@testable import Jobs
 
 final class JobSchedulerTests: XCTestCase {
     func testSchedule(start: String, expectedEnd: String, schedule: Schedule) throws {
@@ -25,7 +26,7 @@ final class JobSchedulerTests: XCTestCase {
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
         dateFormatter.timeZone = schedule.calendar.timeZone
         guard let startDate = dateFormatter.date(from: start),
-              let expectedEndDate = dateFormatter.date(from: expectedEnd)
+            let expectedEndDate = dateFormatter.date(from: expectedEnd)
         else {
             XCTFail("Failed to parse dates")
             return
@@ -68,14 +69,22 @@ final class JobSchedulerTests: XCTestCase {
     }
 
     func testDailySchedule() throws {
-        try self.testSchedule(start: "2021-06-21T21:10:15Z", expectedEnd: "2021-06-22T01:15:00Z", schedule: .daily(hour: 1, minute: 15, timeZone: .init(secondsFromGMT: 0)!))
+        try self.testSchedule(
+            start: "2021-06-21T21:10:15Z",
+            expectedEnd: "2021-06-22T01:15:00Z",
+            schedule: .daily(hour: 1, minute: 15, timeZone: .init(secondsFromGMT: 0)!)
+        )
         try self.testSchedule(start: "1999-12-31T23:59:25Z", expectedEnd: "2000-01-01T06:15:00Z", schedule: .daily(hour: 6, minute: 15))
         try self.testSchedule(start: "2024-02-28T23:59:25Z", expectedEnd: "2024-02-29T06:15:00Z", schedule: .daily(hour: 6, minute: 15))
     }
 
     func testWeeklySchedule() throws {
         try self.testSchedule(start: "2021-06-21T21:10:15Z", expectedEnd: "2021-06-27T04:00:00Z", schedule: .weekly(day: .sunday, hour: 4))
-        try self.testSchedule(start: "2024-03-19T23:59:56Z", expectedEnd: "2024-03-24T04:00:00Z", schedule: .weekly(day: .sunday, hour: 4, timeZone: .init(secondsFromGMT: 0)!))
+        try self.testSchedule(
+            start: "2024-03-19T23:59:56Z",
+            expectedEnd: "2024-03-24T04:00:00Z",
+            schedule: .weekly(day: .sunday, hour: 4, timeZone: .init(secondsFromGMT: 0)!)
+        )
         try self.testSchedule(start: "2024-03-19T23:59:56Z", expectedEnd: "2024-03-24T04:00:00Z", schedule: .weekly(day: .sunday, hour: 4))
         try self.testSchedule(start: "1999-12-31T23:59:25Z", expectedEnd: "2000-01-01T08:00:00Z", schedule: .weekly(day: .saturday, hour: 8))
     }
