@@ -101,14 +101,20 @@ public struct JobSchedule: MutableCollection, Sendable {
     mutating func updateNextScheduledDate(jobIndex: Int) {
         let dateFrom: Date =
             switch self.self[jobIndex].accuracy {
-            case .latest: .now
+            case .latest: Swift.max(.now, self[jobIndex].nextScheduledDate)
             case .all: self[jobIndex].nextScheduledDate
-            default: .now
+            default: Swift.max(.now, self[jobIndex].nextScheduledDate)
             }
         if let nextScheduledDate = self[jobIndex].schedule.nextDate(after: dateFrom) {
             self[jobIndex].nextScheduledDate = nextScheduledDate
         } else {
             self[jobIndex].nextScheduledDate = .distantFuture
+        }
+    }
+
+    mutating func setInitialNextDate(after date: Date) {
+        for index in 0..<self.count {
+            self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
         }
     }
 
@@ -141,7 +147,9 @@ public struct JobSchedule: MutableCollection, Sendable {
                 let nextScheduledDate = job.element.nextScheduledDate
                 let timeInterval = nextScheduledDate.timeIntervalSinceNow
                 do {
-                    try await Task.sleep(until: .now + .seconds(timeInterval))
+                    if timeInterval > 0 {
+                        try await Task.sleep(until: .now + .seconds(timeInterval))
+                    }
                     self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
                     return (job.element.jobParameters, nextScheduledDate)
                 } catch {
@@ -179,9 +187,7 @@ public struct JobSchedule: MutableCollection, Sendable {
                     date = .now
                 }
                 self.jobQueue.logger.debug("Last scheduled date \(date).")
-                for index in 0..<jobSchedule.count {
-                    jobSchedule[index].nextScheduledDate = jobSchedule[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
-                }
+                jobSchedule.setInitialNextDate(after: date)
             } catch {
                 self.jobQueue.logger.error("Failed to get last scheduled job date.")
             }
