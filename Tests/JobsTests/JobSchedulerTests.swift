@@ -167,11 +167,14 @@ final class JobSchedulerTests: XCTestCase {
 
     func testScheduleTimeZone() throws {
         let startDate = ISO8601DateFormatter().date(from: "2021-06-21T21:10:15Z")!
-        var schedule = Schedule.daily(hour: 4, timeZone: .init(secondsFromGMT: 0)!)
+        var schedule = Schedule.daily(hour: 4, timeZone: .init(secondsFromGMT: 7200)!)
         let scheduledDate = try XCTUnwrap(schedule.nextDate(after: startDate))
-        let dateComponents = Calendar.current.dateComponents([.hour], from: scheduledDate)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .init(secondsFromGMT: 0)!
+
+        let dateComponents = calendar.dateComponents([.hour], from: scheduledDate)
         // check timezone difference is the same as the difference in the schedule
-        XCTAssertEqual(TimeZone.current.secondsFromGMT(), (dateComponents.hour! - 4) * 3600)
+        XCTAssertEqual((dateComponents.hour! - 4) * 3600, -7200)
     }
 
     func testJobSchedule() throws {
@@ -189,9 +192,8 @@ final class JobSchedulerTests: XCTestCase {
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
         let startDate = dateFormatter.date(from: "2024-04-14T02:00:00Z")!
-        for jobIndex in schedule.startIndex..<schedule.endIndex {
-            schedule[jobIndex].nextScheduledDate = schedule[jobIndex].schedule.nextDate(after: startDate)!
-        }
+        schedule.setInitialNextDate(after: startDate)
+
         // first two jobs should be Job1
         var job = try XCTUnwrap(schedule.nextJob())
         for _ in 0..<2 {
@@ -212,6 +214,49 @@ final class JobSchedulerTests: XCTestCase {
         job = try XCTUnwrap(schedule.nextJob())
         schedule.updateNextScheduledDate(jobIndex: job.offset)
         XCTAssert(job.element.jobParameters is Job2)
+    }
+
+    func testJobScheduledAtSameTimeSequence() async throws {
+        struct Job1: JobParameters {
+            static let jobName = "Job1"
+        }
+        struct Job2: JobParameters {
+            static let jobName = "Job2"
+        }
+        var jobSchedule = JobSchedule([
+            .init(job: Job1(), schedule: .everyMinute(second: 45)),
+            .init(job: Job2(), schedule: .everyMinute(second: 45)),
+        ])
+        jobSchedule.setInitialNextDate(after: .now)
+
+        let job = try XCTUnwrap(jobSchedule.nextJob())
+        jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
+        XCTAssert(job.element.jobParameters is Job1)
+        let job2 = try XCTUnwrap(jobSchedule.nextJob())
+        jobSchedule.updateNextScheduledDate(jobIndex: job2.offset)
+        XCTAssert(job2.element.jobParameters is Job2)
+
+    }
+
+    func testJobScheduledAfterLongWait() async throws {
+        struct Job1: JobParameters {
+            static let jobName = "Job1"
+        }
+        struct Job2: JobParameters {
+            static let jobName = "Job2"
+        }
+        var jobSchedule = JobSchedule([
+            .init(job: Job1(), schedule: .onMinutes([10, 45]))
+        ])
+        jobSchedule.setInitialNextDate(after: .now - 30 * 24 * 60 * 60)
+
+        let job = try XCTUnwrap(jobSchedule.nextJob())
+        // first job scheduled date should be before now
+        XCTAssert(job.element.nextScheduledDate < .now)
+        jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
+        let job2 = try XCTUnwrap(jobSchedule.nextJob())
+        // second job scheduled date should be after now
+        XCTAssert(job2.element.nextScheduledDate > .now)
     }
 
     func testJobScheduleSequence() async throws {
