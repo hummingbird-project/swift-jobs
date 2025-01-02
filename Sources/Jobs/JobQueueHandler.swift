@@ -17,6 +17,7 @@ import Logging
 import Metrics
 import NIOCore
 import ServiceLifecycle
+import Tracing
 
 /// Object handling a single job queue
 final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
@@ -127,25 +128,26 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         ).recordSeconds(jobQueuedDuration)
 
         logger.debug("Starting Job")
+        let linkContext = job.serviceContext()
+        await withSpan(job.name, ofKind: .server) { span in
+            if let linkContext {
+                span.addLink(.init(context: linkContext, attributes: .init()))
+            }
+            span.updateAttributes { attributes in
+                attributes["job.id"] = queuedJob.id.description
+                attributes["job.attempt"] = (job.attempts ?? 0) + 1
+            }
 
-        do {
             do {
-                try await job.execute(context: .init(logger: logger))
-            } catch let error as CancellationError {
-                logger.debug("Job cancelled")
-                // Job failed is called but due to the fact the task is cancelled, depending on the
-                // job queue driver, the process of failing the job might not occur because itself
-                // might get cancelled
-                try await self.queue.failed(jobId: queuedJob.id, error: error)
-                JobMetricsHelper.updateMetrics(
-                    for: job.name,
-                    startTime: startTime,
-                    error: error
-                )
-                return
-            } catch {
-                if job.didFail {
-                    logger.debug("Job: failed")
+                do {
+                    try await job.execute(context: .init(logger: logger))
+                } catch let error as CancellationError {
+                    logger.debug("Job cancelled")
+                    span.recordError(error)
+                    span.attributes["job.failed"] = true
+                    // Job failed is called but due to the fact the task is cancelled, depending on the
+                    // job queue driver, the process of failing the job might not occur because itself
+                    // might get cancelled
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
                     JobMetricsHelper.updateMetrics(
                         for: job.name,
@@ -153,53 +155,66 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                         error: error
                     )
                     return
-                }
+                } catch {
+                    span.recordError(error)
+                    if job.didFail {
+                        logger.debug("Job: failed")
+                        span.attributes["job.failed"] = true
+                        try await self.queue.failed(jobId: queuedJob.id, error: error)
+                        JobMetricsHelper.updateMetrics(
+                            for: job.name,
+                            startTime: startTime,
+                            error: error
+                        )
+                        return
+                    }
 
-                let attempts = (job.attempts ?? 0) + 1
+                    let attempts = (job.attempts ?? 0) + 1
 
-                let delay = self.calculateBackoff(attempts: attempts)
+                    let delay = self.calculateBackoff(attempts: attempts)
 
-                // remove from processing lists
-                try await self.queue.finished(jobId: queuedJob.id)
-                // push new job in the queue
-                let newJobId = try await self.queue.push(
-                    self.queue.encode(job, attempts: attempts),
-                    options: .init(
-                        delayUntil: delay
+                    // remove from processing lists
+                    try await self.queue.finished(jobId: queuedJob.id)
+                    // push new job in the queue
+                    let newJobId = try await self.queue.push(
+                        self.queue.encode(job, attempts: attempts),
+                        options: .init(
+                            delayUntil: delay
+                        )
                     )
-                )
 
-                // Guard against negative queue values, this is needed because we call
-                // the job queue directly in the retrying step
-                Meter(
-                    label: JobMetricsHelper.meterLabel,
-                    dimensions: [
-                        ("status", JobMetricsHelper.JobStatus.queued.rawValue)
-                    ]
-                ).increment()
+                    // Guard against negative queue values, this is needed because we call
+                    // the job queue directly in the retrying step
+                    Meter(
+                        label: JobMetricsHelper.meterLabel,
+                        dimensions: [
+                            ("status", JobMetricsHelper.JobStatus.queued.rawValue)
+                        ]
+                    ).increment()
 
-                JobMetricsHelper.updateMetrics(
-                    for: job.name,
-                    startTime: startTime,
-                    retrying: true
-                )
-                logger.debug(
-                    "Retrying Job",
-                    metadata: [
-                        "JobID": .stringConvertible(newJobId),
-                        "JobName": .string(job.name),
-                        "attempts": .stringConvertible(attempts),
-                        "delayedUntil": .stringConvertible(delay),
-                    ]
-                )
-                return
+                    JobMetricsHelper.updateMetrics(
+                        for: job.name,
+                        startTime: startTime,
+                        retrying: true
+                    )
+                    logger.debug(
+                        "Retrying Job",
+                        metadata: [
+                            "JobID": .stringConvertible(newJobId),
+                            "JobName": .string(job.name),
+                            "attempts": .stringConvertible(attempts),
+                            "delayedUntil": .stringConvertible(delay),
+                        ]
+                    )
+                    return
+                }
+                logger.debug("Finished Job")
+                try await self.queue.finished(jobId: queuedJob.id)
+                JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime)
+            } catch {
+                logger.debug("Failed to set job status")
+                JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, error: error)
             }
-            logger.debug("Finished Job")
-            try await self.queue.finished(jobId: queuedJob.id)
-            JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime)
-        } catch {
-            logger.debug("Failed to set job status")
-            JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, error: error)
         }
     }
 
