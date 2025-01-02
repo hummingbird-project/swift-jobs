@@ -53,8 +53,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         Meter(
             label: JobMetricsHelper.meterLabel,
             dimensions: [
-                ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-                ("jobID", id.description),
+                ("status", JobMetricsHelper.JobStatus.queued.rawValue)
             ]
         ).increment()
         self.logger.debug(

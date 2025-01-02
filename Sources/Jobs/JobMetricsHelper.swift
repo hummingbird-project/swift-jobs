@@ -36,14 +36,12 @@ internal enum JobMetricsHelper {
     /// Update job metrics
     /// - Parameters:
     ///   - name: String Job name
-    ///   - jobID: String is only used for the completed meter
     ///   - startTime: UInt64 when the job started
     ///   - error: Error? job error
     ///   - retrying: Bool if the job is being retried
     ///
     static func updateMetrics(
         for name: String,
-        jobID: String,
         startTime: UInt64,
         error: Error? = nil,
         retrying: Bool = false
@@ -56,8 +54,7 @@ internal enum JobMetricsHelper {
         Meter(
             label: JobMetricsHelper.meterLabel,
             dimensions: [
-                ("status", JobMetricsHelper.JobStatus.completed.rawValue),
-                ("jobID", jobID),
+                ("status", JobMetricsHelper.JobStatus.completed.rawValue)
             ]
         ).increment()
 

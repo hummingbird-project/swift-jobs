@@ -72,16 +72,14 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         Meter(
             label: JobMetricsHelper.meterLabel,
             dimensions: [
-                ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-                ("jobID", queuedJob.id.description),
+                ("status", JobMetricsHelper.JobStatus.queued.rawValue)
             ]
         ).decrement()
 
         Meter(
             label: JobMetricsHelper.meterLabel,
             dimensions: [
-                ("status", JobMetricsHelper.JobStatus.processing.rawValue),
-                ("jobID", queuedJob.id.description),
+                ("status", JobMetricsHelper.JobStatus.processing.rawValue)
             ]
         ).increment()
 
@@ -89,8 +87,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             Meter(
                 label: JobMetricsHelper.meterLabel,
                 dimensions: [
-                    ("status", JobMetricsHelper.JobStatus.processing.rawValue),
-                    ("jobID", queuedJob.id.description),
+                    ("status", JobMetricsHelper.JobStatus.processing.rawValue)
                 ]
             ).decrement()
         }
@@ -104,8 +101,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             Meter(
                 label: JobMetricsHelper.discardedMeter,
                 dimensions: [
-                    ("reason", "INVALID_JOB_ID"),
-                    ("jobID", queuedJob.id.description),
+                    ("reason", "INVALID_JOB_ID")
                 ]
             ).increment()
             return
@@ -115,8 +111,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             Meter(
                 label: JobMetricsHelper.discardedMeter,
                 dimensions: [
-                    ("reason", "DECODE_FAILED"),
-                    ("jobID", queuedJob.id.description),
+                    ("reason", "DECODE_FAILED")
                 ]
             ).increment()
             return
@@ -144,7 +139,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 try await self.queue.failed(jobId: queuedJob.id, error: error)
                 JobMetricsHelper.updateMetrics(
                     for: job.name,
-                    jobID: queuedJob.id.description,
                     startTime: startTime,
                     error: error
                 )
@@ -155,7 +149,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
                     JobMetricsHelper.updateMetrics(
                         for: job.name,
-                        jobID: queuedJob.id.description,
                         startTime: startTime,
                         error: error
                     )
@@ -181,20 +174,20 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 Meter(
                     label: JobMetricsHelper.meterLabel,
                     dimensions: [
-                        ("status", JobMetricsHelper.JobStatus.queued.rawValue),
-                        ("jobID", newJobId.description),
+                        ("status", JobMetricsHelper.JobStatus.queued.rawValue)
                     ]
                 ).increment()
 
                 JobMetricsHelper.updateMetrics(
                     for: job.name,
-                    jobID: queuedJob.id.description,
                     startTime: startTime,
                     retrying: true
                 )
                 logger.debug(
                     "Retrying Job",
                     metadata: [
+                        "JobID": .stringConvertible(newJobId),
+                        "JobName": .string(job.name),
                         "attempts": .stringConvertible(attempts),
                         "delayedUntil": .stringConvertible(delay),
                     ]
@@ -203,10 +196,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             }
             logger.debug("Finished Job")
             try await self.queue.finished(jobId: queuedJob.id)
-            JobMetricsHelper.updateMetrics(for: job.name, jobID: queuedJob.id.description, startTime: startTime)
+            JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime)
         } catch {
             logger.debug("Failed to set job status")
-            JobMetricsHelper.updateMetrics(for: job.name, jobID: queuedJob.id.description, startTime: startTime, error: error)
+            JobMetricsHelper.updateMetrics(for: job.name, startTime: startTime, error: error)
         }
     }
 
