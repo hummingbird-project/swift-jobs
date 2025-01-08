@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Foundation
+import Tracing
 
 /// Protocol for a Job
 protocol JobInstanceProtocol: Sendable {
@@ -28,6 +29,8 @@ protocol JobInstanceProtocol: Sendable {
     var attempts: Int? { get }
     /// Job parameters
     var parameters: Parameters { get }
+    /// Trace context
+    var traceContext: [String: String]? { get }
     /// Function to execute the job
     func execute(context: JobContext) async throws
 }
@@ -46,6 +49,16 @@ extension JobInstanceProtocol {
     /// If job failed after n number of attempts
     public var didFail: Bool {
         (attempts ?? 0) >= maxRetryCount
+    }
+
+    /// Extract trace context from job instance data
+    func serviceContext() -> ServiceContext? {
+        if let traceContext {
+            var serviceContext = ServiceContext.topLevel
+            InstrumentationSystem.tracer.extract(traceContext, into: &serviceContext, using: DictionaryExtractor())
+            return serviceContext
+        }
+        return nil
     }
 }
 
@@ -66,6 +79,8 @@ struct JobInstance<Parameters: Codable & Sendable>: JobInstanceProtocol {
     var queuedAt: Date { self.data.queuedAt }
     /// Number of attempts so far
     var attempts: Int? { self.data.attempts ?? 0 }
+    /// Trace context
+    var traceContext: [String: String]? { self.data.traceContext }
     /// Job parameters
     var parameters: Parameters { self.data.parameters }
 
@@ -87,11 +102,45 @@ struct JobInstanceData<Parameters: Codable & Sendable>: Codable {
     let queuedAt: Date
     /// Number of attempts so far
     let attempts: Int?
+    /// trace context
+    let traceContext: [String: String]?
+
+    init(
+        parameters: Parameters,
+        queuedAt: Date,
+        attempts: Int?
+    ) {
+        self.parameters = parameters
+        self.queuedAt = queuedAt
+        self.attempts = attempts
+        var traceContext: [String: String]? = nil
+        if let serviceContext = ServiceContext.current {
+            var tempTraceContext = [String: String]()
+            InstrumentationSystem.tracer.inject(serviceContext, into: &tempTraceContext, using: DictionaryInjector())
+            if tempTraceContext.count > 0 {
+                traceContext = tempTraceContext
+            }
+        }
+        self.traceContext = traceContext
+    }
 
     // keep JSON strings small to improve decode speed
     private enum CodingKeys: String, CodingKey {
         case parameters = "p"
         case queuedAt = "q"
         case attempts = "a"
+        case traceContext = "t"
+    }
+}
+
+private struct DictionaryInjector: Injector {
+    func inject(_ value: String, forKey key: String, into carrier: inout [String: String]) {
+        carrier[key] = value
+    }
+}
+
+private struct DictionaryExtractor: Extractor {
+    func extract(key: String, from carrier: [String: String]) -> String? {
+        carrier[key]
     }
 }
