@@ -16,12 +16,16 @@ import Metrics
 
 /// OTEL labels and dimensions
 internal enum JobMetricsHelper {
-    /// Metrics label
-    static let metricsLabel: String = "swift.jobs"
-    /// Meter label for Processsing, Queued, Failed and Completed
+    /// Counter label
+    static let counterLabel: String = "swift.jobs"
+    /// Job duration timer label
+    static let timerLabel: String = "swift.jobs.duration"
+    /// Job queued timer label
+    static let queuedTimerLabel: String = "swift.jobs.queued.duration"
+    /// Meter label for Processsing, Queued
     static let meterLabel: String = "swift.jobs.meter"
-    /// Meter label for discarded jobs
-    static let discardedMeter: String = "swift.jobs.discarded"
+    /// Counter label for discarded jobs
+    static let discardedCounter: String = "swift.jobs.discarded"
     /// Used for the histogram which can be useful to see by job status
     enum JobStatus: String, Codable, Sendable {
         case queued
@@ -46,21 +50,9 @@ internal enum JobMetricsHelper {
         error: Error? = nil,
         retrying: Bool = false
     ) {
-        // This meter can be used to display total job
-        // Or decrement processing vector in Prometheus UI or Grafana
-        // with something like count(swif_jobs_meter{status="processing"}
-        // unless on(jobID) (swif_jobs_meter{status="queued"})
-        // or (swif_jobs_meter{status="completed")) or vector(0)
-        Meter(
-            label: JobMetricsHelper.meterLabel,
-            dimensions: [
-                ("status", JobMetricsHelper.JobStatus.completed.rawValue)
-            ]
-        ).increment()
-
         if retrying {
             Counter(
-                label: Self.metricsLabel,
+                label: Self.counterLabel,
                 dimensions: [("name", name), ("status", JobStatus.retried.rawValue)]
             ).increment()
             return
@@ -84,14 +76,14 @@ internal enum JobMetricsHelper {
 
         // Calculate job execution time
         Timer(
-            label: "\(Self.metricsLabel).duration",
+            label: Self.timerLabel,
             dimensions: dimensions,
             preferredDisplayUnit: .seconds
         ).recordNanoseconds(DispatchTime.now().uptimeNanoseconds - startTime)
 
         // Increment job counter base on status
         Counter(
-            label: Self.metricsLabel,
+            label: Self.counterLabel,
             dimensions: dimensions
         ).increment()
     }

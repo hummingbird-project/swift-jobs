@@ -99,8 +99,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         } catch let error as JobQueueError where error == .unrecognisedJobId {
             logger.debug("Failed to find Job with ID while decoding")
             try await self.queue.failed(jobId: queuedJob.id, error: error)
-            Meter(
-                label: JobMetricsHelper.discardedMeter,
+            Counter(
+                label: JobMetricsHelper.discardedCounter,
                 dimensions: [
                     ("reason", "INVALID_JOB_ID")
                 ]
@@ -109,8 +109,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         } catch {
             logger.debug("Job failed to decode")
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
-            Meter(
-                label: JobMetricsHelper.discardedMeter,
+            Counter(
+                label: JobMetricsHelper.discardedCounter,
                 dimensions: [
                     ("reason", "DECODE_FAILED")
                 ]
@@ -122,7 +122,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         // Calculate wait time from queued to processing
         let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
         Timer(
-            label: "\(JobMetricsHelper.metricsLabel).queued.duration",
+            label: JobMetricsHelper.queuedTimerLabel,
             dimensions: [("name", job.name)],
             preferredDisplayUnit: .seconds
         ).recordSeconds(jobQueuedDuration)
