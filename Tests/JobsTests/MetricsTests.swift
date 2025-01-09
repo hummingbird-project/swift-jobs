@@ -346,10 +346,10 @@ final class MetricsTests: XCTestCase {
             XCTAssertEqual($0, "test")
         }
 
-        let queuedMeter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.discarded"] as? TestMeter)
-        XCTAssertEqual(queuedMeter.dimensions.count, 1)
-        XCTAssertEqual(queuedMeter.dimensions[0].0, "reason")
-        XCTAssertEqual(queuedMeter.dimensions[0].1, "DECODE_FAILED")
+        let discardedCounter = try XCTUnwrap(Self.testMetrics.counters.withLockedValue { $0 }["swift.jobs.discarded"] as? TestCounter)
+        XCTAssertEqual(discardedCounter.dimensions.count, 1)
+        XCTAssertEqual(discardedCounter.dimensions[0].0, "reason")
+        XCTAssertEqual(discardedCounter.dimensions[0].1, "DECODE_FAILED")
     }
 
     func testErrorRetryAndThenSucceed() async throws {
