@@ -74,7 +74,7 @@ final class JobMiddlewareTests: XCTestCase {
         await observers.popJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
         XCTAssertEqual(observer1.popped, true)
         XCTAssertEqual(observer2.popped, true)
-        try await observers.handleJob(job: FakeJobInstance(), context: .init(logger: .init(label: "Test"))) { _, _ in }
+        try await observers.handleJob(job: FakeJobInstance(), context: .init(jobInstanceID: "0", logger: .init(label: "Test"))) { _, _ in }
         XCTAssertEqual(observer1.handled, true)
         XCTAssertEqual(observer2.handled, true)
     }
