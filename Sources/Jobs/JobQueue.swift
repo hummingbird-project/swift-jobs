@@ -57,12 +57,6 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         let jobName = id.name
         let instanceID = try await self.queue.push(buffer, options: options)
         await self.handler.middleware.pushJob(jobID: id, parameters: parameters, jobInstanceID: instanceID.description)
-        Meter(
-            label: JobMetricsHelper.meterLabel,
-            dimensions: [
-                ("status", JobMetricsHelper.JobStatus.queued.rawValue)
-            ]
-        ).increment()
         self.logger.debug(
             "Pushed Job",
             metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(jobName)]

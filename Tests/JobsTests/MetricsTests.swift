@@ -264,7 +264,7 @@ final class MetricsTests: XCTestCase {
 
     func testDispatchJobCounter() async throws {
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 5)
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) { MetricsJobMiddleware() }
         let job = JobDefinition(id: "testBasic") { (parameters: Int, context) in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
@@ -308,7 +308,7 @@ final class MetricsTests: XCTestCase {
 
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
-        let jobQueue = JobQueue(.memory, numWorkers: 2, logger: Logger(label: "JobsTests"))
+        let jobQueue = JobQueue(.memory, numWorkers: 2, logger: Logger(label: "JobsTests")) { MetricsJobMiddleware() }
         jobQueue.registerJob(id: jobIdentifer2) { parameters, _ in
             string.withLockedValue { $0 = parameters }
             expectation.fulfill()
@@ -342,7 +342,7 @@ final class MetricsTests: XCTestCase {
                 maxJitter: 0.25,
                 minJitter: 0.01
             )
-        )
+        ) { MetricsJobMiddleware() }
         jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
 
             defer {
@@ -390,7 +390,7 @@ final class MetricsTests: XCTestCase {
                 maxJitter: 0.01,
                 minJitter: 0.0
             )
-        )
+        ) { MetricsJobMiddleware() }
         jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
             expectation.fulfill()
             throw FailedError()
@@ -420,7 +420,7 @@ final class MetricsTests: XCTestCase {
 
     func testJobExecutionTime() async throws {
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) { MetricsJobMiddleware() }
         let job = JobDefinition(id: "testBasic") { (parameters: Int, context) in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(5))
@@ -442,7 +442,7 @@ final class MetricsTests: XCTestCase {
 
     func testJobQueuedTime() async throws {
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) { MetricsJobMiddleware() }
         let job = JobDefinition(id: "testBasic") { (parameters: Int, context) in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(parameters))
