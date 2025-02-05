@@ -25,9 +25,12 @@ public final class MemoryQueue: JobQueueDriver {
     fileprivate let queue: Internal
     private let onFailedJob: @Sendable (QueuedJob<JobID>, any Error) -> Void
 
+    public let jobRegistry: JobRegistry
+
     /// Initialise In memory job queue
     public init(onFailedJob: @escaping @Sendable (QueuedJob<JobID>, any Error) -> Void = { _, _ in }) {
         self.queue = .init()
+        self.jobRegistry = .init()
         self.onFailedJob = onFailedJob
     }
 

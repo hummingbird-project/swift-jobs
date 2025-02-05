@@ -42,27 +42,56 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == QueuedJ
     func getMetadata(_ key: String) async throws -> ByteBuffer?
     /// set job queue metadata
     func setMetadata(key: String, value: ByteBuffer) async throws
+    /// Register job
+
+    /// job registry
+    var jobRegistry: JobRegistry { get }
 }
 
 extension JobQueueDriver {
     // default version of onInit doing nothing
     public func onInit() async throws {}
 
-    func encode(_ job: some JobInstanceProtocol, attempts: Int) throws -> ByteBuffer {
-        let data = EncodableJob(
-            id: job.id,
-            parameters: job.parameters,
-            queuedAt: job.queuedAt,
-            attempts: attempts
-        )
-        return try JSONEncoder().encodeAsByteBuffer(data, allocator: ByteBufferAllocator())
+    ///  Register job
+    /// - Parameters:
+    ///   - id: Job Identifier
+    ///   - maxRetryCount: Maximum number of times job is retried before being flagged as failed
+    ///   - execute: Job code
+    func registerJob(_ job: JobDefinition<some Codable & Sendable>) {
+        self.jobRegistry.registerJob(job: job)
     }
 
-    func encode<Parameters: Codable & Sendable>(
+    func push<Parameters: Sendable & Codable>(
         id: JobIdentifier<Parameters>,
-        parameters: Parameters
-    ) throws -> ByteBuffer {
-        let jobRequest = EncodableJob(id: id, parameters: parameters, queuedAt: .now, attempts: 0)
-        return try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator())
+        parameters: Parameters,
+        options: JobOptions = .init()
+    ) async throws -> JobID {
+        let buffer = try self.jobRegistry.encode(id: id, parameters: parameters)
+        let id = try await self.push(buffer, options: options)
+        return id
+    }
+
+    func push(
+        job: some JobInstanceProtocol,
+        attempts: Int,
+        options: JobOptions = .init()
+    ) async throws -> JobID {
+        let buffer = try self.jobRegistry.encode(job, attempts: attempts)
+        let id = try await self.push(buffer, options: options)
+        return id
+    }
+
+    func decode(queuedJob: QueuedJob<JobID>, logger: Logger) async throws -> any JobInstanceProtocol {
+        do {
+            return try self.jobRegistry.decode(queuedJob.jobBuffer)
+        } catch let error as JobQueueError where error == .unrecognisedJobId {
+            logger.debug("Failed to find Job with ID while decoding")
+            try await self.failed(jobId: queuedJob.id, error: error)
+            throw error
+        } catch {
+            logger.debug("Job failed to decode")
+            try await self.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
+            throw JobQueueError.decodeJobFailed
+        }
     }
 }

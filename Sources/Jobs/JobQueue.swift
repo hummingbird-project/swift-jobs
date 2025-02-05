@@ -47,9 +47,8 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         parameters: Parameters,
         options: JobOptions = .init()
     ) async throws -> Queue.JobID {
-        let buffer = try self.queue.encode(id: id, parameters: parameters)
         let jobName = id.name
-        let id = try await self.queue.push(buffer, options: options)
+        let instanceID = try await self.queue.push(id: id, parameters: parameters, options: options)
         Meter(
             label: JobMetricsHelper.meterLabel,
             dimensions: [
@@ -58,9 +57,9 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         ).increment()
         self.logger.debug(
             "Pushed Job",
-            metadata: ["JobID": .stringConvertible(id), "JobName": .string(jobName)]
+            metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(jobName)]
         )
-        return id
+        return instanceID
     }
 
     ///  Register job type
@@ -85,7 +84,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     /// - Parameters:
     ///   - job: Job definition
     public func registerJob(_ job: JobDefinition<some Codable & Sendable>) {
-        self.handler.registerJob(job)
+        self.queue.registerJob(job)
     }
 
     ///  Run queue handler

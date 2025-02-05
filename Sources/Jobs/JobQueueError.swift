@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 /// Job Queue Error type
-public struct JobQueueError: Error, Equatable {
+public struct JobQueueError: Error, Equatable, CustomStringConvertible {
     /// failed to decode job. Possibly because it hasn't been registered or data that was expected
     /// is not available
     public static var decodeJobFailed: Self { .init(.decodeJobFailed) }
@@ -32,5 +32,13 @@ public struct JobQueueError: Error, Equatable {
 
     private init(_ error: QueueError) {
         self.error = error
+    }
+
+    public var description: String {
+        switch self.error {
+        case .decodeJobFailed: return "DecodeJobFailed"
+        case .unrecognisedJobId: return "UnrecognisedJobID"
+        case .dequeueError: return "DequeueError"
+        }
     }
 }

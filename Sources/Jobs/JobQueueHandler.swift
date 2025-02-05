@@ -25,17 +25,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         self.queue = queue
         self.numWorkers = numWorkers
         self.logger = logger
-        self.jobRegistry = .init()
         self.options = options
-    }
-
-    ///  Register job
-    /// - Parameters:
-    ///   - id: Job Identifier
-    ///   - maxRetryCount: Maximum number of times job is retried before being flagged as failed
-    ///   - execute: Job code
-    func registerJob(_ job: JobDefinition<some Codable & Sendable>) {
-        self.jobRegistry.registerJob(job: job)
     }
 
     func run() async throws {
@@ -95,24 +85,12 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
         let job: any JobInstanceProtocol
         do {
-            job = try self.jobRegistry.decode(queuedJob.jobBuffer)
-        } catch let error as JobQueueError where error == .unrecognisedJobId {
-            logger.debug("Failed to find Job with ID while decoding")
-            try await self.queue.failed(jobId: queuedJob.id, error: error)
-            Counter(
-                label: JobMetricsHelper.discardedCounter,
-                dimensions: [
-                    ("reason", "INVALID_JOB_ID")
-                ]
-            ).increment()
-            return
+            job = try await self.queue.decode(queuedJob: queuedJob, logger: logger)
         } catch {
-            logger.debug("Job failed to decode")
-            try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
             Counter(
                 label: JobMetricsHelper.discardedCounter,
                 dimensions: [
-                    ("reason", "DECODE_FAILED")
+                    ("reason", "\(error)")
                 ]
             ).increment()
             return
@@ -176,12 +154,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     // remove from processing lists
                     try await self.queue.finished(jobId: queuedJob.id)
                     // push new job in the queue
-                    let newJobId = try await self.queue.push(
-                        self.queue.encode(job, attempts: attempts),
-                        options: .init(
-                            delayUntil: delay
-                        )
-                    )
+                    let newJobId = try await self.queue.push(job: job, attempts: attempts, options: .init(delayUntil: delay))
 
                     // Guard against negative queue values, this is needed because we call
                     // the job queue directly in the retrying step
@@ -218,7 +191,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         }
     }
 
-    private let jobRegistry: JobRegistry
     private let queue: Queue
     private let options: JobQueueOptions
     private let numWorkers: Int

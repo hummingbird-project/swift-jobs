@@ -16,7 +16,7 @@ import Foundation
 import Tracing
 
 /// Protocol for a Job
-protocol JobInstanceProtocol: Sendable {
+public protocol JobInstanceProtocol: Sendable {
     /// Parameters job requries
     associatedtype Parameters: Codable & Sendable
     /// Job Type identifier

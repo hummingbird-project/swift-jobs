@@ -17,7 +17,7 @@ import NIOConcurrencyHelpers
 import NIOCore
 
 /// Registry for job types
-struct JobRegistry: Sendable {
+public struct JobRegistry: Sendable {
     ///  Register job
     /// - Parameters:
     ///   - id: Job Identifier
@@ -36,16 +36,38 @@ struct JobRegistry: Sendable {
         }
     }
 
+    /// Decode from ByteBuffer
     func decode(_ buffer: ByteBuffer) throws -> any JobInstanceProtocol {
         try JSONDecoder().decode(AnyDecodableJob.self, from: buffer, userInfoConfiguration: self).job
     }
 
+    /// Decode job given a job name
     func decode(jobName: String, from decoder: Decoder) throws -> any JobInstanceProtocol {
         let jobDefinitionBuilder = try self.builderTypeMap.withLockedValue {
             guard let job = $0[jobName] else { throw JobQueueError.unrecognisedJobId }
             return job
         }
         return try jobDefinitionBuilder(decoder)
+    }
+
+    /// Encode a job instance (for retrying)
+    func encode(_ job: some JobInstanceProtocol, attempts: Int) throws -> ByteBuffer {
+        let data = EncodableJob(
+            id: job.id,
+            parameters: job.parameters,
+            queuedAt: job.queuedAt,
+            attempts: attempts
+        )
+        return try JSONEncoder().encodeAsByteBuffer(data, allocator: ByteBufferAllocator())
+    }
+
+    /// Encode a job
+    func encode<Parameters: Codable & Sendable>(
+        id: JobIdentifier<Parameters>,
+        parameters: Parameters
+    ) throws -> ByteBuffer {
+        let jobRequest = EncodableJob(id: id, parameters: parameters, queuedAt: .now, attempts: 0)
+        return try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator())
     }
 
     let builderTypeMap: NIOLockedValueBox<[String: @Sendable (Decoder) throws -> any JobInstanceProtocol]> = .init([:])
