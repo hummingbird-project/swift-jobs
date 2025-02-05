@@ -21,12 +21,13 @@ import Tracing
 
 /// Object handling a single job queue
 final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
-    init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueOptions) {
+    init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueOptions, middleware: any JobMiddleware) {
         self.queue = queue
         self.numWorkers = numWorkers
         self.logger = logger
         self.jobRegistry = .init()
         self.options = options
+        self.middleware = middleware
     }
 
     ///  Register job
@@ -96,6 +97,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         let job: any JobInstanceProtocol
         do {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
+            await self.middleware.popJob(result: .success(job), jobInstanceID: queuedJob.id.description)
         } catch let error as JobQueueError {
             if let jobName = error.jobName {
                 logger[metadataKey: "JobName"] = .string(jobName)
@@ -112,6 +114,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 logger.debug("Job failed to decode")
             }
             try await self.queue.failed(jobId: queuedJob.id, error: error)
+            await self.middleware.popJob(result: .failure(error), jobInstanceID: queuedJob.id.description)
             Counter(
                 label: JobMetricsHelper.discardedCounter,
                 dimensions: [
@@ -122,6 +125,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         } catch {
             logger.debug("Job failed to decode")
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError(code: .decodeJobFailed, jobName: nil))
+            await self.middleware.popJob(
+                result: .failure(JobQueueError(code: .decodeJobFailed, jobName: nil)),
+                jobInstanceID: queuedJob.id.description
+            )
             Counter(
                 label: JobMetricsHelper.discardedCounter,
                 dimensions: [
@@ -141,8 +148,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         ).recordSeconds(jobQueuedDuration)
 
         logger.debug("Starting Job")
-        let linkContext = job.serviceContext()
         await withSpan(job.name, ofKind: .server) { span in
+            let linkContext = job.serviceContext()
             if let linkContext {
                 span.addLink(.init(context: linkContext, attributes: .init()))
             }
@@ -153,7 +160,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
             do {
                 do {
-                    try await job.execute(context: .init(logger: logger))
+                    let context = JobContext(logger: logger)
+                    try await self.middleware.handleJob(job: job, context: context) { job, context in
+                        try await job.execute(context: context)
+                    }
                 } catch let error as CancellationError {
                     logger.debug("Job cancelled")
                     span.recordError(error)
@@ -235,6 +245,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     private let queue: Queue
     private let options: JobQueueOptions
     private let numWorkers: Int
+    let middleware: any JobMiddleware
     let logger: Logger
 }
 
