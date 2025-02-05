@@ -31,9 +31,15 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     let handler: JobQueueHandler<Queue>
     let initializationComplete: Trigger
 
-    public init(_ queue: Queue, numWorkers: Int = 1, logger: Logger, options: JobQueueOptions = .init()) {
+    public init(
+        _ queue: Queue,
+        numWorkers: Int = 1,
+        logger: Logger,
+        options: JobQueueOptions = .init(),
+        @JobMiddlewareBuilder middleware: () -> some JobMiddleware = { NullJobMiddleware() }
+    ) {
         self.queue = queue
-        self.handler = .init(queue: queue, numWorkers: numWorkers, logger: logger, options: options)
+        self.handler = .init(queue: queue, numWorkers: numWorkers, logger: logger, options: options, middleware: middleware())
         self.initializationComplete = .init()
     }
 
@@ -49,7 +55,8 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     ) async throws -> Queue.JobID {
         let buffer = try self.queue.encode(id: id, parameters: parameters)
         let jobName = id.name
-        let id = try await self.queue.push(buffer, options: options)
+        let instanceID = try await self.queue.push(buffer, options: options)
+        await self.handler.middleware.pushJob(jobID: id, parameters: parameters, jobInstanceID: instanceID.description)
         Meter(
             label: JobMetricsHelper.meterLabel,
             dimensions: [
@@ -58,9 +65,9 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         ).increment()
         self.logger.debug(
             "Pushed Job",
-            metadata: ["JobID": .stringConvertible(id), "JobName": .string(jobName)]
+            metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(jobName)]
         )
-        return id
+        return instanceID
     }
 
     ///  Register job type
