@@ -14,7 +14,6 @@
 
 import Foundation
 import Logging
-import Metrics
 import NIOCore
 import NIOFoundationCompat
 import ServiceLifecycle

@@ -14,10 +14,8 @@
 
 import Foundation
 import Logging
-import Metrics
 import NIOCore
 import ServiceLifecycle
-import Tracing
 
 /// Object handling a single job queue
 final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
@@ -104,70 +102,55 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         logger[metadataKey: "JobName"] = .string(job.name)
 
         logger.debug("Starting Job")
-        await withSpan(job.name, ofKind: .server) { span in
-            let linkContext = job.serviceContext()
-            if let linkContext {
-                span.addLink(.init(context: linkContext, attributes: .init()))
-            }
-            span.updateAttributes { attributes in
-                attributes["job.id"] = queuedJob.id.description
-                attributes["job.attempt"] = (job.attempts ?? 0) + 1
-            }
-
+        do {
             do {
-                do {
-                    let context = JobContext(logger: logger)
-                    try await self.middleware.handleJob(job: job, context: context) { job, context in
-                        try await job.execute(context: context)
-                    }
-                } catch let error as CancellationError {
-                    logger.debug("Job cancelled")
-                    span.recordError(error)
-                    span.attributes["job.failed"] = true
-                    // Job failed is called but due to the fact the task is cancelled, depending on the
-                    // job queue driver, the process of failing the job might not occur because itself
-                    // might get cancelled
+                let context = JobContext(jobInstanceID: queuedJob.id.description, logger: logger)
+                try await self.middleware.handleJob(job: job, context: context) { job, context in
+                    try await job.execute(context: context)
+                }
+            } catch let error as CancellationError {
+                logger.debug("Job cancelled")
+                // Job failed is called but due to the fact the task is cancelled, depending on the
+                // job queue driver, the process of failing the job might not occur because itself
+                // might get cancelled
+                try await self.queue.failed(jobId: queuedJob.id, error: error)
+                return
+            } catch {
+                if job.didFail {
+                    logger.debug("Job: failed")
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
                     return
-                } catch {
-                    span.recordError(error)
-                    if job.didFail {
-                        logger.debug("Job: failed")
-                        span.attributes["job.failed"] = true
-                        try await self.queue.failed(jobId: queuedJob.id, error: error)
-                        return
-                    }
-
-                    let attempts = (job.attempts ?? 0) + 1
-
-                    let delay = self.calculateBackoff(attempts: attempts)
-
-                    // remove from processing lists
-                    try await self.queue.finished(jobId: queuedJob.id)
-                    // push new job in the queue
-                    let newJobId = try await self.queue.push(
-                        self.queue.encode(job, attempts: attempts),
-                        options: .init(
-                            delayUntil: delay
-                        )
-                    )
-
-                    logger.debug(
-                        "Retrying Job",
-                        metadata: [
-                            "JobID": .stringConvertible(newJobId),
-                            "JobName": .string(job.name),
-                            "attempts": .stringConvertible(attempts),
-                            "delayedUntil": .stringConvertible(delay),
-                        ]
-                    )
-                    return
                 }
-                logger.debug("Finished Job")
+
+                let attempts = (job.attempts ?? 0) + 1
+
+                let delay = self.calculateBackoff(attempts: attempts)
+
+                // remove from processing lists
                 try await self.queue.finished(jobId: queuedJob.id)
-            } catch {
-                logger.debug("Failed to set job status")
+                // push new job in the queue
+                let newJobId = try await self.queue.push(
+                    self.queue.encode(job, attempts: attempts),
+                    options: .init(
+                        delayUntil: delay
+                    )
+                )
+
+                logger.debug(
+                    "Retrying Job",
+                    metadata: [
+                        "JobID": .stringConvertible(newJobId),
+                        "JobName": .string(job.name),
+                        "attempts": .stringConvertible(attempts),
+                        "delayedUntil": .stringConvertible(delay),
+                    ]
+                )
+                return
             }
+            logger.debug("Finished Job")
+            try await self.queue.finished(jobId: queuedJob.id)
+        } catch {
+            logger.debug("Failed to set job status")
         }
     }
 
