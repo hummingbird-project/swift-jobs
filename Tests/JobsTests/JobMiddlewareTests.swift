@@ -37,7 +37,7 @@ final class JobMiddlewareTests: XCTestCase {
                 self.pushed = true
             }
 
-            func onPopJob(result: Result<any JobInstanceProtocol, any Error>, jobInstanceID: String) async {
+            func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {
                 self.popped = true
             }
 

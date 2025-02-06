@@ -67,7 +67,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///   - result: Result of popping the job from the queue (Either job instance or error)
     ///   - jobInstanceID: Job instance identifer
     @inlinable
-    public func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {
+    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {
         // Decrement the current queue by 1
         Meter(
             label: Self.meterLabel,
@@ -79,7 +79,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
         switch result {
         case .failure(let error):
             switch error {
-            case let error as JobQueueError where error == .unrecognisedJobId:
+            case .unrecognisedJobId:
                 Counter(
                     label: Self.discardedCounter,
                     dimensions: [

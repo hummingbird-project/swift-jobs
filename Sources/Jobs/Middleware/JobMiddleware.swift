@@ -25,7 +25,7 @@ public protocol JobMiddleware: Sendable {
     /// - Parameters:
     ///   - result: Result of popping the job from the queue (Either job instance or error)
     ///   - jobInstanceID: Job instance identifer
-    func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async
+    func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async
     /// Handle job and pass it onto next handler
     ///
     /// - Parameters:
@@ -44,7 +44,7 @@ public struct NullJobMiddleware: JobMiddleware {
     public func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {}
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
-    public func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {}
+    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {}
     /// Handle job and pass it onto next handler (works like middleware in Hummingbird)
     @inlinable
     public func handleJob(
@@ -68,7 +68,7 @@ struct OptionalJobMiddleware<Middleware: JobMiddleware>: JobMiddleware {
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
-    func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {
+    func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {
         if let middleware {
             await middleware.onPopJob(result: result, jobInstanceID: jobInstanceID)
         }
@@ -100,7 +100,7 @@ struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
-    func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {
+    func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {
         await self.middleware1.onPopJob(result: result, jobInstanceID: jobInstanceID)
         await self.middleware2.onPopJob(result: result, jobInstanceID: jobInstanceID)
     }
