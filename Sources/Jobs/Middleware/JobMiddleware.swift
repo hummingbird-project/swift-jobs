@@ -19,13 +19,13 @@ public protocol JobMiddleware: Sendable {
     ///   - jobID: Job type identifier
     ///   - parameters: Job parameters
     ///   - jobInstanceID: Job instance identifier
-    func pushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async
+    func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async
     /// Job has been popped off the queue and decoded (with decode errors reported)
     ///
     /// - Parameters:
     ///   - result: Result of popping the job from the queue (Either job instance or error)
     ///   - jobInstanceID: Job instance identifer
-    func popJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async
+    func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async
     /// Handle job and pass it onto next handler
     ///
     /// - Parameters:
@@ -41,10 +41,10 @@ public struct NullJobMiddleware: JobMiddleware {
 
     /// Job has been pushed onto the queue
     @inlinable
-    public func pushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {}
+    public func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {}
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
-    public func popJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {}
+    public func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {}
     /// Handle job and pass it onto next handler (works like middleware in Hummingbird)
     @inlinable
     public func handleJob(
@@ -61,16 +61,16 @@ struct OptionalJobMiddleware<Middleware: JobMiddleware>: JobMiddleware {
     let middleware: Middleware?
 
     @inlinable
-    func pushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+    func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
         if let middleware {
-            await middleware.pushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
+            await middleware.onPushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
         }
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
-    func popJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {
+    func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {
         if let middleware {
-            await middleware.popJob(result: result, jobInstanceID: jobInstanceID)
+            await middleware.onPopJob(result: result, jobInstanceID: jobInstanceID)
         }
     }
     /// Process job and pass it onto next handler (works like middleware in Hummingbird)
@@ -94,15 +94,15 @@ struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>
     let middleware2: Middleware2
 
     @inlinable
-    func pushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
-        await self.middleware1.pushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
-        await self.middleware2.pushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
+    func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+        await self.middleware1.onPushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
+        await self.middleware2.onPushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
-    func popJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {
-        await self.middleware1.popJob(result: result, jobInstanceID: jobInstanceID)
-        await self.middleware2.popJob(result: result, jobInstanceID: jobInstanceID)
+    func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {
+        await self.middleware1.onPopJob(result: result, jobInstanceID: jobInstanceID)
+        await self.middleware2.onPopJob(result: result, jobInstanceID: jobInstanceID)
     }
     /// Process job and pass it onto next handler (works like middleware in Hummingbird)
     @inlinable

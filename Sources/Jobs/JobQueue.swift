@@ -55,7 +55,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         let buffer = try self.queue.encode(id: id, parameters: parameters)
         let jobName = id.name
         let instanceID = try await self.queue.push(buffer, options: options)
-        await self.handler.middleware.pushJob(jobID: id, parameters: parameters, jobInstanceID: instanceID.description)
+        await self.handler.middleware.onPushJob(jobID: id, parameters: parameters, jobInstanceID: instanceID.description)
         self.logger.debug(
             "Pushed Job",
             metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(jobName)]

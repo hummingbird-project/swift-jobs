@@ -17,9 +17,9 @@ import Tracing
 
 public struct TracingJobMiddleware: JobMiddleware {
     @inlinable
-    public func pushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {}
+    public func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {}
     @inlinable
-    public func popJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {}
+    public func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {}
 
     @inlinable
     public func handleJob(
