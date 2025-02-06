@@ -52,7 +52,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///   - parameters: Job parameters
     ///   - jobInstanceID: Job instance identifier
     @inlinable
-    public func pushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+    public func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
         Meter(
             label: Self.meterLabel,
             dimensions: [
@@ -67,7 +67,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///   - result: Result of popping the job from the queue (Either job instance or error)
     ///   - jobInstanceID: Job instance identifer
     @inlinable
-    public func popJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {
+    public func onPopJob(result: Result<any JobInstanceProtocol, Error>, jobInstanceID: String) async {
         // Decrement the current queue by 1
         Meter(
             label: Self.meterLabel,

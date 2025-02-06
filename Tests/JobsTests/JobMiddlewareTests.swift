@@ -33,11 +33,11 @@ final class JobMiddlewareTests: XCTestCase {
                 self.handled = false
             }
 
-            func pushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+            func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
                 self.pushed = true
             }
 
-            func popJob(result: Result<any JobInstanceProtocol, any Error>, jobInstanceID: String) async {
+            func onPopJob(result: Result<any JobInstanceProtocol, any Error>, jobInstanceID: String) async {
                 self.popped = true
             }
 
@@ -68,10 +68,10 @@ final class JobMiddlewareTests: XCTestCase {
             TestJobMiddleware()
             observer2
         }
-        await observers.pushJob(jobID: JobIdentifier<String>("test"), parameters: "Test", jobInstanceID: "0")
+        await observers.onPushJob(jobID: JobIdentifier<String>("test"), parameters: "Test", jobInstanceID: "0")
         XCTAssertEqual(observer1.pushed, true)
         XCTAssertEqual(observer2.pushed, true)
-        await observers.popJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
+        await observers.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
         XCTAssertEqual(observer1.popped, true)
         XCTAssertEqual(observer2.popped, true)
         try await observers.handleJob(job: FakeJobInstance(), context: .init(jobInstanceID: "0", logger: .init(label: "Test"))) { _, _ in }
