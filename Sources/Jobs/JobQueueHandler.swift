@@ -91,6 +91,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             await self.middleware.onPopJob(result: .failure(error), jobInstanceID: queuedJob.id.description)
             return
         } catch {
+            logger[metadataKey: "Error"] = .string("\(error)")
             logger.debug("Job failed to decode")
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError(code: .decodeJobFailed, jobName: nil))
             await self.middleware.onPopJob(
