@@ -78,22 +78,12 @@ public struct MetricsJobMiddleware: JobMiddleware {
 
         switch result {
         case .failure(let error):
-            switch error {
-            case .unrecognisedJobId:
-                Counter(
-                    label: Self.discardedCounter,
-                    dimensions: [
-                        ("reason", "INVALID_JOB_ID")
-                    ]
-                ).increment()
-            default:
-                Counter(
-                    label: Self.discardedCounter,
-                    dimensions: [
-                        ("reason", "DECODE_FAILED")
-                    ]
-                ).increment()
-            }
+            Counter(
+                label: Self.discardedCounter,
+                dimensions: [
+                    ("reason", error.code.description)
+                ]
+            ).increment()
 
         case .success(let job):
             // Calculate wait time from queued to processing

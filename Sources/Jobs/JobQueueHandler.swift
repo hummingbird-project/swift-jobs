@@ -71,7 +71,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         let job: any JobInstanceProtocol
         do {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
-            await self.middleware.popJob(result: .success(job), jobInstanceID: queuedJob.id.description)
+            await self.middleware.onPopJob(result: .success(job), jobInstanceID: queuedJob.id.description)
         } catch let error as JobQueueError {
             if let jobName = error.jobName {
                 logger[metadataKey: "JobName"] = .string(jobName)
@@ -93,7 +93,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         } catch {
             logger.debug("Job failed to decode")
             try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError(code: .decodeJobFailed, jobName: nil))
-            await self.middleware.popJob(
+            await self.middleware.onPopJob(
                 result: .failure(JobQueueError(code: .decodeJobFailed, jobName: nil)),
                 jobInstanceID: queuedJob.id.description
             )
