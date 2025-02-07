@@ -96,23 +96,36 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         let job: any JobInstanceProtocol
         do {
             job = try self.jobRegistry.decode(queuedJob.jobBuffer)
-        } catch let error as JobQueueError where error == .unrecognisedJobId {
-            logger.debug("Failed to find Job with ID while decoding")
+        } catch let error as JobQueueError {
+            if let jobName = error.jobName {
+                logger[metadataKey: "JobName"] = .string(jobName)
+            }
+            if let details = error.details {
+                logger[metadataKey: "Error"] = .string(details)
+            }
+            switch error.code {
+            case .decodeJobFailed:
+                logger.debug("Job failed to decode")
+            case .unrecognisedJobId:
+                logger.debug("Failed to find Job with ID while decoding")
+            default:
+                logger.debug("Job failed to decode")
+            }
             try await self.queue.failed(jobId: queuedJob.id, error: error)
             Counter(
                 label: JobMetricsHelper.discardedCounter,
                 dimensions: [
-                    ("reason", "INVALID_JOB_ID")
+                    ("reason", error.code.description)
                 ]
             ).increment()
             return
         } catch {
             logger.debug("Job failed to decode")
-            try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError.decodeJobFailed)
+            try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError(code: .decodeJobFailed, jobName: nil))
             Counter(
                 label: JobMetricsHelper.discardedCounter,
                 dimensions: [
-                    ("reason", "DECODE_FAILED")
+                    ("reason", JobQueueError.ErrorCode.decodeJobFailed.description)
                 ]
             ).increment()
             return

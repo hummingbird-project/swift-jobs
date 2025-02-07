@@ -42,7 +42,7 @@ struct JobRegistry: Sendable {
 
     func decode(jobName: String, from decoder: Decoder) throws -> any JobInstanceProtocol {
         let jobDefinitionBuilder = try self.builderTypeMap.withLockedValue {
-            guard let job = $0[jobName] else { throw JobQueueError.unrecognisedJobId }
+            guard let job = $0[jobName] else { throw JobQueueError(code: .unrecognisedJobId, jobName: jobName) }
             return job
         }
         return try jobDefinitionBuilder(decoder)

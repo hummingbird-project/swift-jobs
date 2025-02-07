@@ -130,7 +130,6 @@ final class JobsTests: XCTestCase {
             )
         )
         jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
-
             defer {
                 currentJobTryCount.withLockedValue {
                     $0 += 1
@@ -301,7 +300,7 @@ final class JobsTests: XCTestCase {
 
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: logger)
         jobQueue.registerJob(id: jobIdentifer2) { parameters, _ in
             string.withLockedValue { $0 = parameters }
             expectation.fulfill()
