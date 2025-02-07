@@ -15,5 +15,8 @@
 import Logging
 
 public struct JobContext {
+    /// Job instance identifier
+    public let jobInstanceID: String
+    /// Logger
     public let logger: Logger
 }

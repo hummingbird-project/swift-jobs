@@ -16,7 +16,7 @@ import Foundation
 import Tracing
 
 /// Protocol for a Job
-protocol JobInstanceProtocol: Sendable {
+public protocol JobInstanceProtocol: Sendable {
     /// Parameters job requries
     associatedtype Parameters: Codable & Sendable
     /// Job Type identifier
@@ -52,7 +52,7 @@ extension JobInstanceProtocol {
     }
 
     /// Extract trace context from job instance data
-    func serviceContext() -> ServiceContext? {
+    public func serviceContext() -> ServiceContext? {
         if let traceContext {
             var serviceContext = ServiceContext.topLevel
             InstrumentationSystem.tracer.extract(traceContext, into: &serviceContext, using: DictionaryExtractor())
