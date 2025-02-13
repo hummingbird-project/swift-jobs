@@ -262,30 +262,6 @@ final class MetricsTests: XCTestCase {
         #endif
     }
 
-    /// Helper function for test a server
-    ///
-    /// Creates test client, runs test function abd ensures everything is
-    /// shutdown correctly
-    public func testJobQueue(
-        _ jobQueue: Service,
-        _ test: () async throws -> Void
-    ) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            let serviceGroup = ServiceGroup(
-                configuration: .init(
-                    services: [jobQueue],
-                    gracefulShutdownSignals: [.sigterm, .sigint],
-                    logger: Logger(label: "JobQueueService")
-                )
-            )
-            group.addTask {
-                try await serviceGroup.run()
-            }
-            try await test()
-            await serviceGroup.triggerGracefulShutdown()
-        }
-    }
-
     func testDispatchJobCounter() async throws {
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 5)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
@@ -295,7 +271,7 @@ final class MetricsTests: XCTestCase {
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: job.id, parameters: 1)
             try await jobQueue.push(id: job.id, parameters: 2)
             try await jobQueue.push(id: job.id, parameters: 3)
@@ -337,7 +313,7 @@ final class MetricsTests: XCTestCase {
             string.withLockedValue { $0 = parameters }
             expectation.fulfill()
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer1, parameters: 2)
             try await jobQueue.push(id: jobIdentifer2, parameters: "test")
             await fulfillment(of: [expectation], timeout: 5)
@@ -381,7 +357,7 @@ final class MetricsTests: XCTestCase {
                 throw FailedError()
             }
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer, parameters: 0)
             let meter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
             XCTAssertEqual(meter.values.withLockedValue { $0 }.count, 1)
@@ -419,7 +395,7 @@ final class MetricsTests: XCTestCase {
             expectation.fulfill()
             throw FailedError()
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer, parameters: 0)
 
             await self.wait(for: [expectation], timeout: 5)
@@ -451,7 +427,7 @@ final class MetricsTests: XCTestCase {
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: job.id, parameters: 1)
             await self.wait(for: [expectation], timeout: 5)
         }
@@ -473,7 +449,7 @@ final class MetricsTests: XCTestCase {
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             // add two jobs. First job ensures the second job is queued for more than 50ms
             try await jobQueue.push(id: job.id, parameters: 50)
             try await jobQueue.push(id: job.id, parameters: 5)
