@@ -15,6 +15,7 @@
 import Foundation
 import Jobs
 import Logging
+import NIOConcurrencyHelpers
 import Tracing
 import XCTest
 
@@ -37,10 +38,11 @@ final class TracingTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(parameters.sleep))
         }
         let jobID = try await testJobQueue(jobQueue) {
-            try await jobQueue.push(TestParameters(sleep: 10))
+            let jobID = try await jobQueue.push(TestParameters(sleep: 10))
+            await fulfillment(of: [expectation], timeout: 1)
+            return jobID
         }
 
-        await fulfillment(of: [expectation], timeout: 1)
         let span = try XCTUnwrap(tracer.spans.first)
 
         XCTAssertEqual(span.operationName, "TestTracing")
@@ -50,6 +52,121 @@ final class TracingTests: XCTestCase {
 
         XCTAssertSpanAttributesEqual(
             span.attributes,
+            [
+                "job.id": "\(jobID.uuidString)",
+                "job.attempt": 1,
+            ]
+        )
+    }
+
+    func testTracingErrorAndRetry() async throws {
+        struct TestParameters: JobParameters {
+            static var jobName: String = "TestTracingErrors"
+        }
+        struct FailedError: Error {}
+        let expectation = expectation(description: "Expected span to be ended.")
+        expectation.expectedFulfillmentCount = 2
+        let tracer = TestTracer()
+        tracer.onEndSpan = { _ in expectation.fulfill() }
+        InstrumentationSystem.bootstrapInternal(tracer)
+
+        let failJob = NIOLockedValueBox(true)
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .debug
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: logger, options: .init(maxJitter: 0.25, minJitter: 0.01))
+        jobQueue.registerJob(parameters: TestParameters.self, maxRetryCount: 4) { parameters, context in
+            if failJob.withLockedValue({
+                let value = $0
+                $0 = false
+                return value
+            }) {
+                throw FailedError()
+            }
+        }
+        let jobID = try await testJobQueue(jobQueue) {
+            let jobID = try await jobQueue.push(TestParameters())
+            await fulfillment(of: [expectation], timeout: 5)
+            return jobID
+        }
+
+        let span = try XCTUnwrap(tracer.spans.first)
+
+        XCTAssertEqual(span.operationName, "TestTracingErrors")
+        XCTAssertEqual(span.kind, .server)
+        XCTAssertNil(span.status)
+        let error = try XCTUnwrap(span.recordedErrors.first)
+
+        XCTAssert(error.0 is FailedError)
+
+        XCTAssertSpanAttributesEqual(
+            span.attributes,
+            [
+                "job.id": "\(jobID.uuidString)",
+                "job.attempt": 1,
+            ]
+        )
+        let span2 = try XCTUnwrap(tracer.spans.last)
+
+        XCTAssertEqual(span2.operationName, "TestTracingErrors")
+        XCTAssertEqual(span2.kind, .server)
+        XCTAssertNil(span2.status)
+        XCTAssert(span2.recordedErrors.isEmpty)
+        XCTAssertEqual(span2.attributes.get("job.attempt"), SpanAttribute.int64(2))
+    }
+
+    func testParentSpan() async throws {
+        struct TestParameters: JobParameters {
+            static var jobName: String = "TestParentSpan"
+            let sleep: Double
+        }
+        struct JobTestKey: ServiceContextKey {
+            typealias Value = String
+            static var nameOverride: String? { "job-test-key" }
+        }
+        let jobExpectation = expectation(description: "Expecyt job to finish")
+        let tracerExpectation = expectation(description: "Expected span to be ended.")
+        tracerExpectation.expectedFulfillmentCount = 2
+        let tracer = TestTracer()
+        tracer.onEndSpan = { _ in tracerExpectation.fulfill() }
+        InstrumentationSystem.bootstrapInternal(tracer)
+
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
+            context.logger.info("Parameters=\(parameters)")
+            try await Task.sleep(for: .milliseconds(parameters.sleep))
+            jobExpectation.fulfill()
+        }
+
+        var serviceContext = ServiceContext.current ?? ServiceContext.topLevel
+        serviceContext.traceID = UUID().uuidString
+        let jobID = try await withSpan("ParentSpan", context: serviceContext, ofKind: .server) { _ in
+            let jobID = try await testJobQueue(jobQueue) {
+                let jobID = try await jobQueue.push(TestParameters(sleep: 1))
+                await fulfillment(of: [jobExpectation], timeout: 5)
+                return jobID
+            }
+            return jobID
+        }
+        await fulfillment(of: [tracerExpectation], timeout: 5)
+
+        let span = try XCTUnwrap(tracer.spans.first)
+
+        XCTAssertEqual(span.operationName, "ParentSpan")
+        XCTAssertEqual(span.kind, .server)
+        XCTAssertNil(span.status)
+        XCTAssertTrue(span.recordedErrors.isEmpty)
+
+        let span2 = try XCTUnwrap(tracer.spans.last)
+
+        XCTAssertEqual(span2.operationName, "TestParentSpan")
+        XCTAssertEqual(span2.kind, .server)
+        XCTAssertNil(span2.status)
+        XCTAssertTrue(span2.recordedErrors.isEmpty)
+        let link = try XCTUnwrap(span2.links.first)
+        XCTAssertEqual(link.context.traceID, serviceContext.traceID)
+
+        XCTAssertSpanAttributesEqual(
+            span2.attributes,
             [
                 "job.id": "\(jobID.uuidString)",
                 "job.attempt": 1,
