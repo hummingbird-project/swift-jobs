@@ -27,30 +27,6 @@ extension XCTestExpectation {
 }
 
 final class JobsTests: XCTestCase {
-    /// Helper function for test a server
-    ///
-    /// Creates test client, runs test function abd ensures everything is
-    /// shutdown correctly
-    public func testJobQueue(
-        _ jobQueue: Service,
-        _ test: () async throws -> Void
-    ) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            let serviceGroup = ServiceGroup(
-                configuration: .init(
-                    services: [jobQueue],
-                    gracefulShutdownSignals: [.sigterm, .sigint],
-                    logger: Logger(label: "JobQueueService")
-                )
-            )
-            group.addTask {
-                try await serviceGroup.run()
-            }
-            try await test()
-            await serviceGroup.triggerGracefulShutdown()
-        }
-    }
-
     func testBasic() async throws {
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 10)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
@@ -62,7 +38,7 @@ final class JobsTests: XCTestCase {
         jobQueue.registerJob(job)
         jobQueue.registerJob(id: .test) { _, _ in
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: job.id, parameters: 1)
             try await jobQueue.push(id: job.id, parameters: 2)
             try await jobQueue.push(id: job.id, parameters: 3)
@@ -95,7 +71,7 @@ final class JobsTests: XCTestCase {
             expectation.fulfill()
             runningJobCounter.wrappingDecrement(by: 1, ordering: .relaxed)
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer, parameters: 1)
             try await jobQueue.push(id: jobIdentifer, parameters: 2)
             try await jobQueue.push(id: jobIdentifer, parameters: 3)
@@ -141,7 +117,7 @@ final class JobsTests: XCTestCase {
                 throw FailedError()
             }
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer, parameters: 0)
             await fulfillment(of: [expectation], timeout: 5)
         }
@@ -168,7 +144,7 @@ final class JobsTests: XCTestCase {
             expectation.fulfill()
             throw FailedError()
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer, parameters: 0)
 
             await fulfillment(of: [expectation], timeout: 5)
@@ -195,7 +171,7 @@ final class JobsTests: XCTestCase {
                 delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
             }
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
             try await jobQueue.push(id: job1, parameters: delayedJobParameterValue, options: .init(delayUntil: Date.now.addingTimeInterval(1)))
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
@@ -221,7 +197,7 @@ final class JobsTests: XCTestCase {
             XCTAssertEqual(parameters.message, "Hello!")
             expectation.fulfill()
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer, parameters: .init(id: 23, message: "Hello!"))
 
             await fulfillment(of: [expectation], timeout: 5)
@@ -241,7 +217,7 @@ final class JobsTests: XCTestCase {
             XCTAssertEqual(parameters.message, "Hello!")
             expectation.fulfill()
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(TestJobParameters(id: 23, message: "Hello!"))
 
             await fulfillment(of: [expectation], timeout: 5)
@@ -305,7 +281,7 @@ final class JobsTests: XCTestCase {
             string.withLockedValue { $0 = parameters }
             expectation.fulfill()
         }
-        try await self.testJobQueue(jobQueue) {
+        try await testJobQueue(jobQueue) {
             try await jobQueue.push(id: jobIdentifer1, parameters: 2)
             try await jobQueue.push(id: jobIdentifer2, parameters: "test")
             await fulfillment(of: [expectation], timeout: 5)
