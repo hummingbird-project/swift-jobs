@@ -16,6 +16,8 @@ import Foundation
 import Tracing
 
 public struct TracingJobMiddleware: JobMiddleware {
+    public init() {}
+
     @inlinable
     public func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {}
     @inlinable

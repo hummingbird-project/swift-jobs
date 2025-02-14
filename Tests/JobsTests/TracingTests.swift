@@ -32,7 +32,9 @@ final class TracingTests: XCTestCase {
         tracer.onEndSpan = { _ in expectation.fulfill() }
         InstrumentationSystem.bootstrapInternal(tracer)
 
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) {
+            TracingJobMiddleware()
+        }
         jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(parameters.sleep))
@@ -73,7 +75,9 @@ final class TracingTests: XCTestCase {
         let failJob = NIOLockedValueBox(true)
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: logger, options: .init(maxJitter: 0.25, minJitter: 0.01))
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: logger, options: .init(maxJitter: 0.25, minJitter: 0.01)) {
+            TracingJobMiddleware()
+        }
         jobQueue.registerJob(parameters: TestParameters.self, maxRetryCount: 4) { parameters, context in
             if failJob.withLockedValue({
                 let value = $0
@@ -130,7 +134,9 @@ final class TracingTests: XCTestCase {
         tracer.onEndSpan = { _ in tracerExpectation.fulfill() }
         InstrumentationSystem.bootstrapInternal(tracer)
 
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) {
+            TracingJobMiddleware()
+        }
         jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(parameters.sleep))
