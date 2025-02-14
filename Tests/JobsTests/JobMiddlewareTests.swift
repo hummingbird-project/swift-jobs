@@ -22,35 +22,36 @@ final class JobMiddlewareTests: XCTestCase {
         build()
     }
 
-    func testResultBuilderWithTwoObservers() async throws {
-        final class TestJobMiddleware: JobMiddleware, @unchecked Sendable {
-            var pushed: Bool
-            var popped: Bool
-            var handled: Bool
-            init() {
-                self.pushed = false
-                self.popped = false
-                self.handled = false
-            }
-
-            func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
-                self.pushed = true
-            }
-
-            func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {
-                self.popped = true
-            }
-
-            func handleJob(
-                job: any JobInstanceProtocol,
-                context: JobContext,
-                next: (any JobInstanceProtocol, JobContext) async throws -> Void
-            ) async throws {
-                self.handled = true
-                try await next(job, context)
-            }
-
+    final class TestJobMiddleware: JobMiddleware, @unchecked Sendable {
+        var pushed: Bool
+        var popped: Bool
+        var handled: Bool
+        init() {
+            self.pushed = false
+            self.popped = false
+            self.handled = false
         }
+
+        func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+            self.pushed = true
+        }
+
+        func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {
+            self.popped = true
+        }
+
+        func handleJob(
+            job: any JobInstanceProtocol,
+            context: JobContext,
+            next: (any JobInstanceProtocol, JobContext) async throws -> Void
+        ) async throws {
+            self.handled = true
+            try await next(job, context)
+        }
+
+    }
+
+    func testResultBuilderWithTwoMiddleware() async throws {
         struct FakeJobInstance: JobInstanceProtocol {
             let id = JobIdentifier<String>("fake")
             let parameters = "Fake parameters"
@@ -77,5 +78,73 @@ final class JobMiddlewareTests: XCTestCase {
         try await observers.handleJob(job: FakeJobInstance(), context: .init(jobInstanceID: "0", logger: .init(label: "Test"))) { _, _ in }
         XCTAssertEqual(observer1.handled, true)
         XCTAssertEqual(observer2.handled, true)
+    }
+
+    func testResultBuildeOptionalMiddleware() async throws {
+        func testIf(
+            _ first: Bool
+        ) async throws {
+            struct FakeJobInstance: JobInstanceProtocol {
+                let id = JobIdentifier<String>("fake")
+                let parameters = "Fake parameter"
+                let maxRetryCount = 1
+                let queuedAt = Date.now
+                let attempts: Int? = 0
+                let traceContext: [String: String]? = nil
+
+                func execute(context: JobContext) async throws {}
+            }
+            let middleware1 = TestJobMiddleware()
+            let middlewareChain = buildJobMiddleware {
+                if first {
+                    middleware1
+                }
+            }
+            await middlewareChain.onPushJob(jobID: JobIdentifier<String>("test"), parameters: "Test", jobInstanceID: "0")
+            XCTAssertEqual(middleware1.pushed, first == true)
+            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
+            XCTAssertEqual(middleware1.popped, first == true)
+            try await middlewareChain.handleJob(job: FakeJobInstance(), context: .init(jobInstanceID: "0", logger: .init(label: "Test"))) { _, _ in }
+            XCTAssertEqual(middleware1.handled, first == true)
+        }
+        try await testIf(true)
+        try await testIf(false)
+    }
+
+    func testResultBuilderIfElseMiddleware() async throws {
+        func testEitherOr(
+            first: Bool
+        ) async throws {
+            struct FakeJobInstance: JobInstanceProtocol {
+                let id = JobIdentifier<String>("fake")
+                let parameters = "Fake parameter"
+                let maxRetryCount = 1
+                let queuedAt = Date.now
+                let attempts: Int? = 0
+                let traceContext: [String: String]? = nil
+
+                func execute(context: JobContext) async throws {}
+            }
+            let middleware1 = TestJobMiddleware()
+            let middleware2 = TestJobMiddleware()
+            let middlewareChain = buildJobMiddleware {
+                if first {
+                    middleware1
+                } else {
+                    middleware2
+                }
+            }
+            await middlewareChain.onPushJob(jobID: JobIdentifier<String>("test"), parameters: "Test", jobInstanceID: "0")
+            XCTAssertEqual(middleware1.pushed, first == true)
+            XCTAssertEqual(middleware2.pushed, first != true)
+            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
+            XCTAssertEqual(middleware1.popped, first == true)
+            XCTAssertEqual(middleware2.popped, first != true)
+            try await middlewareChain.handleJob(job: FakeJobInstance(), context: .init(jobInstanceID: "0", logger: .init(label: "Test"))) { _, _ in }
+            XCTAssertEqual(middleware1.handled, first == true)
+            XCTAssertEqual(middleware2.handled, first != true)
+        }
+        try await testEitherOr(first: true)
+        try await testEitherOr(first: false)
     }
 }
