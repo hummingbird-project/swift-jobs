@@ -189,7 +189,12 @@ public struct JobSchedule: MutableCollection, Sendable {
                 self.jobQueue.logger.debug("Last scheduled date \(date).")
                 jobSchedule.setInitialNextDate(after: date)
             } catch {
-                self.jobQueue.logger.error("Failed to get last scheduled job date.")
+                self.jobQueue.logger.error(
+                    "Failed to get last scheduled job date.",
+                    metadata: [
+                        "error": "\(String(reflecting: error))"
+                    ]
+                )
             }
             let scheduledJobSequence = JobSequence(
                 jobSchedule: jobSchedule,
@@ -200,7 +205,12 @@ public struct JobSchedule: MutableCollection, Sendable {
                     _ = try await job.job.push(to: self.jobQueue)
                     try await self.jobQueue.setMetadata(key: .jobScheduleLastDate, value: job.date)
                 } catch {
-                    self.jobQueue.logger.debug("Failed: to schedule job")
+                    self.jobQueue.logger.error(
+                        "Failed: to schedule job",
+                        metadata: [
+                            "error": "\(String(reflecting: error))"
+                        ]
+                    )
                 }
             }
         }
