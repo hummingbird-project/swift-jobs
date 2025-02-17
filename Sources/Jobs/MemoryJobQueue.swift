@@ -104,11 +104,9 @@ public final class MemoryQueue: JobQueueDriver {
                     return nil
                 }
                 if let request = queue.popFirst() {
-                    if let date = request.options.delayUntil {
-                        guard date <= Date.now else {
-                            self.queue.append(request)
-                            continue
-                        }
+                    guard request.options.delayUntil <= Date.now else {
+                        self.queue.append(request)
+                        continue
                     }
 
                     self.pendingJobs[request.job.id] = request.job.jobBuffer
