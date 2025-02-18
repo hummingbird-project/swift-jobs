@@ -111,10 +111,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 }
             } catch let error as CancellationError {
                 logger.debug("Job cancelled")
-                // Job failed is called but due to the fact the task is cancelled, depending on the
-                // job queue driver, the process of failing the job might not occur because itself
-                // might get cancelled
-                try await self.queue.failed(jobId: queuedJob.id, error: error)
+                // We need to wrap the failed call in a unstructured Task to stop propagation of
+                // Task cancellation to the `queue.fail()` call. We are calling `get` on the Task
+                // as soon as we create it so can guarantee the Task is done when we leave the
+                // function.
+                try await Task {
+                    try await self.queue.failed(jobId: queuedJob.id, error: error)
+                }.get()
                 return
             } catch {
                 if job.didFail {
