@@ -26,11 +26,7 @@ internal struct AnyDecodableJob: DecodableWithUserInfoConfiguration, Sendable {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "No keys found."))
         }
         let childDecoder = try container.superDecoder(forKey: key)
-        do {
-            self.job = try register.decode(jobName: key.stringValue, from: childDecoder)
-        } catch {
-            throw JobQueueError(code: .decodeJobFailed, jobName: key.stringValue, details: "\(error)")
-        }
+        self.job = try register.decode(jobName: key.stringValue, from: childDecoder)
     }
 
     /// Job data

@@ -2,7 +2,7 @@
 //
 // This source file is part of the Hummingbird server framework project
 //
-// Copyright (c) 2021-2024 the Hummingbird authors
+// Copyright (c) 2021-2025 the Hummingbird authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -16,31 +16,52 @@ import Foundation
 import Logging
 import NIOCore
 
+/// Type returned from iterating a JobQueueDriver
+///
+/// The `JobQueueResult`` can hold either a job instance or the error created when iterating
+/// the job queue. If the error is returned in `JobQueueResult` then the job queue handler will
+/// handle the error. If the job queue throws an error when it is iterated then the job queue
+/// will throw that error.
+public struct JobQueueResult<JobID: Sendable>: Sendable {
+    public let id: JobID
+    public let result: Result<any JobInstanceProtocol, JobQueueError>
+
+    ///  Initialize JobQueueResult
+    /// - Parameters:
+    ///   - id: id of job
+    ///   - result: Result (job instance or error)
+    public init(id: JobID, result: Result<any JobInstanceProtocol, JobQueueError>) {
+        self.id = id
+        self.result = result
+    }
+}
+
 /// Job queue protocol.
 ///
 /// Defines how to push and pop job data off a queue
-public protocol JobQueueDriver: AsyncSequence, Sendable where Element == QueuedJob<JobID> {
+public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueueResult<JobID> {
     associatedtype JobID: CustomStringConvertible & Sendable
-
     /// Called when JobQueueHandler is initialised with this queue
     func onInit() async throws
+    /// Register job definition with driver
+    func registerJob<Parameters: Codable & Sendable>(_ job: JobDefinition<Parameters>)
     /// Push Job onto queue
     /// - Parameters
-    ///   - buffer: ByteBuffer
+    ///   - jobRequest: Job Request
     ///   - options: JobOptions
     /// - Returns: Identifier of queued jobs
-    func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID
+    @discardableResult func push<Parameters>(_ jobRequest: JobRequest<Parameters>, options: JobOptions) async throws -> JobID
     /// Retry an existing Job
     /// - Parameters
     ///   - id JobID
-    ///   - buffer: ByteBuffer
+    ///   - jobRequest: Job Request
     ///   - options: JobOptions
     /// - Returns: Bool
-    @discardableResult func retry(_ id: JobID, buffer: ByteBuffer, options: JobOptions) async throws -> Bool
+    func retry<Parameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobOptions) async throws
     /// This is called to say job has finished processing and it can be deleted
-    func finished(jobId: JobID) async throws
+    func finished(jobID: JobID) async throws
     /// This is called to say job has failed to run and should be put aside
-    func failed(jobId: JobID, error: any Error) async throws
+    func failed(jobID: JobID, error: any Error) async throws
     /// stop serving jobs
     func stop() async
     /// shutdown queue
@@ -54,22 +75,11 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == QueuedJ
 extension JobQueueDriver {
     // default version of onInit doing nothing
     public func onInit() async throws {}
+}
 
-    func encode(_ job: some JobInstanceProtocol, attempts: Int) throws -> ByteBuffer {
-        let data = EncodableJob(
-            id: job.id,
-            parameters: job.parameters,
-            queuedAt: job.queuedAt,
-            attempts: attempts
-        )
-        return try JSONEncoder().encodeAsByteBuffer(data, allocator: ByteBufferAllocator())
-    }
-
-    func encode<Parameters: Codable & Sendable>(
-        id: JobIdentifier<Parameters>,
-        parameters: Parameters
-    ) throws -> ByteBuffer {
-        let jobRequest = EncodableJob(id: id, parameters: parameters, queuedAt: .now, attempts: 0)
-        return try JSONEncoder().encodeAsByteBuffer(jobRequest, allocator: ByteBufferAllocator())
+extension JobQueueDriver {
+    func retry(_ jobID: JobID, job: some JobInstanceProtocol, attempts: Int, options: JobOptions) async throws {
+        let jobRequest = JobRequest(id: job.id, parameters: job.parameters, queuedAt: job.queuedAt, attempts: attempts)
+        return try await self.retry(jobID, jobRequest: jobRequest, options: options)
     }
 }

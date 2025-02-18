@@ -2,7 +2,7 @@
 //
 // This source file is part of the Hummingbird server framework project
 //
-// Copyright (c) 2024 the Hummingbird authors
+// Copyright (c) 2021-2025 the Hummingbird authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -14,10 +14,9 @@
 
 import Foundation
 
-/// Type used to encode a job
-struct EncodableJob<Parameters: Codable & Sendable>: Encodable, Sendable {
-    let id: JobIdentifier<Parameters>
-    let data: JobInstanceData<Parameters>
+public struct JobRequest<Parameters: Codable & Sendable>: Encodable {
+    public let id: JobIdentifier<Parameters>
+    public let data: JobInstanceData<Parameters>
 
     init(
         id: JobIdentifier<Parameters>,
@@ -30,7 +29,12 @@ struct EncodableJob<Parameters: Codable & Sendable>: Encodable, Sendable {
         self.data = .init(parameters: parameters, queuedAt: queuedAt, attempts: attempts)
     }
 
-    func encode(to encoder: Encoder) throws {
+    init(jobInstance: JobInstance<Parameters>, attempts: Int) {
+        self.id = jobInstance.id
+        self.data = .init(parameters: jobInstance.parameters, queuedAt: jobInstance.queuedAt, attempts: attempts)
+    }
+
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: _JobCodingKey.self)
         let childEncoder = container.superEncoder(
             forKey: .init(stringValue: self.id.name, intValue: nil)

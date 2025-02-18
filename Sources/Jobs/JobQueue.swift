@@ -52,9 +52,9 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         parameters: Parameters,
         options: JobOptions = .init()
     ) async throws -> Queue.JobID {
-        let buffer = try self.queue.encode(id: id, parameters: parameters)
+        let request = JobRequest(id: id, parameters: parameters, queuedAt: .now, attempts: 0)
         let jobName = id.name
-        let instanceID = try await self.queue.push(buffer, options: options)
+        let instanceID = try await self.queue.push(request, options: options)
         await self.handler.middleware.onPushJob(jobID: id, parameters: parameters, jobInstanceID: instanceID.description)
         self.logger.debug(
             "Pushed Job",
@@ -85,7 +85,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     /// - Parameters:
     ///   - job: Job definition
     public func registerJob(_ job: JobDefinition<some Codable & Sendable>) {
-        self.handler.registerJob(job)
+        self.handler.queue.registerJob(job)
     }
 
     ///  Run queue handler

@@ -23,18 +23,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         self.queue = queue
         self.numWorkers = numWorkers
         self.logger = logger
-        self.jobRegistry = .init()
         self.options = options
         self.middleware = middleware
-    }
-
-    ///  Register job
-    /// - Parameters:
-    ///   - id: Job Identifier
-    ///   - maxRetryCount: Maximum number of times job is retried before being flagged as failed
-    ///   - execute: Job code
-    func registerJob(_ job: JobDefinition<some Codable & Sendable>) {
-        self.jobRegistry.registerJob(job: job)
     }
 
     func run() async throws {
@@ -42,17 +32,17 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 var iterator = self.queue.makeAsyncIterator()
                 for _ in 0..<self.numWorkers {
-                    if let job = try await iterator.next() {
+                    if let jobResult = try await iterator.next() {
                         group.addTask {
-                            try await self.runJob(job)
+                            try await self.processJobResult(jobResult)
                         }
                     }
                 }
                 while true {
                     try await group.next()
-                    guard let job = try await iterator.next() else { break }
+                    guard let jobResult = try await iterator.next() else { break }
                     group.addTask {
-                        try await self.runJob(job)
+                        try await self.processJobResult(jobResult)
                     }
                 }
             }
@@ -64,15 +54,18 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         }
     }
 
-    func runJob(_ queuedJob: QueuedJob<Queue.JobID>) async throws {
-        var logger = logger
-        logger[metadataKey: "JobID"] = .stringConvertible(queuedJob.id)
+    /// Process job result from queue
+    func processJobResult(_ jobResult: JobQueueResult<Queue.JobID>) async throws {
+        var logger = self.logger
+        logger[metadataKey: "JobID"] = .stringConvertible(jobResult.id)
 
-        let job: any JobInstanceProtocol
-        do {
-            job = try self.jobRegistry.decode(queuedJob.jobBuffer)
-            await self.middleware.onPopJob(result: .success(job), jobInstanceID: queuedJob.id.description)
-        } catch let error as JobQueueError {
+        switch jobResult.result {
+        case .success(let job):
+            await self.middleware.onPopJob(result: .success(job), jobInstanceID: jobResult.id.description)
+            logger[metadataKey: "JobName"] = .string(job.name)
+            try await self.runJob(id: jobResult.id, job: job, logger: logger)
+
+        case .failure(let error):
             if let jobName = error.jobName {
                 logger[metadataKey: "JobName"] = .string(jobName)
             }
@@ -87,25 +80,17 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             default:
                 logger.debug("Job failed to decode")
             }
-            try await self.queue.failed(jobId: queuedJob.id, error: error)
-            await self.middleware.onPopJob(result: .failure(error), jobInstanceID: queuedJob.id.description)
-            return
-        } catch {
-            logger[metadataKey: "Error"] = .string("\(error)")
-            logger.debug("Job failed to decode")
-            try await self.queue.failed(jobId: queuedJob.id, error: JobQueueError(code: .decodeJobFailed, jobName: nil))
-            await self.middleware.onPopJob(
-                result: .failure(JobQueueError(code: .decodeJobFailed, jobName: nil)),
-                jobInstanceID: queuedJob.id.description
-            )
-            return
+            try await self.queue.failed(jobID: jobResult.id, error: error)
+            await self.middleware.onPopJob(result: .failure(error), jobInstanceID: jobResult.id.description)
         }
-        logger[metadataKey: "JobName"] = .string(job.name)
+    }
 
+    /// Run job
+    func runJob(id jobID: Queue.JobID, job: any JobInstanceProtocol, logger: Logger) async throws {
         logger.debug("Starting Job")
         do {
             do {
-                let context = JobContext(jobInstanceID: queuedJob.id.description, logger: logger)
+                let context = JobContext(jobInstanceID: jobID.description, logger: logger)
                 try await self.middleware.handleJob(job: job, context: context) { job, context in
                     try await job.execute(context: context)
                 }
@@ -116,13 +101,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 // as soon as we create it so can guarantee the Task is done when we leave the
                 // function.
                 try await Task {
-                    try await self.queue.failed(jobId: queuedJob.id, error: error)
+                    try await self.queue.failed(jobID: jobID, error: error)
                 }.value
                 return
             } catch {
                 if job.didFail {
                     logger.debug("Job: failed")
-                    try await self.queue.failed(jobId: queuedJob.id, error: error)
+                    try await self.queue.failed(jobID: jobID, error: error)
                     return
                 }
 
@@ -132,8 +117,9 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
                 /// update the current job
                 try await self.queue.retry(
-                    queuedJob.id,
-                    buffer: self.queue.encode(job, attempts: attempts),
+                    jobID,
+                    job: job,
+                    attempts: attempts,
                     options: .init(
                         delayUntil: delay
                     )
@@ -142,7 +128,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 logger.debug(
                     "Retrying Job",
                     metadata: [
-                        "JobID": .stringConvertible(queuedJob.id),
+                        "JobID": .stringConvertible(jobID),
                         "JobName": .string(job.name),
                         "attempts": .stringConvertible(attempts),
                         "delayedUntil": .stringConvertible(delay),
@@ -151,14 +137,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 return
             }
             logger.debug("Finished Job")
-            try await self.queue.finished(jobId: queuedJob.id)
+            try await self.queue.finished(jobID: jobID)
         } catch {
             logger.debug("Failed to set job status")
         }
     }
 
-    private let jobRegistry: JobRegistry
-    private let queue: Queue
+    let queue: Queue
     private let options: JobQueueOptions
     private let numWorkers: Int
     let middleware: any JobMiddleware
