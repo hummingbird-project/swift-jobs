@@ -117,7 +117,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 // function.
                 try await Task {
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
-                }.get()
+                }.value
                 return
             } catch {
                 if job.didFail {
