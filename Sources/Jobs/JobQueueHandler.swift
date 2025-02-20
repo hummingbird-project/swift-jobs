@@ -131,7 +131,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 let delay = self.calculateBackoff(attempts: attempts)
 
                 /// update the current job
-                try await self.queue.update(
+                try await self.queue.retry(
                     queuedJob.id,
                     buffer: self.queue.encode(job, attempts: attempts),
                     options: .init(
