@@ -49,7 +49,7 @@ public final class MemoryQueue: JobQueueDriver {
     @discardableResult public func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID {
         try await self.queue.push(buffer, options: options)
     }
-    
+
     /// Update an existing job in the  queue
     /// - Parameters:
     ///   - id: Job ID
@@ -97,7 +97,7 @@ public final class MemoryQueue: JobQueueDriver {
             self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer), options: options))
             return id
         }
-        
+
         func update(_ id: JobID, buffer: ByteBuffer, options: JobOptions) throws -> Bool {
             self.clearPendingJob(jobId: id)
             let _ = self.queue.append((job: QueuedJob(id: id, jobBuffer: buffer), options: options))

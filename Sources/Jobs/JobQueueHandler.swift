@@ -129,7 +129,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 let attempts = (job.attempts ?? 0) + 1
 
                 let delay = self.calculateBackoff(attempts: attempts)
-                
+
                 /// update the current job
                 try await self.queue.update(
                     queuedJob.id,
