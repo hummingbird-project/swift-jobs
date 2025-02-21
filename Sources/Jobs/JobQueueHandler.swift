@@ -117,7 +117,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 // function.
                 try await Task {
                     try await self.queue.failed(jobId: queuedJob.id, error: error)
-                }.get()
+                }.value
                 return
             } catch {
                 if job.didFail {
@@ -130,11 +130,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
                 let delay = self.calculateBackoff(attempts: attempts)
 
-                // remove from processing lists
-                try await self.queue.finished(jobId: queuedJob.id)
-                // push new job in the queue
-                let newJobId = try await self.queue.push(
-                    self.queue.encode(job, attempts: attempts),
+                /// update the current job
+                try await self.queue.retry(
+                    queuedJob.id,
+                    buffer: self.queue.encode(job, attempts: attempts),
                     options: .init(
                         delayUntil: delay
                     )
@@ -143,7 +142,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 logger.debug(
                     "Retrying Job",
                     metadata: [
-                        "JobID": .stringConvertible(newJobId),
+                        "JobID": .stringConvertible(queuedJob.id),
                         "JobName": .string(job.name),
                         "attempts": .stringConvertible(attempts),
                         "delayedUntil": .stringConvertible(delay),
