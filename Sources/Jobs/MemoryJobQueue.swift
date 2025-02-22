@@ -18,17 +18,19 @@ import NIOCore
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
 public final class MemoryQueue: JobQueueDriver {
-    public typealias Element = QueuedJob<JobID>
+    public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
 
     /// queue of jobs
     fileprivate let queue: Internal
-    private let onFailedJob: @Sendable (QueuedJob<JobID>, any Error) -> Void
+    private let onFailedJob: @Sendable (JobID, any Error) -> Void
+    private let jobRegistry: JobRegistry
 
     /// Initialise In memory job queue
-    public init(onFailedJob: @escaping @Sendable (QueuedJob<JobID>, any Error) -> Void = { _, _ in }) {
+    public init(onFailedJob: @escaping @Sendable (JobID, any Error) -> Void = { _, _ in }) {
         self.queue = .init()
         self.onFailedJob = onFailedJob
+        self.jobRegistry = .init()
     }
 
     /// Stop queue serving more jobs
@@ -41,32 +43,41 @@ public final class MemoryQueue: JobQueueDriver {
         await self.queue.shutdown()
     }
 
+    ///  Register job
+    /// - Parameters:
+    ///   - job: Job Definition
+    public func registerJob<Parameters: Codable & Sendable>(_ job: JobDefinition<Parameters>) {
+        self.jobRegistry.registerJob(job)
+    }
+
     /// Push job onto queue
     /// - Parameters:
-    ///   - buffer: buffer containing job data
+    ///   - jobRequest: Job Request
     ///   - options: Job options
     /// - Returns: Job ID
-    @discardableResult public func push(_ buffer: ByteBuffer, options: JobOptions) async throws -> JobID {
-        try await self.queue.push(buffer, options: options)
+    @discardableResult public func push<Parameters>(_ jobRequest: JobRequest<Parameters>, options: JobOptions) async throws -> JobID {
+        let buffer = try self.jobRegistry.encode(jobRequest: jobRequest)
+        return try await self.queue.push(buffer, options: options)
     }
 
     /// Retry an existing job
     /// - Parameters:
     ///   - id: Job ID
-    ///   - buffer: buffer containing job data
+    ///   - jobRequest: Job Request
     ///   - options: Job options
     /// - Returns: Bool
-    @discardableResult public func retry(_ id: JobID, buffer: ByteBuffer, options: JobOptions) async throws -> Bool {
+    public func retry<Parameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobOptions) async throws {
+        let buffer = try self.jobRegistry.encode(jobRequest: jobRequest)
         try await self.queue.retry(id, buffer: buffer, options: options)
     }
 
-    public func finished(jobId: JobID) async throws {
-        await self.queue.clearPendingJob(jobId: jobId)
+    public func finished(jobID: JobID) async throws {
+        await self.queue.clearPendingJob(jobID: jobID)
     }
 
-    public func failed(jobId: JobID, error: any Error) async throws {
-        if let job = await self.queue.clearAndReturnPendingJob(jobId: jobId) {
-            self.onFailedJob(.init(id: jobId, jobBuffer: job), error)
+    public func failed(jobID: JobID, error: any Error) async throws {
+        if await self.queue.clearAndReturnPendingJob(jobID: jobID) != nil {
+            self.onFailedJob(jobID, error)
         }
     }
 
@@ -80,7 +91,11 @@ public final class MemoryQueue: JobQueueDriver {
 
     /// Internal actor managing the job queue
     fileprivate actor Internal {
-        var queue: Deque<(job: QueuedJob<JobID>, options: JobOptions)>
+        struct QueuedJob: Sendable {
+            let id: JobID
+            let jobBuffer: ByteBuffer
+        }
+        var queue: Deque<(job: QueuedJob, options: JobOptions)>
         var pendingJobs: [JobID: ByteBuffer]
         var metadata: [String: ByteBuffer]
         var isStopped: Bool
@@ -98,23 +113,22 @@ public final class MemoryQueue: JobQueueDriver {
             return id
         }
 
-        func retry(_ id: JobID, buffer: ByteBuffer, options: JobOptions) throws -> Bool {
-            self.clearPendingJob(jobId: id)
+        func retry(_ id: JobID, buffer: ByteBuffer, options: JobOptions) throws {
+            self.clearPendingJob(jobID: id)
             let _ = self.queue.append((job: QueuedJob(id: id, jobBuffer: buffer), options: options))
-            return true
         }
 
-        func clearPendingJob(jobId: JobID) {
-            self.pendingJobs[jobId] = nil
+        func clearPendingJob(jobID: JobID) {
+            self.pendingJobs[jobID] = nil
         }
 
-        func clearAndReturnPendingJob(jobId: JobID) -> ByteBuffer? {
-            let instance = self.pendingJobs[jobId]
-            self.pendingJobs[jobId] = nil
+        func clearAndReturnPendingJob(jobID: JobID) -> ByteBuffer? {
+            let instance = self.pendingJobs[jobID]
+            self.pendingJobs[jobID] = nil
             return instance
         }
 
-        func next() async throws -> QueuedJob<JobID>? {
+        func next() async throws -> QueuedJob? {
             while true {
                 if self.isStopped {
                     return nil
@@ -154,14 +168,21 @@ public final class MemoryQueue: JobQueueDriver {
 extension MemoryQueue {
     public struct AsyncIterator: AsyncIteratorProtocol {
         fileprivate let queue: Internal
+        fileprivate let jobRegistry: JobRegistry
 
         public mutating func next() async throws -> Element? {
-            try await self.queue.next()
+            guard let queuedJob = try await self.queue.next() else { return nil }
+            do {
+                let jobInstance = try self.jobRegistry.decode(queuedJob.jobBuffer)
+                return .init(id: queuedJob.id, result: .success(jobInstance))
+            } catch let error as JobQueueError {
+                return .init(id: queuedJob.id, result: .failure(error))
+            }
         }
     }
 
     public func makeAsyncIterator() -> AsyncIterator {
-        .init(queue: self.queue)
+        .init(queue: self.queue, jobRegistry: self.jobRegistry)
     }
 }
 

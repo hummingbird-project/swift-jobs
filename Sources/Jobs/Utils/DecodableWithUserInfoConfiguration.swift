@@ -24,8 +24,8 @@ protocol DecodableWithUserInfoConfiguration: Decodable, DecodableWithConfigurati
 
 /// Implement `init(from: Decoder)`` by extracting configuration from the userInfo dictionary.
 extension DecodableWithUserInfoConfiguration {
-    init(from decoder: Decoder) throws {
-        guard let configuration = decoder.userInfo[.configuration] as? DecodingConfiguration else {
+    public init(from decoder: Decoder) throws {
+        guard let configuration = decoder.userInfo[._jobConfiguration] as? DecodingConfiguration else {
             throw DecodingError.valueNotFound(
                 DecodingConfiguration.self,
                 .init(codingPath: decoder.codingPath, debugDescription: "Failed to find Decoding configuration")
@@ -37,7 +37,7 @@ extension DecodableWithUserInfoConfiguration {
 
 extension CodingUserInfoKey {
     /// Coding UserInfo key used to store DecodableWithUserInfoConfiguration configuration
-    static var configuration: Self { .init(rawValue: "_configuration_")! }
+    public static var _jobConfiguration: Self { .init(rawValue: "_job_configuration_")! }
 }
 
 extension JSONDecoder {
@@ -48,7 +48,7 @@ extension JSONDecoder {
         from buffer: ByteBuffer,
         userInfoConfiguration: T.DecodingConfiguration
     ) throws -> T where T: DecodableWithUserInfoConfiguration {
-        self.userInfo[.configuration] = userInfoConfiguration
+        self.userInfo[._jobConfiguration] = userInfoConfiguration
         return try self.decode(type, from: buffer)
     }
 }

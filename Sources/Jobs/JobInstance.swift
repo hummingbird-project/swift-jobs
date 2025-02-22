@@ -95,7 +95,7 @@ struct JobInstance<Parameters: Codable & Sendable>: JobInstanceProtocol {
 }
 
 /// Data attach to a job
-struct JobInstanceData<Parameters: Codable & Sendable>: Codable {
+public struct JobInstanceData<Parameters: Codable & Sendable>: Codable, Sendable {
     /// Job parameters
     let parameters: Parameters
     /// Date job was queued

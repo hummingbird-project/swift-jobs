@@ -13,10 +13,10 @@
 //===----------------------------------------------------------------------===//
 
 /// Add codable support for decoding any JobInstance
-internal struct AnyDecodableJob: DecodableWithUserInfoConfiguration, Sendable {
-    typealias DecodingConfiguration = JobRegistry
+public struct AnyDecodableJob: DecodableWithUserInfoConfiguration, Sendable {
+    public typealias DecodingConfiguration = JobRegistry
 
-    init(from decoder: Decoder, configuration register: DecodingConfiguration) throws {
+    public init(from decoder: Decoder, configuration register: DecodingConfiguration) throws {
         // Job JSON is structured as follows
         //  {
         //      "JobName": { job data... }
@@ -26,15 +26,11 @@ internal struct AnyDecodableJob: DecodableWithUserInfoConfiguration, Sendable {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "No keys found."))
         }
         let childDecoder = try container.superDecoder(forKey: key)
-        do {
-            self.job = try register.decode(jobName: key.stringValue, from: childDecoder)
-        } catch {
-            throw JobQueueError(code: .decodeJobFailed, jobName: key.stringValue, details: "\(error)")
-        }
+        self.job = try register.decode(jobName: key.stringValue, from: childDecoder)
     }
 
     /// Job data
-    let job: any JobInstanceProtocol
+    public let job: any JobInstanceProtocol
 
     /// Initialize a queue job
     init(_ job: any JobInstanceProtocol) {
