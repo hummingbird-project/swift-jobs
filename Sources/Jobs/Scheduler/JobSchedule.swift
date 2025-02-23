@@ -99,12 +99,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     }
 
     mutating func updateNextScheduledDate(jobIndex: Int) {
-        let dateFrom: Date =
-            switch self.self[jobIndex].accuracy {
-            case .latest: Swift.max(.now, self[jobIndex].nextScheduledDate)
-            case .all: self[jobIndex].nextScheduledDate
-            default: Swift.max(.now, self[jobIndex].nextScheduledDate)
-            }
+        let dateFrom: Date = self[jobIndex].nextScheduledDate
         if let nextScheduledDate = self[jobIndex].schedule.nextDate(after: dateFrom) {
             self[jobIndex].nextScheduledDate = nextScheduledDate
         } else {
@@ -112,9 +107,26 @@ public struct JobSchedule: MutableCollection, Sendable {
         }
     }
 
-    mutating func setInitialNextDate(after date: Date) {
+    mutating func setInitialNextDate(after date: Date, logger: Logger) {
         for index in 0..<self.count {
-            self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
+            switch self[index].accuracy {
+            case .all:
+                self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
+            case .latest:
+                self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
+                if self[index].nextScheduledDate < .now {
+                    self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(before: .now) ?? .distantFuture
+                }
+            default:
+                preconditionFailure("Unsupported schedule accuracy")
+            }
+            logger.debug(
+                "First scheduled date for job",
+                metadata: [
+                    "JobName": .stringConvertible(type(of: self[index].jobParameters).jobName),
+                    "JobTime": .stringConvertible(self[index].nextScheduledDate),
+                ]
+            )
         }
     }
 
@@ -181,13 +193,13 @@ public struct JobSchedule: MutableCollection, Sendable {
             do {
                 let date: Date
                 if let lastDate = try await self.jobQueue.getMetadata(.jobScheduleLastDate) {
-                    self.jobQueue.logger.debug("Last scheduled date \(lastDate).")
                     date = lastDate
+                    self.jobQueue.logger.info("Last scheduled date \(date).")
                 } else {
                     date = .now
+                    self.jobQueue.logger.info("No last scheduled date so scheduling from now.")
                 }
-                self.jobQueue.logger.debug("Last scheduled date \(date).")
-                jobSchedule.setInitialNextDate(after: date)
+                jobSchedule.setInitialNextDate(after: date, logger: self.jobQueue.logger)
             } catch {
                 self.jobQueue.logger.error(
                     "Failed to get last scheduled job date.",

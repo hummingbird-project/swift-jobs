@@ -192,7 +192,7 @@ final class JobSchedulerTests: XCTestCase {
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
         let startDate = dateFormatter.date(from: "2024-04-14T02:00:00Z")!
-        schedule.setInitialNextDate(after: startDate)
+        schedule.setInitialNextDate(after: startDate, logger: Logger(label: "test"))
 
         // first two jobs should be Job1
         var job = try XCTUnwrap(schedule.nextJob())
@@ -227,7 +227,7 @@ final class JobSchedulerTests: XCTestCase {
             .init(job: Job1(), schedule: .everyMinute(second: 45)),
             .init(job: Job2(), schedule: .everyMinute(second: 45)),
         ])
-        jobSchedule.setInitialNextDate(after: .now)
+        jobSchedule.setInitialNextDate(after: .now, logger: Logger(label: "test"))
 
         let job = try XCTUnwrap(jobSchedule.nextJob())
         jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
@@ -248,7 +248,7 @@ final class JobSchedulerTests: XCTestCase {
         var jobSchedule = JobSchedule([
             .init(job: Job1(), schedule: .onMinutes([10, 45]))
         ])
-        jobSchedule.setInitialNextDate(after: .now - 30 * 24 * 60 * 60)
+        jobSchedule.setInitialNextDate(after: .now - 30 * 24 * 60 * 60, logger: Logger(label: "test"))
 
         let job = try XCTUnwrap(jobSchedule.nextJob())
         // first job scheduled date should be before now
