@@ -238,27 +238,6 @@ final class JobSchedulerTests: XCTestCase {
 
     }
 
-    func testJobScheduledAfterLongWait() async throws {
-        struct Job1: JobParameters {
-            static let jobName = "Job1"
-        }
-        struct Job2: JobParameters {
-            static let jobName = "Job2"
-        }
-        var jobSchedule = JobSchedule([
-            .init(job: Job1(), schedule: .onMinutes([10, 45]))
-        ])
-        jobSchedule.setInitialNextDate(after: .now - 30 * 24 * 60 * 60, logger: Logger(label: "test"))
-
-        let job = try XCTUnwrap(jobSchedule.nextJob())
-        // first job scheduled date should be before now
-        XCTAssert(job.element.nextScheduledDate < .now)
-        jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
-        let job2 = try XCTUnwrap(jobSchedule.nextJob())
-        // second job scheduled date should be after now
-        XCTAssert(job2.element.nextScheduledDate > .now)
-    }
-
     func testJobScheduleSequence() async throws {
         struct Job1: JobParameters {
             static let jobName = "Job1"
@@ -280,6 +259,127 @@ final class JobSchedulerTests: XCTestCase {
         XCTAssert(job?.job is Job1)
         let job2 = await jobIterator.next()
         XCTAssertTrue(job2?.job is Job2)
+    }
+
+    func testScheduleAfterReadingLastData(
+        schedule: Schedule,
+        accuracy: JobSchedule.ScheduleAccuracy,
+        lastScheduled: String,
+        now: String,
+        expected: [String],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testScheduleAfterLastDate"
+        }
+        var jobSchedule = JobSchedule()
+        jobSchedule.addJob(TestParameters(), schedule: schedule, accuracy: accuracy)
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = .init(secondsFromGMT: 0)
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        var logger = Logger(label: "jobs")
+        logger.logLevel = .debug
+
+        // test we return now as next scheduled date when initial date is a long time before
+        do {
+            let lastScheduledDate = dateFormatter.date(from: lastScheduled)!
+            let nowDate = dateFormatter.date(from: now)!
+            jobSchedule.setInitialNextDate(after: lastScheduledDate, now: nowDate, logger: logger)
+            for dateString in expected {
+                let date = dateFormatter.date(from: dateString)
+                XCTAssertEqual(jobSchedule.elements[0].nextScheduledDate, date, file: file, line: line)
+                jobSchedule.updateNextScheduledDate(jobIndex: 0)
+            }
+        }
+    }
+
+    // test we are getting the right dates after restarting scheduler
+    func testScheduleLastDateWithEveryHour() async throws {
+        try testScheduleAfterReadingLastData(
+            schedule: .hourly(minute: 44),
+            accuracy: .latest,
+            lastScheduled: "2023-04-14T02:17:00Z",
+            now: "2024-04-14T02:29:00Z",
+            expected: ["2024-04-14T02:29:00Z", "2024-04-14T02:44:00Z", "2024-04-14T03:44:00Z"]
+        )
+        try testScheduleAfterReadingLastData(
+            schedule: .hourly(minute: 44),
+            accuracy: .latest,
+            lastScheduled: "2024-04-14T02:15:00Z",
+            now: "2024-04-14T02:19:00Z",
+            expected: ["2024-04-14T02:44:00Z", "2024-04-14T03:44:00Z", "2024-04-14T04:44:00Z"]
+        )
+    }
+
+    // test we are getting the right dates after restarting scheduler
+    func testScheduleLastDateWithOnMinutes() async throws {
+        try testScheduleAfterReadingLastData(
+            schedule: .onMinutes([0, 10, 20, 30, 40, 50]),
+            accuracy: .latest,
+            lastScheduled: "2023-04-14T02:17:00Z",
+            now: "2024-04-14T02:29:00Z",
+            expected: ["2024-04-14T02:29:00Z", "2024-04-14T02:30:00Z", "2024-04-14T02:40:00Z"]
+        )
+        try testScheduleAfterReadingLastData(
+            schedule: .onMinutes([0, 10, 20, 30, 40, 50]),
+            accuracy: .latest,
+            lastScheduled: "2024-04-14T02:15:00Z",
+            now: "2024-04-14T02:19:00Z",
+            expected: ["2024-04-14T02:20:00Z", "2024-04-14T02:30:00Z", "2024-04-14T02:40:00Z"]
+        )
+        try testScheduleAfterReadingLastData(
+            schedule: .onMinutes([0, 10, 20, 30, 40, 50]),
+            accuracy: .all,
+            lastScheduled: "2024-04-13T02:15:00Z",
+            now: "2024-04-14T02:19:00Z",
+            expected: ["2024-04-13T02:20:00Z", "2024-04-13T02:30:00Z", "2024-04-13T02:40:00Z"]
+        )
+    }
+
+    // test we are getting the right dates after restarting scheduler
+    func testScheduleLastDateWithOnDates() async throws {
+        try testScheduleAfterReadingLastData(
+            schedule: .onDates([4, 6, 8], hour: 8, timeZone: .init(secondsFromGMT: 0)!),
+            accuracy: .latest,
+            lastScheduled: "2023-04-14T02:17:00Z",
+            now: "2024-04-14T02:29:00Z",
+            expected: ["2024-04-14T02:29:00Z", "2024-05-04T08:00:00Z", "2024-05-06T08:00:00Z"]
+        )
+        try testScheduleAfterReadingLastData(
+            schedule: .onDates([4, 6, 8], hour: 8, timeZone: .init(secondsFromGMT: 0)!),
+            accuracy: .latest,
+            lastScheduled: "2024-04-05T02:15:00Z",
+            now: "2024-04-05T02:19:00Z",
+            expected: ["2024-04-06T08:00:00Z", "2024-04-08T08:00:00Z", "2024-05-04T08:00:00Z"]
+        )
+    }
+
+    // test we are getting the right dates from accuracy all
+    func testScheduleLastDateAccuracyAll() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testScheduleAfterLastDate"
+        }
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        var logger = Logger(label: "jobs")
+        logger.logLevel = .debug
+        var jobSchedule = JobSchedule()
+        jobSchedule.addJob(TestParameters(), schedule: .onMinutes([0, 10, 20, 30, 40, 50]), accuracy: .all)
+
+        // test we return now as next scheduled date when initial date is a long time before
+        let initialDate = dateFormatter.date(from: "2023-04-14T02:00:17Z")!
+        let nowDate = dateFormatter.date(from: "2024-04-14T02:00:29Z")!
+        let expectedDate = dateFormatter.date(from: "2023-04-14T02:00:20Z")!
+        let expectedDate2 = dateFormatter.date(from: "2023-04-14T02:00:30Z")!
+        jobSchedule.setInitialNextDate(after: initialDate, now: nowDate, logger: logger)
+        jobSchedule.elements[0].nextScheduledDate = expectedDate
+        _ = jobSchedule.nextJob()
+        jobSchedule.elements[0].nextScheduledDate = expectedDate2
+
     }
 
     func testSchedulerService() async throws {
@@ -334,8 +434,8 @@ final class JobSchedulerTests: XCTestCase {
         var jobSchedule = JobSchedule()
         jobSchedule.addJob(TriggerShutdownParameters(), schedule: .everyMinute(second: dateComponents.second!))
 
-        // Set last date scheduled task ran as 1 seconds before scheduled job triggered
-        try await jobQueue.setMetadata(key: .jobScheduleLastDate, value: dateTriggered - 1)
+        // Set last date scheduled task ran as 2 seconds before scheduled job triggered
+        try await jobQueue.setMetadata(key: .jobScheduleLastDate, value: dateTriggered - 2)
         await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = await ServiceGroup(
                 configuration: .init(
@@ -351,7 +451,7 @@ final class JobSchedulerTests: XCTestCase {
         }
         let lastDate = try await jobQueue.getMetadata(.jobScheduleLastDate)
         let lastDate2 = try XCTUnwrap(lastDate)
-        XCTAssertEqual(lastDate2.timeIntervalSince1970, dateTriggered.timeIntervalSince1970, accuracy: 1.0)
+        XCTAssertEqual(lastDate2.timeIntervalSince1970, Date.now.timeIntervalSince1970, accuracy: 1.0)
     }
 
     func testSchedulerLastDateAccuracyAll() async throws {

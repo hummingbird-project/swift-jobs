@@ -280,22 +280,18 @@ public struct Schedule: Sendable {
 
     ///  Set up scheduler to return the correct next date, based on a supplied Date.
     /// - Parameter date: start date
-    public mutating func setInitialNextDate(before date: Date) -> Date? {
-        guard var nextDate = self.nextDate(after: date) else {
-            return nil
-        }
+    public mutating func setInitialNextDateJustBefore(date: Date = .now) {
+        guard var nextDate = self.nextDate(after: date) else { return }
         var prevDate = date
         // Repeat while the nextDate is greater than the prevDate. At the point the nextDate is less than
         // the previous date we know any schedules with multiple values have selected the correct next value
         while prevDate < nextDate {
             prevDate = nextDate
-            guard let nextDateUnwrapped = self.nextDate(after: date) else {
-                return nil
-            }
+            guard let nextDateUnwrapped = self.nextDate(after: date) else { return }
             nextDate = nextDateUnwrapped
         }
+        // move dates to previous date so it will supply the current date the next time we call nextDate()
         self.moveToPreviousScheduledDate()
-        return prevDate
     }
 
     mutating func moveToPreviousScheduledDate() {

@@ -58,9 +58,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         let accuracy: ScheduleAccuracy
 
         public init(job: JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
-            var schedule = schedule
-            let nextScheduledDate = schedule.nextDate(after: .now) ?? .distantFuture
-            self.nextScheduledDate = nextScheduledDate
+            self.nextScheduledDate = .now
             self.schedule = schedule
             self.jobParameters = job
             self.accuracy = accuracy
@@ -107,15 +105,22 @@ public struct JobSchedule: MutableCollection, Sendable {
         }
     }
 
-    mutating func setInitialNextDate(after date: Date, logger: Logger) {
+    mutating func setInitialNextDate(after date: Date, now: Date = .now, logger: Logger) {
         for index in 0..<self.count {
             switch self[index].accuracy {
             case .all:
+                // set nextScheduledDate based on date supplied
                 self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
             case .latest:
+                // set nextScheduledDate based on date supplied
                 self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
-                if self[index].nextScheduledDate < .now {
-                    self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(before: .now) ?? .distantFuture
+                // if schedule accuracy is set to latest that means it should only supply at the most one job
+                // prior to current date. If there are one of more jobs scheduled between date supplied and now
+                // return now. If there are no jobs scheduled between date supplied and now return the next scheduled
+                // date
+                if self[index].accuracy == .latest, self[index].nextScheduledDate < now {
+                    self[index].schedule.setInitialNextDateJustBefore(date: now)
+                    self[index].nextScheduledDate = now
                 }
             default:
                 preconditionFailure("Unsupported schedule accuracy")
