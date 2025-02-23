@@ -26,6 +26,8 @@ public struct JobQueueOptions: Sendable {
     internal var jitter: Double {
         Double.random(in: self.minJitter..<self.maxJitter)
     }
+    /// Name of the queue to push jobs into default name is "default"
+    public var queueName: String
 
     /// Initialize a JobQueueOptions
     /// The current backoff computation uses jitters
@@ -37,10 +39,12 @@ public struct JobQueueOptions: Sendable {
     public init(
         maximumBackoff: TimeInterval = 120.0,
         maxJitter: TimeInterval = 15.0,
-        minJitter: TimeInterval = 5.0
+        minJitter: TimeInterval = 5.0,
+        queueName: String = "default"
     ) {
         self.maximumBackoff = maximumBackoff
         self.maxJitter = maxJitter
         self.minJitter = minJitter
+        self.queueName = queueName
     }
 }

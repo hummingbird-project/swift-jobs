@@ -58,7 +58,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     func processJobResult(_ jobResult: JobQueueResult<Queue.JobID>) async throws {
         var logger = self.logger
         logger[metadataKey: "JobID"] = .stringConvertible(jobResult.id)
-        logger[metadataKey: "Queue"] = .stringConvertible(queue.queueName)
+        logger[metadataKey: "Queue"] = .stringConvertible(options.queueName)
 
         switch jobResult.result {
         case .success(let job):
@@ -160,5 +160,11 @@ extension JobQueueHandler {
         let exp = exp2(Double(attempts))
         let delay = min(exp, self.options.maximumBackoff)
         return Date.now.addingTimeInterval(TimeInterval(self.options.jitter + delay))
+    }
+}
+
+extension JobQueueHandler {
+    public var queueName: String {
+        self.options.queueName
     }
 }

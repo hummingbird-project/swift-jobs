@@ -61,7 +61,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
             metadata: [
                 "JobID": .stringConvertible(instanceID),
                 "JobName": .string(jobName),
-                "Queue": .string(queue.queueName),
+                "Queue": .string(self.handler.queueName),
             ]
         )
         return instanceID
@@ -84,7 +84,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
             "Registered Job",
             metadata: [
                 "JobName": .string(id.name),
-                "Queue": .string(queue.queueName),
+                "Queue": .string(handler.queueName),
             ]
         )
         let job = JobDefinition<Parameters>(id: id, maxRetryCount: maxRetryCount, execute: execute)
