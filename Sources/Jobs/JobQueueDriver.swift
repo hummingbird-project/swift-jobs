@@ -70,6 +70,8 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     func getMetadata(_ key: String) async throws -> ByteBuffer?
     /// set job queue metadata
     func setMetadata(key: String, value: ByteBuffer) async throws
+    /// Name of the queue to push jobs into default name is "default"
+    var queueName: String { get }
 }
 
 extension JobQueueDriver {
@@ -81,5 +83,13 @@ extension JobQueueDriver {
     func retry(_ jobID: JobID, job: some JobInstanceProtocol, attempts: Int, options: JobOptions) async throws {
         let jobRequest = JobRequest(id: job.id, parameters: job.parameters, queuedAt: job.queuedAt, attempts: attempts)
         return try await self.retry(jobID, jobRequest: jobRequest, options: options)
+    }
+}
+
+extension JobQueueDriver {
+    public var queueName: String {
+        get {
+            "default"
+        }
     }
 }

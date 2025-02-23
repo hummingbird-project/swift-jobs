@@ -58,6 +58,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     func processJobResult(_ jobResult: JobQueueResult<Queue.JobID>) async throws {
         var logger = self.logger
         logger[metadataKey: "JobID"] = .stringConvertible(jobResult.id)
+        logger[metadataKey: "Queue"] = .stringConvertible(queue.queueName)
 
         switch jobResult.result {
         case .success(let job):

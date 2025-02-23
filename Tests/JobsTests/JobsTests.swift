@@ -87,6 +87,7 @@ final class JobsTests: XCTestCase {
 
             XCTAssertGreaterThan(maxRunningJobCounter.load(ordering: .relaxed), 1)
             XCTAssertLessThanOrEqual(maxRunningJobCounter.load(ordering: .relaxed), 4)
+            XCTAssertEqual(jobQueue.queue.queueName, "default")
         }
     }
 

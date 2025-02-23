@@ -58,7 +58,11 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         await self.handler.middleware.onPushJob(jobID: id, parameters: parameters, jobInstanceID: instanceID.description)
         self.logger.debug(
             "Pushed Job",
-            metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(jobName)]
+            metadata: [
+                "JobID": .stringConvertible(instanceID),
+                "JobName": .string(jobName),
+                "Queue": .string(queue.queueName),
+            ]
         )
         return instanceID
     }
@@ -76,7 +80,13 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
             JobContext
         ) async throws -> Void
     ) {
-        self.handler.logger.info("Registered Job", metadata: ["JobName": .string(id.name)])
+        self.handler.logger.info(
+            "Registered Job",
+            metadata: [
+                "JobName": .string(id.name),
+                "Queue": .string(queue.queueName),
+            ]
+        )
         let job = JobDefinition<Parameters>(id: id, maxRetryCount: maxRetryCount, execute: execute)
         self.registerJob(job)
     }
