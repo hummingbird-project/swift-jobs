@@ -167,7 +167,9 @@ final class JobsTests: XCTestCase {
             let value: Int
         }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .debug
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: logger)
         let delayedJob = ManagedAtomic(0)
         let delayedJobParameters = TestParameters(value: 23)
         let notDelayedJobParameters = TestParameters(value: 89)
