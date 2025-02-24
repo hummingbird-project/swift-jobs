@@ -19,7 +19,7 @@ public protocol JobMiddleware: Sendable {
     ///   - jobID: Job type identifier
     ///   - parameters: Job parameters
     ///   - jobInstanceID: Job instance identifier
-    func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async
+    func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async
     /// Job has been popped off the queue and decoded (with decode errors reported)
     ///
     /// - Parameters:
@@ -41,7 +41,7 @@ public struct NullJobMiddleware: JobMiddleware {
 
     /// Job has been pushed onto the queue
     @inlinable
-    public func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {}
+    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {}
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
     public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {}
@@ -61,9 +61,9 @@ struct OptionalJobMiddleware<Middleware: JobMiddleware>: JobMiddleware {
     let middleware: Middleware?
 
     @inlinable
-    func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+    func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {
         if let middleware {
-            await middleware.onPushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
+            await middleware.onPushJob(parameters: parameters, jobInstanceID: jobInstanceID)
         }
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
@@ -94,9 +94,9 @@ struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>
     let middleware2: Middleware2
 
     @inlinable
-    func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
-        await self.middleware1.onPushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
-        await self.middleware2.onPushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
+    func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {
+        await self.middleware1.onPushJob(parameters: parameters, jobInstanceID: jobInstanceID)
+        await self.middleware2.onPushJob(parameters: parameters, jobInstanceID: jobInstanceID)
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable

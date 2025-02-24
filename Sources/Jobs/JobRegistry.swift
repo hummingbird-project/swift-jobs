@@ -45,20 +45,19 @@ public final class JobRegistry: Sendable {
     ///  Register job
     /// - Parameters:
     ///   - job: Job Definition
-    public func registerJob<Parameters: Codable & Sendable>(_ job: JobDefinition<Parameters>) {
+    public func registerJob<Parameters: JobParameters>(_ job: JobDefinition<Parameters>) {
         let builder: @Sendable (Decoder) throws -> any JobInstanceProtocol = { decoder in
             let data = try JobInstanceData<Parameters>(from: decoder)
             return try JobInstance<Parameters>(job: job, data: data)
         }
         self.builderTypeMap.withLockedValue {
-            precondition($0[job.id.name] == nil, "There is a job already registered under id \"\(job.id.name)\"")
-            $0[job.id.name] = builder
+            precondition($0[Parameters.jobName] == nil, "There is a job already registered under id \"\(Parameters.jobName)\"")
+            $0[Parameters.jobName] = builder
         }
     }
 
     func encode(_ job: some JobInstanceProtocol, attempts: Int) throws -> ByteBuffer {
         let jobRequest = JobRequest(
-            id: job.id,
             parameters: job.parameters,
             queuedAt: job.queuedAt,
             attempts: attempts

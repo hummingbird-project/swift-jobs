@@ -52,7 +52,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///   - parameters: Job parameters
     ///   - jobInstanceID: Job instance identifier
     @inlinable
-    public func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {
         Meter(
             label: Self.meterLabel,
             dimensions: [

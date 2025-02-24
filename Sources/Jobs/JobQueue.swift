@@ -47,18 +47,16 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     ///   - id: Job identifier
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
-    @discardableResult public func push<Parameters: Codable & Sendable>(
-        id: JobIdentifier<Parameters>,
-        parameters: Parameters,
+    @discardableResult public func push<Parameters: JobParameters>(
+        _ parameters: Parameters,
         options: JobOptions = .init()
     ) async throws -> Queue.JobID {
-        let request = JobRequest(id: id, parameters: parameters, queuedAt: .now, attempts: 0)
-        let jobName = id.name
+        let request = JobRequest(parameters: parameters, queuedAt: .now, attempts: 0)
         let instanceID = try await self.queue.push(request, options: options)
-        await self.handler.middleware.onPushJob(jobID: id, parameters: parameters, jobInstanceID: instanceID.description)
+        await self.handler.middleware.onPushJob(parameters: parameters, jobInstanceID: instanceID.description)
         self.logger.debug(
             "Pushed Job",
-            metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(jobName)]
+            metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(Parameters.jobName)]
         )
         return instanceID
     }
@@ -68,23 +66,23 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
     ///   - id: Job Identifier
     ///   - maxRetryCount: Maximum number of times job is retried before being flagged as failed
     ///   - execute: Job code
-    public func registerJob<Parameters: Codable & Sendable>(
-        id: JobIdentifier<Parameters>,
+    public func registerJob<Parameters: JobParameters>(
+        parameters: Parameters.Type = Parameters.self,
         maxRetryCount: Int = 0,
         execute: @escaping @Sendable (
             Parameters,
             JobContext
         ) async throws -> Void
     ) {
-        self.handler.logger.info("Registered Job", metadata: ["JobName": .string(id.name)])
-        let job = JobDefinition<Parameters>(id: id, maxRetryCount: maxRetryCount, execute: execute)
+        self.handler.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
+        let job = JobDefinition<Parameters>(maxRetryCount: maxRetryCount, execute: execute)
         self.registerJob(job)
     }
 
     ///  Register job type
     /// - Parameters:
     ///   - job: Job definition
-    public func registerJob(_ job: JobDefinition<some Codable & Sendable>) {
+    public func registerJob(_ job: JobDefinition<some JobParameters>) {
         self.handler.queue.registerJob(job)
     }
 

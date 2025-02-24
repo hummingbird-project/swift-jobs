@@ -28,40 +28,45 @@ extension XCTestExpectation {
 
 final class JobsTests: XCTestCase {
     func testBasic() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testBasic"
+            let value: Int
+        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 10)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
-        let job = JobDefinition(id: "testBasic") { (parameters: Int, context) in
-            context.logger.info("Parameters=\(parameters)")
+        let job = JobDefinition { (parameters: TestParameters, context) in
+            context.logger.info("Parameters=\(parameters.value)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
-        jobQueue.registerJob(id: .test) { _, _ in
-        }
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: job.id, parameters: 1)
-            try await jobQueue.push(id: job.id, parameters: 2)
-            try await jobQueue.push(id: job.id, parameters: 3)
-            try await jobQueue.push(id: job.id, parameters: 4)
-            try await jobQueue.push(id: job.id, parameters: 5)
-            try await jobQueue.push(id: job.id, parameters: 6)
-            try await jobQueue.push(id: job.id, parameters: 7)
-            try await jobQueue.push(id: job.id, parameters: 8)
-            try await jobQueue.push(id: job.id, parameters: 9)
-            try await jobQueue.push(id: job.id, parameters: 10)
+            try await jobQueue.push(TestParameters(value: 1))
+            try await jobQueue.push(TestParameters(value: 2))
+            try await jobQueue.push(TestParameters(value: 3))
+            try await jobQueue.push(TestParameters(value: 4))
+            try await jobQueue.push(TestParameters(value: 5))
+            try await jobQueue.push(TestParameters(value: 6))
+            try await jobQueue.push(TestParameters(value: 7))
+            try await jobQueue.push(TestParameters(value: 8))
+            try await jobQueue.push(TestParameters(value: 9))
+            try await jobQueue.push(TestParameters(value: 10))
 
             await fulfillment(of: [expectation], timeout: 5)
         }
     }
 
     func testMultipleWorkers() async throws {
-        let jobIdentifer = JobIdentifier<Int>(#function)
+        struct TestParameters: JobParameters {
+            static let jobName = "testMultipleWorkers"
+            let value: Int
+        }
         let runningJobCounter = ManagedAtomic(0)
         let maxRunningJobCounter = ManagedAtomic(0)
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 10)
 
         let jobQueue = JobQueue(.memory, numWorkers: 4, logger: Logger(label: "JobsTests"))
-        jobQueue.registerJob(id: jobIdentifer) { parameters, context in
+        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
             let runningJobs = runningJobCounter.wrappingIncrementThenLoad(by: 1, ordering: .relaxed)
             if runningJobs > maxRunningJobCounter.load(ordering: .relaxed) {
                 maxRunningJobCounter.store(runningJobs, ordering: .relaxed)
@@ -72,16 +77,16 @@ final class JobsTests: XCTestCase {
             runningJobCounter.wrappingDecrement(by: 1, ordering: .relaxed)
         }
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: jobIdentifer, parameters: 1)
-            try await jobQueue.push(id: jobIdentifer, parameters: 2)
-            try await jobQueue.push(id: jobIdentifer, parameters: 3)
-            try await jobQueue.push(id: jobIdentifer, parameters: 4)
-            try await jobQueue.push(id: jobIdentifer, parameters: 5)
-            try await jobQueue.push(id: jobIdentifer, parameters: 6)
-            try await jobQueue.push(id: jobIdentifer, parameters: 7)
-            try await jobQueue.push(id: jobIdentifer, parameters: 8)
-            try await jobQueue.push(id: jobIdentifer, parameters: 9)
-            try await jobQueue.push(id: jobIdentifer, parameters: 10)
+            try await jobQueue.push(TestParameters(value: 1))
+            try await jobQueue.push(TestParameters(value: 2))
+            try await jobQueue.push(TestParameters(value: 3))
+            try await jobQueue.push(TestParameters(value: 4))
+            try await jobQueue.push(TestParameters(value: 5))
+            try await jobQueue.push(TestParameters(value: 6))
+            try await jobQueue.push(TestParameters(value: 7))
+            try await jobQueue.push(TestParameters(value: 8))
+            try await jobQueue.push(TestParameters(value: 9))
+            try await jobQueue.push(TestParameters(value: 10))
 
             await fulfillment(of: [expectation], timeout: 5)
 
@@ -91,7 +96,9 @@ final class JobsTests: XCTestCase {
     }
 
     func testErrorRetryAndThenSucceed() async throws {
-        let jobIdentifer = JobIdentifier<Int>(#function)
+        struct TestParameters: JobParameters {
+            static let jobName = "testErrorRetryAndThenSucceed"
+        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
         let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
         struct FailedError: Error {}
@@ -105,7 +112,7 @@ final class JobsTests: XCTestCase {
                 minJitter: 0.01
             )
         )
-        jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
+        jobQueue.registerJob(parameters: TestParameters.self, maxRetryCount: 3) { _, _ in
             defer {
                 currentJobTryCount.withLockedValue {
                     $0 += 1
@@ -118,14 +125,16 @@ final class JobsTests: XCTestCase {
             }
         }
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: jobIdentifer, parameters: 0)
+            try await jobQueue.push(TestParameters())
             await fulfillment(of: [expectation], timeout: 5)
         }
         XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 2)
     }
 
     func testErrorRetryCount() async throws {
-        let jobIdentifer = JobIdentifier<Int>(#function)
+        struct TestParameters: JobParameters {
+            static let jobName = "testErrorRetryCount"
+        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 4)
         let failedJobCount = ManagedAtomic(0)
         struct FailedError: Error {}
@@ -140,12 +149,12 @@ final class JobsTests: XCTestCase {
                 minJitter: 0.0
             )
         )
-        jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
+        jobQueue.registerJob(parameters: TestParameters.self, maxRetryCount: 3) { _, _ in
             expectation.fulfill()
             throw FailedError()
         }
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: jobIdentifer, parameters: 0)
+            try await jobQueue.push(TestParameters())
 
             await fulfillment(of: [expectation], timeout: 5)
         }
@@ -153,55 +162,38 @@ final class JobsTests: XCTestCase {
     }
 
     func testDelayedJob() async throws {
-        let job1 = JobIdentifier<Int>(#function)
-        let job2 = JobIdentifier<Int>(#function)
+        struct TestParameters: JobParameters, Equatable {
+            static let jobName = "testDelayedJob"
+            let value: Int
+        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
         let delayedJob = ManagedAtomic(0)
-        let delayedJobParameterValue = 0
-        let jobExecutionSequence: NIOLockedValueBox<[Int]> = .init([])
-        jobQueue.registerJob(id: job1) { parameters, context in
+        let delayedJobParameters = TestParameters(value: 23)
+        let notDelayedJobParameters = TestParameters(value: 89)
+        let jobExecutionSequence: NIOLockedValueBox<[TestParameters]> = .init([])
+        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             jobExecutionSequence.withLockedValue {
                 $0.append(parameters)
             }
             expectation.fulfill()
 
-            if parameters == delayedJobParameterValue {
+            if parameters == delayedJobParameters {
                 delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
             }
         }
         try await testJobQueue(jobQueue) {
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
-            try await jobQueue.push(id: job1, parameters: delayedJobParameterValue, options: .init(delayUntil: Date.now.addingTimeInterval(1)))
+            try await jobQueue.push(delayedJobParameters, options: .init(delayUntil: Date.now.addingTimeInterval(1)))
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
-            try await jobQueue.push(id: job2, parameters: 10)
+            try await jobQueue.push(notDelayedJobParameters)
             XCTAssertEqual(delayedJob.load(ordering: .relaxed), 2)
             await fulfillment(of: [expectation], timeout: 5)
             XCTAssertEqual(delayedJob.load(ordering: .relaxed), 1)
         }
 
-        XCTAssertEqual(jobExecutionSequence.withLockedValue { $0 }, [10, 0])
-    }
-
-    func testJobSerialization() async throws {
-        struct TestJobParameters: Codable {
-            let id: Int
-            let message: String
-        }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called")
-        let jobIdentifer = JobIdentifier<TestJobParameters>(#function)
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
-        jobQueue.registerJob(id: jobIdentifer) { parameters, _ in
-            XCTAssertEqual(parameters.id, 23)
-            XCTAssertEqual(parameters.message, "Hello!")
-            expectation.fulfill()
-        }
-        try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: jobIdentifer, parameters: .init(id: 23, message: "Hello!"))
-
-            await fulfillment(of: [expectation], timeout: 5)
-        }
+        XCTAssertEqual(jobExecutionSequence.withLockedValue { $0 }, [notDelayedJobParameters, delayedJobParameters])
     }
 
     func testJobParameters() async throws {
@@ -269,21 +261,27 @@ final class JobsTests: XCTestCase {
 
     /// test job fails to decode but queue continues to process
     func testFailToDecode() async throws {
+        struct TestIntParameter: JobParameters {
+            static let jobName = "testFailToDecode"
+            let value: Int
+        }
+        struct TestStringParameter: JobParameters {
+            static let jobName = "testFailToDecode"
+            let value: String
+        }
         let string: NIOLockedValueBox<String> = .init("")
-        let jobIdentifer1 = JobIdentifier<Int>(#function)
-        let jobIdentifer2 = JobIdentifier<String>(#function)
         let expectation = XCTestExpectation(description: "job was called", expectedFulfillmentCount: 1)
 
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: logger)
-        jobQueue.registerJob(id: jobIdentifer2) { parameters, _ in
-            string.withLockedValue { $0 = parameters }
+        jobQueue.registerJob(parameters: TestStringParameter.self) { parameters, _ in
+            string.withLockedValue { $0 = parameters.value }
             expectation.fulfill()
         }
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: jobIdentifer1, parameters: 2)
-            try await jobQueue.push(id: jobIdentifer2, parameters: "test")
+            try await jobQueue.push(TestIntParameter(value: 2))
+            try await jobQueue.push(TestStringParameter(value: "test"))
             await fulfillment(of: [expectation], timeout: 5)
         }
         string.withLockedValue {
@@ -292,9 +290,12 @@ final class JobsTests: XCTestCase {
     }
 
     func testMultipleJobQueueHandlers() async throws {
-        let jobIdentifer = JobIdentifier<Int>(#function)
+        struct TestParameters: JobParameters {
+            static let jobName = "testMultipleJobQueueHandlers"
+            let value: Int
+        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 200)
-        let job = JobDefinition(id: jobIdentifer) { parameters, context in
+        let job = JobDefinition(parameters: TestParameters.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
             expectation.fulfill()
@@ -322,7 +323,7 @@ final class JobsTests: XCTestCase {
             }
             do {
                 for i in 0..<200 {
-                    try await jobQueue.push(id: jobIdentifer, parameters: i)
+                    try await jobQueue.push(TestParameters(value: i))
                 }
                 await fulfillment(of: [expectation], timeout: 5)
                 await serviceGroup.triggerGracefulShutdown()
@@ -333,8 +334,4 @@ final class JobsTests: XCTestCase {
             }
         }
     }
-}
-
-extension JobIdentifier where Parameters == Int {
-    static var test: Self { .init("test") }
 }
