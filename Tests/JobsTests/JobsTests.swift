@@ -188,11 +188,10 @@ final class JobsTests: XCTestCase {
         try await testJobQueue(jobQueue) {
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
             try await jobQueue.push(delayedJobParameters, options: .init(delayUntil: Date.now.addingTimeInterval(1)))
-            delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
             try await jobQueue.push(notDelayedJobParameters)
-            XCTAssertEqual(delayedJob.load(ordering: .relaxed), 2)
-            await fulfillment(of: [expectation], timeout: 5)
             XCTAssertEqual(delayedJob.load(ordering: .relaxed), 1)
+            await fulfillment(of: [expectation], timeout: 5)
+            XCTAssertEqual(delayedJob.load(ordering: .relaxed), 0)
         }
 
         XCTAssertEqual(jobExecutionSequence.withLockedValue { $0 }, [notDelayedJobParameters, delayedJobParameters])
