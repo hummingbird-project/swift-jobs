@@ -129,18 +129,22 @@ public final class MemoryQueue: JobQueueDriver {
         }
 
         func next() async throws -> QueuedJob? {
+            var maxTimesToLoop = self.queue.count
             while true {
                 if self.isStopped {
                     return nil
                 }
                 if let request = queue.popFirst() {
-                    guard request.options.delayUntil <= Date.now else {
+                    if request.options.delayUntil > Date.now {
                         self.queue.append(request)
-                        continue
+                        maxTimesToLoop -= 1
+                        if maxTimesToLoop > 0 {
+                            continue
+                        }
+                    } else {
+                        self.pendingJobs[request.job.id] = request.job.jobBuffer
+                        return request.job
                     }
-
-                    self.pendingJobs[request.job.id] = request.job.jobBuffer
-                    return request.job
                 }
                 try await Task.sleep(for: .milliseconds(100))
             }
