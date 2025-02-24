@@ -56,15 +56,6 @@ public final class JobRegistry: Sendable {
         }
     }
 
-    func encode(_ job: some JobInstanceProtocol, attempts: Int) throws -> ByteBuffer {
-        let jobRequest = JobRequest(
-            parameters: job.parameters,
-            queuedAt: job.queuedAt,
-            attempts: attempts
-        )
-        return try encode(jobRequest: jobRequest)
-    }
-
     func decode(jobName: String, from decoder: Decoder) throws -> any JobInstanceProtocol {
         let jobDefinitionBuilder = try self.builderTypeMap.withLockedValue {
             guard let job = $0[jobName] else { throw JobQueueError(code: .unrecognisedJobId, jobName: jobName) }
