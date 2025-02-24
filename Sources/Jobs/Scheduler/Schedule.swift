@@ -63,6 +63,17 @@ public struct Schedule: Sendable {
         case specific(Value)
         case selection(Deque<Value>)
 
+        var value: Value? {
+            switch self {
+            case .specific(let value):
+                value
+            case .selection(let values):
+                values.first
+            case .any:
+                nil
+            }
+        }
+
         mutating func nextValue() -> Value? {
             switch self {
             case .specific(let value):
@@ -71,6 +82,21 @@ public struct Schedule: Sendable {
                 let second = values.popFirst()
                 if let second {
                     values.append(second)
+                    self = .selection(values)
+                }
+                return second
+            case .any:
+                return nil
+            }
+        }
+        mutating func prevValue() -> Value? {
+            switch self {
+            case .specific(let value):
+                return value
+            case .selection(var values):
+                let second = values.popLast()
+                if let second {
+                    values.prepend(second)
                     self = .selection(values)
                 }
                 return second
@@ -250,5 +276,30 @@ public struct Schedule: Sendable {
         }
 
         return nextDate
+    }
+
+    ///  Set up scheduler to return the correct next date, based on a supplied Date.
+    /// - Parameter date: start date
+    public mutating func setInitialNextDateJustBefore(date: Date = .now) {
+        guard var nextDate = self.nextDate(after: date) else { return }
+        var prevDate = date
+        // Repeat while the nextDate is greater than the prevDate. At the point the nextDate is less than
+        // the previous date we know any schedules with multiple values have selected the correct next value
+        while prevDate < nextDate {
+            prevDate = nextDate
+            guard let nextDateUnwrapped = self.nextDate(after: date) else { return }
+            nextDate = nextDateUnwrapped
+        }
+        // move dates to previous date so it will supply the current date the next time we call nextDate()
+        self.moveToPreviousScheduledDate()
+    }
+
+    mutating func moveToPreviousScheduledDate() {
+        _ = self.second.prevValue()
+        _ = self.minute.prevValue()
+        _ = self.hour.prevValue()
+        _ = self.day.prevValue()
+        _ = self.date.prevValue()
+        _ = self.month.prevValue()
     }
 }

@@ -58,9 +58,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         let accuracy: ScheduleAccuracy
 
         public init(job: JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
-            var schedule = schedule
-            let nextScheduledDate = schedule.nextDate(after: .now) ?? .distantFuture
-            self.nextScheduledDate = nextScheduledDate
+            self.nextScheduledDate = .now
             self.schedule = schedule
             self.jobParameters = job
             self.accuracy = accuracy
@@ -99,12 +97,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     }
 
     mutating func updateNextScheduledDate(jobIndex: Int) {
-        let dateFrom: Date =
-            switch self.self[jobIndex].accuracy {
-            case .latest: Swift.max(.now, self[jobIndex].nextScheduledDate)
-            case .all: self[jobIndex].nextScheduledDate
-            default: Swift.max(.now, self[jobIndex].nextScheduledDate)
-            }
+        let dateFrom: Date = self[jobIndex].nextScheduledDate
         if let nextScheduledDate = self[jobIndex].schedule.nextDate(after: dateFrom) {
             self[jobIndex].nextScheduledDate = nextScheduledDate
         } else {
@@ -112,9 +105,33 @@ public struct JobSchedule: MutableCollection, Sendable {
         }
     }
 
-    mutating func setInitialNextDate(after date: Date) {
+    mutating func setInitialNextDate(after date: Date, now: Date = .now, logger: Logger) {
         for index in 0..<self.count {
-            self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
+            switch self[index].accuracy {
+            case .all:
+                // set nextScheduledDate based on date supplied
+                self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
+            case .latest:
+                // set nextScheduledDate based on date supplied
+                self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
+                // if schedule accuracy is set to latest that means it should only supply at the most one job
+                // prior to current date. If there are one of more jobs scheduled between date supplied and now
+                // return now. If there are no jobs scheduled between date supplied and now return the next scheduled
+                // date
+                if self[index].accuracy == .latest, self[index].nextScheduledDate < now {
+                    self[index].schedule.setInitialNextDateJustBefore(date: now)
+                    self[index].nextScheduledDate = now
+                }
+            default:
+                preconditionFailure("Unsupported schedule accuracy")
+            }
+            logger.debug(
+                "First scheduled date for job",
+                metadata: [
+                    "JobName": .stringConvertible(type(of: self[index].jobParameters).jobName),
+                    "JobTime": .stringConvertible(self[index].nextScheduledDate),
+                ]
+            )
         }
     }
 
@@ -181,13 +198,13 @@ public struct JobSchedule: MutableCollection, Sendable {
             do {
                 let date: Date
                 if let lastDate = try await self.jobQueue.getMetadata(.jobScheduleLastDate) {
-                    self.jobQueue.logger.debug("Last scheduled date \(lastDate).")
                     date = lastDate
+                    self.jobQueue.logger.info("Last scheduled date \(date).")
                 } else {
                     date = .now
+                    self.jobQueue.logger.info("No last scheduled date so scheduling from now.")
                 }
-                self.jobQueue.logger.debug("Last scheduled date \(date).")
-                jobSchedule.setInitialNextDate(after: date)
+                jobSchedule.setInitialNextDate(after: date, logger: self.jobQueue.logger)
             } catch {
                 self.jobQueue.logger.error(
                     "Failed to get last scheduled job date.",
