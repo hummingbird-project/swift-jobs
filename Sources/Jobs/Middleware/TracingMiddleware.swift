@@ -15,6 +15,7 @@
 import Foundation
 import Tracing
 
+/// Add distributed trace spans to each job instance a job queue runs
 public struct TracingJobMiddleware: JobMiddleware {
     public init() {}
 

@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// Middleware run on a job queue to provide additional functionality
 public protocol JobMiddleware: Sendable {
     /// Job has been pushed onto the queue
     ///
@@ -35,6 +36,7 @@ public protocol JobMiddleware: Sendable {
     func handleJob(job: any JobInstanceProtocol, context: JobContext, next: (any JobInstanceProtocol, JobContext) async throws -> Void) async throws
 }
 
+@_documentation(visibility: internal)
 public struct NullJobMiddleware: JobMiddleware {
     public init() {}
 
@@ -116,6 +118,7 @@ struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>
     }
 }
 
+/// Result builder used to create Job middleware chain
 @resultBuilder
 public enum JobMiddlewareBuilder {
     public static func buildBlock<Middleware: JobMiddleware>(_ middleware: Middleware) -> Middleware {

@@ -14,7 +14,9 @@
 
 import Foundation
 
+/// Request to run job, pushed to job queue
 public struct JobRequest<Parameters: JobParameters>: Encodable {
+    /// Job details
     public let data: JobInstanceData<Parameters>
 
     init(

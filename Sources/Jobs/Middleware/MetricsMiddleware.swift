@@ -15,6 +15,7 @@
 import Foundation
 import Metrics
 
+/// Add publishing of Metrics to a job queue
 public struct MetricsJobMiddleware: JobMiddleware {
     public init() {}
 
