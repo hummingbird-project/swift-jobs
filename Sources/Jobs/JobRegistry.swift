@@ -51,7 +51,7 @@ public final class JobRegistry: Sendable {
             return try JobInstance<Parameters>(job: job, data: data)
         }
         self.builderTypeMap.withLockedValue {
-            precondition($0[Parameters.jobName] == nil, "There is a job already registered under id \"\(Parameters.jobName)\"")
+            precondition($0[Parameters.jobName] == nil, "There is a job already registered under name \"\(Parameters.jobName)\"")
             $0[Parameters.jobName] = builder
         }
     }
