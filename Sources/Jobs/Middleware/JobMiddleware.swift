@@ -12,14 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// Middleware run on a job queue to provide additional functionality
 public protocol JobMiddleware: Sendable {
     /// Job has been pushed onto the queue
     ///
     /// - Parameters:
-    ///   - jobID: Job type identifier
     ///   - parameters: Job parameters
     ///   - jobInstanceID: Job instance identifier
-    func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async
+    func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async
     /// Job has been popped off the queue and decoded (with decode errors reported)
     ///
     /// - Parameters:
@@ -36,12 +36,13 @@ public protocol JobMiddleware: Sendable {
     func handleJob(job: any JobInstanceProtocol, context: JobContext, next: (any JobInstanceProtocol, JobContext) async throws -> Void) async throws
 }
 
+@_documentation(visibility: internal)
 public struct NullJobMiddleware: JobMiddleware {
     public init() {}
 
     /// Job has been pushed onto the queue
     @inlinable
-    public func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {}
+    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {}
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
     public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {}
@@ -61,9 +62,9 @@ struct OptionalJobMiddleware<Middleware: JobMiddleware>: JobMiddleware {
     let middleware: Middleware?
 
     @inlinable
-    func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+    func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {
         if let middleware {
-            await middleware.onPushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
+            await middleware.onPushJob(parameters: parameters, jobInstanceID: jobInstanceID)
         }
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
@@ -94,9 +95,9 @@ struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>
     let middleware2: Middleware2
 
     @inlinable
-    func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
-        await self.middleware1.onPushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
-        await self.middleware2.onPushJob(jobID: jobID, parameters: parameters, jobInstanceID: jobInstanceID)
+    func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {
+        await self.middleware1.onPushJob(parameters: parameters, jobInstanceID: jobInstanceID)
+        await self.middleware2.onPushJob(parameters: parameters, jobInstanceID: jobInstanceID)
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
@@ -117,6 +118,7 @@ struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>
     }
 }
 
+/// Result builder used to create Job middleware chain
 @resultBuilder
 public enum JobMiddlewareBuilder {
     public static func buildBlock<Middleware: JobMiddleware>(_ middleware: Middleware) -> Middleware {

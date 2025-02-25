@@ -254,31 +254,28 @@ final class MetricsTests: XCTestCase {
         MetricsSystem.bootstrap(self.testMetrics)
     }
 
-    func wait(for expectations: [XCTestExpectation], timeout: TimeInterval) async {
-        #if (os(Linux) && swift(<5.9)) || swift(<5.8)
-        super.wait(for: expectations, timeout: timeout)
-        #else
-        await fulfillment(of: expectations, timeout: timeout)
-        #endif
-    }
-
     func testDispatchJobCounter() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testDispatchJobCounter"
+            let value: Int
+        }
+
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 5)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) { MetricsJobMiddleware() }
-        let job = JobDefinition(id: "testBasic") { (parameters: Int, context) in
-            context.logger.info("Parameters=\(parameters)")
+        let job = JobDefinition { (parameters: TestParameters, context) in
+            context.logger.info("Parameters=\(parameters.value)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: job.id, parameters: 1)
-            try await jobQueue.push(id: job.id, parameters: 2)
-            try await jobQueue.push(id: job.id, parameters: 3)
-            try await jobQueue.push(id: job.id, parameters: 4)
-            try await jobQueue.push(id: job.id, parameters: 5)
+            try await jobQueue.push(TestParameters(value: 1))
+            try await jobQueue.push(TestParameters(value: 2))
+            try await jobQueue.push(TestParameters(value: 3))
+            try await jobQueue.push(TestParameters(value: 4))
+            try await jobQueue.push(TestParameters(value: 5))
 
-            await self.wait(for: [expectation], timeout: 5)
+            await fulfillment(of: [expectation], timeout: 5)
         }
 
         let counter = try XCTUnwrap(Self.testMetrics.counters.withLockedValue { $0 }["swift.jobs"] as? TestCounter)
@@ -286,7 +283,7 @@ final class MetricsTests: XCTestCase {
         XCTAssertEqual(counter.values.withLockedValue { $0 }.count, 1)  // This technically 5, need to figueout how to await the results to get 5
         XCTAssertEqual(counter.dimensions.count, 2)
         XCTAssertEqual(counter.dimensions[0].0, "name")
-        XCTAssertEqual(counter.dimensions[0].1, "testBasic")
+        XCTAssertEqual(counter.dimensions[0].1, "testDispatchJobCounter")
         XCTAssertEqual(counter.dimensions[1].0, "status")
         XCTAssertEqual(counter.dimensions[1].1, "succeeded")
 
@@ -302,20 +299,26 @@ final class MetricsTests: XCTestCase {
 
     func testFailToDecode() async throws {
         let string: NIOLockedValueBox<String> = .init("")
-        let jobIdentifer1 = JobIdentifier<Int>(#function)
-        let jobIdentifer2 = JobIdentifier<String>(#function)
+        struct TestIntParameter: JobParameters {
+            static let jobName = "testFailToDecode"
+            let value: Int
+        }
+        struct TestStringParameter: JobParameters {
+            static let jobName = "testFailToDecode"
+            let value: String
+        }
         let expectation = XCTestExpectation(description: "job was called", expectedFulfillmentCount: 1)
 
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
         let jobQueue = JobQueue(.memory, numWorkers: 2, logger: Logger(label: "JobsTests")) { MetricsJobMiddleware() }
-        jobQueue.registerJob(id: jobIdentifer2) { parameters, _ in
-            string.withLockedValue { $0 = parameters }
+        jobQueue.registerJob(parameters: TestStringParameter.self) { parameters, _ in
+            string.withLockedValue { $0 = parameters.value }
             expectation.fulfill()
         }
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: jobIdentifer1, parameters: 2)
-            try await jobQueue.push(id: jobIdentifer2, parameters: "test")
+            try await jobQueue.push(TestIntParameter(value: 2))
+            try await jobQueue.push(TestStringParameter(value: "test"))
             await fulfillment(of: [expectation], timeout: 5)
         }
         string.withLockedValue {
@@ -329,7 +332,9 @@ final class MetricsTests: XCTestCase {
     }
 
     func testErrorRetryAndThenSucceed() async throws {
-        let jobIdentifer = JobIdentifier<Int>(#function)
+        struct TestParameter: JobParameters {
+            static let jobName = "testErrorRetryAndThenSucceed"
+        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
         let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
         struct FailedError: Error {}
@@ -343,7 +348,7 @@ final class MetricsTests: XCTestCase {
                 minJitter: 0.01
             )
         ) { MetricsJobMiddleware() }
-        jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
+        jobQueue.registerJob(parameters: TestParameter.self, maxRetryCount: 3) { _, _ in
 
             defer {
                 currentJobTryCount.withLockedValue {
@@ -358,7 +363,7 @@ final class MetricsTests: XCTestCase {
             }
         }
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: jobIdentifer, parameters: 0)
+            try await jobQueue.push(TestParameter())
             let meter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
             XCTAssertEqual(meter.values.withLockedValue { $0 }.count, 1)
             XCTAssertEqual(meter.values.withLockedValue { $0 }[0].1, 1.0)
@@ -376,7 +381,9 @@ final class MetricsTests: XCTestCase {
     }
 
     func testFailedJobs() async throws {
-        let jobIdentifer = JobIdentifier<Int>(#function)
+        struct TestParameter: JobParameters {
+            static let jobName = "testFailedJobs"
+        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 4)
         let failedJobCount = ManagedAtomic(0)
         struct FailedError: Error {}
@@ -391,21 +398,21 @@ final class MetricsTests: XCTestCase {
                 minJitter: 0.0
             )
         ) { MetricsJobMiddleware() }
-        jobQueue.registerJob(id: jobIdentifer, maxRetryCount: 3) { _, _ in
+        jobQueue.registerJob(parameters: TestParameter.self, maxRetryCount: 3) { _, _ in
             expectation.fulfill()
             throw FailedError()
         }
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: jobIdentifer, parameters: 0)
+            try await jobQueue.push(TestParameter())
 
-            await self.wait(for: [expectation], timeout: 5)
+            await fulfillment(of: [expectation], timeout: 5)
         }
         XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
         let counter = try XCTUnwrap(Self.testMetrics.counters.withLockedValue { $0 }["swift.jobs"] as? TestCounter)
         XCTAssertEqual(counter.values.withLockedValue { $0 }.count, 1)
         XCTAssertEqual(counter.values.withLockedValue { $0 }[0].1, 1)
         XCTAssertEqual(counter.dimensions[0].0, "name")
-        XCTAssertEqual(counter.dimensions[0].1, "testFailedJobs()")
+        XCTAssertEqual(counter.dimensions[0].1, "testFailedJobs")
         XCTAssertEqual(counter.dimensions[1].0, "status")
         XCTAssertEqual(counter.dimensions[1].1, "failed")
         let meter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
@@ -419,41 +426,48 @@ final class MetricsTests: XCTestCase {
     }
 
     func testJobExecutionTime() async throws {
+        struct TestParameter: JobParameters {
+            static let jobName = "testJobExecutionTime"
+        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) { MetricsJobMiddleware() }
-        let job = JobDefinition(id: "testBasic") { (parameters: Int, context) in
+        let job = JobDefinition { (parameters: TestParameter, context) in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(5))
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
         try await testJobQueue(jobQueue) {
-            try await jobQueue.push(id: job.id, parameters: 1)
-            await self.wait(for: [expectation], timeout: 5)
+            try await jobQueue.push(TestParameter())
+            await fulfillment(of: [expectation], timeout: 5)
         }
 
         let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift.jobs.duration"] as? TestTimer)
         XCTAssertGreaterThan(timer.values.withLockedValue { $0 }[0].1, 5_000_000)
         XCTAssertEqual(timer.dimensions[0].0, "name")
-        XCTAssertEqual(timer.dimensions[0].1, "testBasic")
+        XCTAssertEqual(timer.dimensions[0].1, "testJobExecutionTime")
         XCTAssertEqual(timer.dimensions[1].0, "status")
         XCTAssertEqual(timer.dimensions[1].1, "succeeded")
     }
 
     func testJobQueuedTime() async throws {
+        struct SleepJobParameters: JobParameters {
+            static let jobName = "testJobQueuedTime"
+            let wait: Int
+        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) { MetricsJobMiddleware() }
-        let job = JobDefinition(id: "testBasic") { (parameters: Int, context) in
+        let job = JobDefinition { (parameters: SleepJobParameters, context) in
             context.logger.info("Parameters=\(parameters)")
-            try await Task.sleep(for: .milliseconds(parameters))
+            try await Task.sleep(for: .milliseconds(parameters.wait))
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
         try await testJobQueue(jobQueue) {
             // add two jobs. First job ensures the second job is queued for more than 50ms
-            try await jobQueue.push(id: job.id, parameters: 50)
-            try await jobQueue.push(id: job.id, parameters: 5)
-            await self.wait(for: [expectation], timeout: 5)
+            try await jobQueue.push(SleepJobParameters(wait: 50))
+            try await jobQueue.push(SleepJobParameters(wait: 5))
+            await fulfillment(of: [expectation], timeout: 5)
         }
 
         let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift.jobs.queued.duration"] as? TestTimer)

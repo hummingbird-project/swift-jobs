@@ -44,20 +44,19 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     /// Called when JobQueueHandler is initialised with this queue
     func onInit() async throws
     /// Register job definition with driver
-    func registerJob<Parameters: Codable & Sendable>(_ job: JobDefinition<Parameters>)
+    func registerJob<Parameters: JobParameters>(_ job: JobDefinition<Parameters>)
     /// Push Job onto queue
     /// - Parameters
     ///   - jobRequest: Job Request
     ///   - options: JobOptions
     /// - Returns: Identifier of queued jobs
-    @discardableResult func push<Parameters>(_ jobRequest: JobRequest<Parameters>, options: JobOptions) async throws -> JobID
+    @discardableResult func push<Parameters: JobParameters>(_ jobRequest: JobRequest<Parameters>, options: JobOptions) async throws -> JobID
     /// Retry an existing Job
     /// - Parameters
-    ///   - id JobID
+    ///   - id: Job instance ID
     ///   - jobRequest: Job Request
     ///   - options: JobOptions
-    /// - Returns: Bool
-    func retry<Parameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobOptions) async throws
+    func retry<Parameters: JobParameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobOptions) async throws
     /// This is called to say job has finished processing and it can be deleted
     func finished(jobID: JobID) async throws
     /// This is called to say job has failed to run and should be put aside
@@ -79,7 +78,7 @@ extension JobQueueDriver {
 
 extension JobQueueDriver {
     func retry(_ jobID: JobID, job: some JobInstanceProtocol, attempts: Int, options: JobOptions) async throws {
-        let jobRequest = JobRequest(id: job.id, parameters: job.parameters, queuedAt: job.queuedAt, attempts: attempts)
+        let jobRequest = JobRequest(parameters: job.parameters, queuedAt: job.queuedAt, attempts: attempts)
         return try await self.retry(jobID, jobRequest: jobRequest, options: options)
     }
 }

@@ -15,6 +15,7 @@
 import Foundation
 import Metrics
 
+/// Add publishing of Metrics to a job queue
 public struct MetricsJobMiddleware: JobMiddleware {
     public init() {}
 
@@ -48,11 +49,10 @@ public struct MetricsJobMiddleware: JobMiddleware {
     /// Job has been pushed onto the queue
     ///
     /// - Parameters:
-    ///   - jobID: Job type identifier
     ///   - parameters: Job parameters
     ///   - jobInstanceID: Job instance identifier
     @inlinable
-    public func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {
         Meter(
             label: Self.meterLabel,
             dimensions: [

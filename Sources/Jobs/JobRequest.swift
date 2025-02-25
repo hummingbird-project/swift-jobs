@@ -14,30 +14,27 @@
 
 import Foundation
 
-public struct JobRequest<Parameters: Codable & Sendable>: Encodable {
-    public let id: JobIdentifier<Parameters>
+/// Request to run job, pushed to job queue
+public struct JobRequest<Parameters: JobParameters>: Encodable {
+    /// Job details
     public let data: JobInstanceData<Parameters>
 
     init(
-        id: JobIdentifier<Parameters>,
         parameters: Parameters,
         queuedAt: Date,
         attempts: Int
     ) {
-
-        self.id = id
         self.data = .init(parameters: parameters, queuedAt: queuedAt, attempts: attempts)
     }
 
     init(jobInstance: JobInstance<Parameters>, attempts: Int) {
-        self.id = jobInstance.id
         self.data = .init(parameters: jobInstance.parameters, queuedAt: jobInstance.queuedAt, attempts: attempts)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: _JobCodingKey.self)
         let childEncoder = container.superEncoder(
-            forKey: .init(stringValue: self.id.name, intValue: nil)
+            forKey: .init(stringValue: Parameters.jobName, intValue: nil)
         )
         try self.data.encode(to: childEncoder)
     }

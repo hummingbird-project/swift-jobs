@@ -18,9 +18,7 @@ import Tracing
 /// Protocol for a Job
 public protocol JobInstanceProtocol: Sendable {
     /// Parameters job requries
-    associatedtype Parameters: Codable & Sendable
-    /// Job Type identifier
-    var id: JobIdentifier<Parameters> { get }
+    associatedtype Parameters: JobParameters
     /// Maximum number of times a job will be retried before being classed as failed
     var maxRetryCount: Int { get }
     /// Time job was queued
@@ -38,7 +36,7 @@ public protocol JobInstanceProtocol: Sendable {
 extension JobInstanceProtocol {
     /// Name of job type
     public var name: String {
-        id.name
+        Parameters.jobName
     }
 
     /// Number of remaining attempts
@@ -66,13 +64,11 @@ extension JobInstanceProtocol {
 ///
 /// Includes everything needed to run the job plus any other data that was encoded
 /// with the job
-struct JobInstance<Parameters: Codable & Sendable>: JobInstanceProtocol {
+struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
     /// job definition
     let job: JobDefinition<Parameters>
     /// job parameters
     let data: JobInstanceData<Parameters>
-    /// job identifier
-    var id: JobIdentifier<Parameters> { self.job.id }
     /// max retry count for a job
     var maxRetryCount: Int { self.job.maxRetryCount }
     /// Time job was queued
@@ -95,7 +91,7 @@ struct JobInstance<Parameters: Codable & Sendable>: JobInstanceProtocol {
 }
 
 /// Data attach to a job
-public struct JobInstanceData<Parameters: Codable & Sendable>: Codable, Sendable {
+public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
     /// Job parameters
     let parameters: Parameters
     /// Date job was queued

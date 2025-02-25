@@ -14,6 +14,7 @@
 
 import Logging
 
+/// Context of running job
 public struct JobContext {
     /// Job instance identifier
     public let jobInstanceID: String

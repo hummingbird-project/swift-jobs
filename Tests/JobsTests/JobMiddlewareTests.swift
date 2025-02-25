@@ -32,7 +32,7 @@ final class JobMiddlewareTests: XCTestCase {
             self.handled = false
         }
 
-        func onPushJob<Parameters: Codable & Sendable>(jobID: JobIdentifier<Parameters>, parameters: Parameters, jobInstanceID: String) async {
+        func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {
             self.pushed = true
         }
 
@@ -52,9 +52,12 @@ final class JobMiddlewareTests: XCTestCase {
     }
 
     func testResultBuilderWithTwoMiddleware() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testResultBuilderWithTwoMiddleware"
+            let value: String
+        }
         struct FakeJobInstance: JobInstanceProtocol {
-            let id = JobIdentifier<String>("fake")
-            let parameters = "Fake parameters"
+            let parameters = TestParameters(value: "test")
             let maxRetryCount = 1
             let queuedAt = Date.now
             let attempts: Int? = 0
@@ -69,7 +72,7 @@ final class JobMiddlewareTests: XCTestCase {
             TestJobMiddleware()
             observer2
         }
-        await observers.onPushJob(jobID: JobIdentifier<String>("test"), parameters: "Test", jobInstanceID: "0")
+        await observers.onPushJob(parameters: TestParameters(value: "test"), jobInstanceID: "0")
         XCTAssertEqual(observer1.pushed, true)
         XCTAssertEqual(observer2.pushed, true)
         await observers.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
@@ -84,9 +87,12 @@ final class JobMiddlewareTests: XCTestCase {
         func testIf(
             _ first: Bool
         ) async throws {
+            struct TestParameters: JobParameters {
+                static let jobName = "testResultBuildeOptionalMiddleware"
+                let value: String
+            }
             struct FakeJobInstance: JobInstanceProtocol {
-                let id = JobIdentifier<String>("fake")
-                let parameters = "Fake parameter"
+                let parameters = TestParameters(value: "test")
                 let maxRetryCount = 1
                 let queuedAt = Date.now
                 let attempts: Int? = 0
@@ -100,7 +106,7 @@ final class JobMiddlewareTests: XCTestCase {
                     middleware1
                 }
             }
-            await middlewareChain.onPushJob(jobID: JobIdentifier<String>("test"), parameters: "Test", jobInstanceID: "0")
+            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), jobInstanceID: "0")
             XCTAssertEqual(middleware1.pushed, first == true)
             await middlewareChain.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
             XCTAssertEqual(middleware1.popped, first == true)
@@ -115,9 +121,12 @@ final class JobMiddlewareTests: XCTestCase {
         func testEitherOr(
             first: Bool
         ) async throws {
+            struct TestParameters: JobParameters {
+                static let jobName = "testResultBuilderIfElseMiddleware"
+                let value: String
+            }
             struct FakeJobInstance: JobInstanceProtocol {
-                let id = JobIdentifier<String>("fake")
-                let parameters = "Fake parameter"
+                let parameters = TestParameters(value: "test")
                 let maxRetryCount = 1
                 let queuedAt = Date.now
                 let attempts: Int? = 0
@@ -134,7 +143,7 @@ final class JobMiddlewareTests: XCTestCase {
                     middleware2
                 }
             }
-            await middlewareChain.onPushJob(jobID: JobIdentifier<String>("test"), parameters: "Test", jobInstanceID: "0")
+            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), jobInstanceID: "0")
             XCTAssertEqual(middleware1.pushed, first == true)
             XCTAssertEqual(middleware2.pushed, first != true)
             await middlewareChain.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
