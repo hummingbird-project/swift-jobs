@@ -48,7 +48,6 @@ public struct MetricsJobMiddleware: JobMiddleware {
     /// Job has been pushed onto the queue
     ///
     /// - Parameters:
-    ///   - jobID: Job type identifier
     ///   - parameters: Job parameters
     ///   - jobInstanceID: Job instance identifier
     @inlinable

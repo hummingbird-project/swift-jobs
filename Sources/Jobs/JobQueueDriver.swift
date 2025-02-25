@@ -53,10 +53,9 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     @discardableResult func push<Parameters: JobParameters>(_ jobRequest: JobRequest<Parameters>, options: JobOptions) async throws -> JobID
     /// Retry an existing Job
     /// - Parameters
-    ///   - id: JobID
+    ///   - id: Job instance ID
     ///   - jobRequest: Job Request
     ///   - options: JobOptions
-    /// - Returns: Bool
     func retry<Parameters: JobParameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobOptions) async throws
     /// This is called to say job has finished processing and it can be deleted
     func finished(jobID: JobID) async throws

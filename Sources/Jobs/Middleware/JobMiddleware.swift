@@ -16,7 +16,6 @@ public protocol JobMiddleware: Sendable {
     /// Job has been pushed onto the queue
     ///
     /// - Parameters:
-    ///   - jobID: Job type identifier
     ///   - parameters: Job parameters
     ///   - jobInstanceID: Job instance identifier
     func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async

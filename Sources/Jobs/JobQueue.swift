@@ -22,7 +22,7 @@ import ServiceLifecycle
 ///
 /// Wrapper type to bring together a job queue implementation and a job queue
 /// handler. Before you can push jobs onto a queue you should register it
-/// with the queue via either ``registerJob(id:maxRetryCount:execute:)`` or
+/// with the queue via either ``registerJob(parameters:maxRetryCount:execute:)`` or
 /// ``registerJob(_:)``.
 public struct JobQueue<Queue: JobQueueDriver>: Service {
     /// underlying driver for queue
@@ -63,7 +63,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
 
     ///  Register job type
     /// - Parameters:
-    ///   - id: Job Identifier
+    ///   - parameters: Job Parameters
     ///   - maxRetryCount: Maximum number of times job is retried before being flagged as failed
     ///   - execute: Job code
     public func registerJob<Parameters: JobParameters>(
