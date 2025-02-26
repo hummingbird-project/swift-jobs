@@ -113,14 +113,16 @@ public struct MetricsJobMiddleware: JobMiddleware {
         Meter(
             label: Self.meterLabel,
             dimensions: [
-                ("status", JobStatus.processing.rawValue)
+                ("status", JobStatus.processing.rawValue),
+                ("name", job.name),
             ]
         ).increment()
         defer {
             Meter(
                 label: Self.meterLabel,
                 dimensions: [
-                    ("status", JobStatus.processing.rawValue)
+                    ("status", JobStatus.processing.rawValue),
+                    ("name", job.name),
                 ]
             ).decrement()
         }
@@ -148,7 +150,8 @@ public struct MetricsJobMiddleware: JobMiddleware {
                 Meter(
                     label: Self.meterLabel,
                     dimensions: [
-                        ("status", JobStatus.queued.rawValue)
+                        ("status", JobStatus.queued.rawValue),
+                        ("name", job.name),
                     ]
                 ).increment()
 
