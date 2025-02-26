@@ -18,13 +18,55 @@ import NIOCore
 import NIOFoundationCompat
 import ServiceLifecycle
 
+/// Protocol for Job queue. Allows us to pass job queues around as existentials
+public protocol JobQueueProtocol: Service {
+    associatedtype Queue: JobQueueDriver
+
+    var logger: Logger { get }
+
+    ///  Push Job onto queue
+    /// - Parameters:
+    ///   - id: Job identifier
+    ///   - parameters: parameters for the job
+    /// - Returns: Identifier of queued job
+    func push<Parameters: JobParameters>(
+        _ parameters: Parameters,
+        options: JobOptions
+    ) async throws -> Queue.JobID
+
+    ///  Register job type
+    /// - Parameters:
+    ///   - job: Job definition
+    func registerJob(_ job: JobDefinition<some JobParameters>)
+}
+
+extension JobQueueProtocol {
+    ///  Register job type
+    /// - Parameters:
+    ///   - parameters: Job Parameters
+    ///   - maxRetryCount: Maximum number of times job is retried before being flagged as failed
+    ///   - execute: Job code
+    public func registerJob<Parameters: JobParameters>(
+        parameters: Parameters.Type = Parameters.self,
+        maxRetryCount: Int = 0,
+        execute: @escaping @Sendable (
+            Parameters,
+            JobContext
+        ) async throws -> Void
+    ) {
+        self.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
+        let job = JobDefinition<Parameters>(maxRetryCount: maxRetryCount, execute: execute)
+        self.registerJob(job)
+    }
+}
+
 /// Job queue
 ///
 /// Wrapper type to bring together a job queue implementation and a job queue
 /// handler. Before you can push jobs onto a queue you should register it
 /// with the queue via either ``registerJob(parameters:maxRetryCount:execute:)`` or
 /// ``registerJob(_:)``.
-public struct JobQueue<Queue: JobQueueDriver>: Service {
+public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// underlying driver for queue
     public let queue: Queue
     let handler: JobQueueHandler<Queue>
@@ -63,24 +105,6 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
 
     ///  Register job type
     /// - Parameters:
-    ///   - parameters: Job Parameters
-    ///   - maxRetryCount: Maximum number of times job is retried before being flagged as failed
-    ///   - execute: Job code
-    public func registerJob<Parameters: JobParameters>(
-        parameters: Parameters.Type = Parameters.self,
-        maxRetryCount: Int = 0,
-        execute: @escaping @Sendable (
-            Parameters,
-            JobContext
-        ) async throws -> Void
-    ) {
-        self.handler.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
-        let job = JobDefinition<Parameters>(maxRetryCount: maxRetryCount, execute: execute)
-        self.registerJob(job)
-    }
-
-    ///  Register job type
-    /// - Parameters:
     ///   - job: Job definition
     public func registerJob(_ job: JobDefinition<some JobParameters>) {
         self.handler.queue.registerJob(job)
@@ -97,7 +121,7 @@ public struct JobQueue<Queue: JobQueueDriver>: Service {
         try await self.handler.run()
     }
 
-    var logger: Logger { self.handler.logger }
+    public var logger: Logger { self.handler.logger }
 }
 
 extension JobQueue {
