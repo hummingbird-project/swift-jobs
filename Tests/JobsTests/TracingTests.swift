@@ -57,6 +57,7 @@ final class TracingTests: XCTestCase {
             [
                 "job.id": "\(jobID.uuidString)",
                 "job.attempt": 1,
+                "job.name": "\(TestParameters.jobName)"
             ]
         )
     }
@@ -107,6 +108,7 @@ final class TracingTests: XCTestCase {
             [
                 "job.id": "\(jobID.uuidString)",
                 "job.attempt": 1,
+                "job.name": "\(TestParameters.jobName)"
             ]
         )
         let span2 = try XCTUnwrap(tracer.spans.last)
@@ -176,6 +178,7 @@ final class TracingTests: XCTestCase {
             [
                 "job.id": "\(jobID.uuidString)",
                 "job.attempt": 1,
+                "job.name": "\(TestParameters.jobName)"
             ]
         )
     }
