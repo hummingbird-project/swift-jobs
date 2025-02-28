@@ -425,8 +425,8 @@ final class JobSchedulerTests: XCTestCase {
 
         var logger = Logger(label: "jobs")
         logger.logLevel = .debug
+
         let lastDateScheduledTaskRan: NIOLockedValueBox<Date?> = .init(nil)
-        
 
         let jobQueue = JobQueue(MemoryQueue(), logger: logger)
         jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, context in
