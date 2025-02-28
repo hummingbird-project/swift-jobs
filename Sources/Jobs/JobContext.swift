@@ -22,7 +22,9 @@ public struct JobContext {
     public let jobInstanceID: String
     /// Logger
     public let logger: Logger
-    /// The date when the job was scheduled
-    /// to run or queued
+    /// Time when the job was scheduled
+    /// to run or queued at
     public let queuedAt: Date
+    /// Time job last scheduled
+    public let lastScheduledAt: Date?
 }

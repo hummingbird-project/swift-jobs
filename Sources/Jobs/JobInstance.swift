@@ -29,6 +29,8 @@ public protocol JobInstanceProtocol: Sendable {
     var parameters: Parameters { get }
     /// Trace context
     var traceContext: [String: String]? { get }
+    /// Time job last scheduled
+    var lastScheduledAt: Date? { get }
     /// Function to execute the job
     func execute(context: JobContext) async throws
 }
@@ -79,6 +81,8 @@ struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
     var traceContext: [String: String]? { self.data.traceContext }
     /// Job parameters
     var parameters: Parameters { self.data.parameters }
+    /// Time job was last scheduled
+    var lastScheduledAt: Date? { self.data.lastScheduledAt }
 
     func execute(context: JobContext) async throws {
         try await self.job.execute(self.data.parameters, context: context)
@@ -100,15 +104,19 @@ public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
     let attempts: Int?
     /// trace context
     let traceContext: [String: String]?
+    /// Date when  job was last scheduled
+    let lastScheduledAt: Date?
 
     init(
         parameters: Parameters,
         queuedAt: Date,
-        attempts: Int?
+        attempts: Int?,
+        lastScheduledAt: Date? = nil
     ) {
         self.parameters = parameters
         self.queuedAt = queuedAt
         self.attempts = attempts
+        self.lastScheduledAt = lastScheduledAt
         var traceContext: [String: String]? = nil
         if let serviceContext = ServiceContext.current {
             var tempTraceContext = [String: String]()
@@ -126,6 +134,7 @@ public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
         case queuedAt = "q"
         case attempts = "a"
         case traceContext = "t"
+        case lastScheduledAt = "l"
     }
 }
 

@@ -29,3 +29,20 @@ extension JobParameters {
         try await jobQueue.push(self, options: options)
     }
 }
+
+extension JobParameters {
+    /// Added so it's possible for the scheduler to add date partitions
+    internal func push<Queue: JobQueueDriver>(
+        to jobQueue: JobQueue<Queue>,
+        currentSchedule: Date,
+        lastScheduledAt: Date? = nil,
+        options: JobOptions = .init()
+    ) async throws -> Queue.JobID {
+        try await jobQueue.schedule(
+            self,
+            currentSchedule: currentSchedule,
+            lastScheduledAt: lastScheduledAt,
+            options: options
+        )
+    }
+}

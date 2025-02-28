@@ -61,6 +61,7 @@ final class JobMiddlewareTests: XCTestCase {
             let maxRetryCount = 1
             let queuedAt = Date.now
             let attempts: Int? = 0
+            let lastScheduledAt: Date? = nil
             let traceContext: [String: String]? = nil
 
             func execute(context: JobContext) async throws {}
@@ -79,7 +80,15 @@ final class JobMiddlewareTests: XCTestCase {
         XCTAssertEqual(observer1.popped, true)
         XCTAssertEqual(observer2.popped, true)
         let job = FakeJobInstance()
-        try await observers.handleJob(job: job, context: .init(jobInstanceID: "0", logger: .init(label: "Test"), queuedAt: job.queuedAt)) { _, _ in }
+        try await observers.handleJob(
+            job: job,
+            context: .init(
+                jobInstanceID: "0",
+                logger: .init(label: "Test"),
+                queuedAt: job.queuedAt,
+                lastScheduledAt: nil
+            )
+        ) { _, _ in }
         XCTAssertEqual(observer1.handled, true)
         XCTAssertEqual(observer2.handled, true)
     }
@@ -98,7 +107,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let queuedAt = Date.now
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
-
+                let lastScheduledAt: Date? = nil
                 func execute(context: JobContext) async throws {}
             }
             let middleware1 = TestJobMiddleware()
@@ -117,7 +126,8 @@ final class JobMiddlewareTests: XCTestCase {
                 context: .init(
                     jobInstanceID: "0",
                     logger: .init(label: "Test"),
-                    queuedAt: job.queuedAt
+                    queuedAt: job.queuedAt,
+                    lastScheduledAt: nil
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
@@ -140,7 +150,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let queuedAt = Date.now
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
-
+                let lastScheduledAt: Date? = nil
                 func execute(context: JobContext) async throws {}
             }
             let middleware1 = TestJobMiddleware()
@@ -164,7 +174,8 @@ final class JobMiddlewareTests: XCTestCase {
                 context: .init(
                     jobInstanceID: "0",
                     logger: .init(label: "Test"),
-                    queuedAt: job.queuedAt
+                    queuedAt: job.queuedAt,
+                    lastScheduledAt: nil
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
