@@ -71,7 +71,7 @@ extension JobInstanceProtocol {
             nil
         }
     }
-    
+    /// Default conformance
     public var nextScheduledAt: Date? {
         get {
             nil
