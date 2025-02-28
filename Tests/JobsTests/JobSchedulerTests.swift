@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Logging
+import NIOConcurrencyHelpers
 import ServiceLifecycle
 import XCTest
 
@@ -392,7 +393,11 @@ final class JobSchedulerTests: XCTestCase {
         logger.logLevel = .debug
 
         let jobQueue = JobQueue(MemoryQueue(), logger: logger)
-        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, _ in
+        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, context in
+            XCTAssertNil(context.lastScheduledAt)
+            XCTAssertNotNil(context.nextScheduledAt)
+            XCTAssertGreaterThan(context.nextScheduledAt!, context.queuedAt)
+
             source.yield()
         }
         // create schedule that ensures a job will be run in the next second
@@ -424,8 +429,13 @@ final class JobSchedulerTests: XCTestCase {
         var logger = Logger(label: "jobs")
         logger.logLevel = .debug
 
+        let lastDateScheduledTaskRan: NIOLockedValueBox<Date?> = .init(nil)
+
         let jobQueue = JobQueue(MemoryQueue(), logger: logger)
-        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, _ in
+        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, context in
+            lastDateScheduledTaskRan.withLockedValue {
+                $0 = context.lastScheduledAt
+            }
             source.yield()
         }
         // create schedule that ensures a job should have been run 15 seconds ago
@@ -452,6 +462,7 @@ final class JobSchedulerTests: XCTestCase {
         let lastDate = try await jobQueue.getMetadata(.jobScheduleLastDate)
         let lastDate2 = try XCTUnwrap(lastDate)
         XCTAssertEqual(lastDate2.timeIntervalSince1970, Date.now.timeIntervalSince1970, accuracy: 1.0)
+        XCTAssertNotNil(lastDateScheduledTaskRan)
     }
 
     func testSchedulerLastDateAccuracyAll() async throws {

@@ -90,7 +90,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         logger.debug("Starting Job")
         do {
             do {
-                let context = JobContext(jobInstanceID: jobID.description, logger: logger)
+                let context = JobContext(
+                    jobInstanceID: jobID.description,
+                    logger: logger,
+                    queuedAt: job.queuedAt,
+                    lastScheduledAt: job.lastScheduledAt,
+                    nextScheduledAt: job.nextScheduledAt
+                )
                 try await self.middleware.handleJob(job: job, context: context) { job, context in
                     try await job.execute(context: context)
                 }

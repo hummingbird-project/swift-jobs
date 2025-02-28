@@ -137,7 +137,7 @@ public struct JobSchedule: MutableCollection, Sendable {
 
     /// AsyncSequence of Jobs based on a JobSchedule
     struct JobSequence: AsyncSequence {
-        typealias Element = (job: JobParameters, date: Date)
+        typealias Element = (job: JobParameters, date: Date, nextScheduledAt: Date?)
         let jobSchedule: JobSchedule
         let logger: Logger
 
@@ -168,7 +168,8 @@ public struct JobSchedule: MutableCollection, Sendable {
                         try await Task.sleep(until: .now + .seconds(timeInterval))
                     }
                     self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
-                    return (job.element.jobParameters, nextScheduledDate)
+                    var nextDate: Schedule = job.element.schedule
+                    return (job.element.jobParameters, nextScheduledDate, nextDate.nextDate(after: nextScheduledDate))
                 } catch {
                     return nil
                 }
@@ -194,11 +195,13 @@ public struct JobSchedule: MutableCollection, Sendable {
         public func run() async throws {
             try await self.jobQueue.initializationComplete.waitUntilTriggered()
             var jobSchedule = self.jobSchedule
+            var lastScheduledAt: Date? = nil
             // Update next scheduled date for each job schedule based off the last scheduled date stored
             do {
                 let date: Date
                 if let lastDate = try await self.jobQueue.getMetadata(.jobScheduleLastDate) {
                     date = lastDate
+                    lastScheduledAt = lastDate
                     self.jobQueue.logger.info("Last scheduled date \(date).")
                 } else {
                     date = .now
@@ -219,7 +222,12 @@ public struct JobSchedule: MutableCollection, Sendable {
             )
             for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
                 do {
-                    _ = try await job.job.push(to: self.jobQueue)
+                    _ = try await job.job.push(
+                        to: self.jobQueue,
+                        currentSchedule: job.date,
+                        lastScheduledAt: lastScheduledAt,
+                        nextScheduledAt: job.nextScheduledAt
+                    )
                     try await self.jobQueue.setMetadata(key: .jobScheduleLastDate, value: job.date)
                 } catch {
                     self.jobQueue.logger.error(
