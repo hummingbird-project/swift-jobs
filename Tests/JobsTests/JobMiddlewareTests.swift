@@ -112,7 +112,14 @@ final class JobMiddlewareTests: XCTestCase {
             await middlewareChain.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
             XCTAssertEqual(middleware1.popped, first == true)
             let job = FakeJobInstance()
-            try await middlewareChain.handleJob(job: job, context: .init(jobInstanceID: "0", logger: .init(label: "Test"), queuedAt: job.queuedAt)) { _, _ in }
+            try await middlewareChain.handleJob(
+                job: job,
+                context: .init(
+                    jobInstanceID: "0",
+                    logger: .init(label: "Test"),
+                    queuedAt: job.queuedAt
+                )
+            ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
         }
         try await testIf(true)
@@ -152,7 +159,14 @@ final class JobMiddlewareTests: XCTestCase {
             XCTAssertEqual(middleware1.popped, first == true)
             XCTAssertEqual(middleware2.popped, first != true)
             let job = FakeJobInstance()
-            try await middlewareChain.handleJob(job: job, context: .init(jobInstanceID: "0", logger: .init(label: "Test"), queuedAt: job.queuedAt)) { _, _ in }
+            try await middlewareChain.handleJob(
+                job: job,
+                context: .init(
+                    jobInstanceID: "0",
+                    logger: .init(label: "Test"),
+                    queuedAt: job.queuedAt
+                )
+            ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
             XCTAssertEqual(middleware2.handled, first != true)
         }
