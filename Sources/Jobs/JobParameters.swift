@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import struct Foundation.Date
+
 /// Defines job parameters and identifier
 public protocol JobParameters: Codable, Sendable {
     /// Job type name

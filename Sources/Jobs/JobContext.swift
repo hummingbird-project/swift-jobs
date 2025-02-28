@@ -14,10 +14,15 @@
 
 import Logging
 
+import struct Foundation.Date
+
 /// Context of running job
 public struct JobContext {
     /// Job instance identifier
     public let jobInstanceID: String
     /// Logger
     public let logger: Logger
+    /// The date when the job was scheduled
+    /// to run or queued
+    public let queuedAt: Date
 }

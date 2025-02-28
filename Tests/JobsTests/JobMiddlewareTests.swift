@@ -78,7 +78,8 @@ final class JobMiddlewareTests: XCTestCase {
         await observers.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
         XCTAssertEqual(observer1.popped, true)
         XCTAssertEqual(observer2.popped, true)
-        try await observers.handleJob(job: FakeJobInstance(), context: .init(jobInstanceID: "0", logger: .init(label: "Test"))) { _, _ in }
+        let job = FakeJobInstance()
+        try await observers.handleJob(job: job, context: .init(jobInstanceID: "0", logger: .init(label: "Test"), queuedAt: job.queuedAt)) { _, _ in }
         XCTAssertEqual(observer1.handled, true)
         XCTAssertEqual(observer2.handled, true)
     }
@@ -110,7 +111,8 @@ final class JobMiddlewareTests: XCTestCase {
             XCTAssertEqual(middleware1.pushed, first == true)
             await middlewareChain.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
             XCTAssertEqual(middleware1.popped, first == true)
-            try await middlewareChain.handleJob(job: FakeJobInstance(), context: .init(jobInstanceID: "0", logger: .init(label: "Test"))) { _, _ in }
+            let job = FakeJobInstance()
+            try await middlewareChain.handleJob(job: job, context: .init(jobInstanceID: "0", logger: .init(label: "Test"), queuedAt: job.queuedAt)) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
         }
         try await testIf(true)
@@ -149,7 +151,8 @@ final class JobMiddlewareTests: XCTestCase {
             await middlewareChain.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
             XCTAssertEqual(middleware1.popped, first == true)
             XCTAssertEqual(middleware2.popped, first != true)
-            try await middlewareChain.handleJob(job: FakeJobInstance(), context: .init(jobInstanceID: "0", logger: .init(label: "Test"))) { _, _ in }
+            let job = FakeJobInstance()
+            try await middlewareChain.handleJob(job: job, context: .init(jobInstanceID: "0", logger: .init(label: "Test"), queuedAt: job.queuedAt)) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
             XCTAssertEqual(middleware2.handled, first != true)
         }
