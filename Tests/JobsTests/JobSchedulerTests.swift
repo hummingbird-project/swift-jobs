@@ -391,7 +391,7 @@ final class JobSchedulerTests: XCTestCase {
 
         var logger = Logger(label: "jobs")
         logger.logLevel = .debug
-        
+
         let jobQueue = JobQueue(MemoryQueue(), logger: logger)
         jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, context in
             XCTAssertNil(context.lastScheduledAt)
