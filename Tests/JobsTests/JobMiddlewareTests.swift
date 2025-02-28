@@ -61,7 +61,8 @@ final class JobMiddlewareTests: XCTestCase {
             let maxRetryCount = 1
             let queuedAt = Date.now
             let attempts: Int? = 0
-
+            let lastScheduledAt: Date? = Date.now
+            let nextScheduledAt: Date? = nil
             let traceContext: [String: String]? = nil
 
             func execute(context: JobContext) async throws {}
@@ -86,8 +87,8 @@ final class JobMiddlewareTests: XCTestCase {
                 jobInstanceID: "0",
                 logger: .init(label: "Test"),
                 queuedAt: job.queuedAt,
-                lastScheduledAt: nil,
-                nextScheduledAt: nil
+                lastScheduledAt: job.lastScheduledAt,
+                nextScheduledAt: job.nextScheduledAt
             )
         ) { _, _ in }
         XCTAssertEqual(observer1.handled, true)
@@ -128,8 +129,8 @@ final class JobMiddlewareTests: XCTestCase {
                     jobInstanceID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
-                    lastScheduledAt: nil,
-                    nextScheduledAt: nil
+                    lastScheduledAt: job.lastScheduledAt,
+                    nextScheduledAt: job.nextScheduledAt
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
@@ -153,7 +154,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
                 let lastScheduledAt: Date? = nil
-                let nextSchedule: Date? = Date.now
+                let nextScheduledAt: Date? = Date.now
 
                 func execute(context: JobContext) async throws {}
             }
@@ -179,8 +180,8 @@ final class JobMiddlewareTests: XCTestCase {
                     jobInstanceID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
-                    lastScheduledAt: nil,
-                    nextScheduledAt: nil
+                    lastScheduledAt: job.lastScheduledAt,
+                    nextScheduledAt: job.nextScheduledAt
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
