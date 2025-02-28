@@ -35,13 +35,11 @@ public struct JobRequest<Parameters: JobParameters>: Encodable {
         )
     }
 
-    init(jobInstance: JobInstance<Parameters>, attempts: Int, lastScheduledAt: Date? = nil, nextScheduledAt: Date? = nil) {
+    init(jobInstance: JobInstance<Parameters>, attempts: Int) {
         self.data = .init(
             parameters: jobInstance.parameters,
             queuedAt: jobInstance.queuedAt,
-            attempts: attempts,
-            lastScheduledAt: lastScheduledAt,
-            nextScheduledAt: nextScheduledAt
+            attempts: attempts
         )
     }
 
