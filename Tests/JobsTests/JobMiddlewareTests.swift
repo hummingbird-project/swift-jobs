@@ -61,7 +61,7 @@ final class JobMiddlewareTests: XCTestCase {
             let maxRetryCount = 1
             let queuedAt = Date.now
             let attempts: Int? = 0
-            let lastScheduledAt: Date? = nil
+
             let traceContext: [String: String]? = nil
 
             func execute(context: JobContext) async throws {}
@@ -107,7 +107,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let queuedAt = Date.now
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
-                let lastScheduledAt: Date? = nil
+
                 func execute(context: JobContext) async throws {}
             }
             let middleware1 = TestJobMiddleware()
@@ -150,7 +150,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let queuedAt = Date.now
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
-                let lastScheduledAt: Date? = nil
+
                 func execute(context: JobContext) async throws {}
             }
             let middleware1 = TestJobMiddleware()
