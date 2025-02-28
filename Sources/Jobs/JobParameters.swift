@@ -35,13 +35,15 @@ extension JobParameters {
     internal func push<Queue: JobQueueDriver>(
         to jobQueue: JobQueue<Queue>,
         currentSchedule: Date,
-        lastScheduledAt: Date? = nil,
+        lastScheduledAt: Date?,
+        nextScheduledAt: Date?,
         options: JobOptions = .init()
     ) async throws -> Queue.JobID {
         try await jobQueue.schedule(
             self,
             currentSchedule: currentSchedule,
             lastScheduledAt: lastScheduledAt,
+            nextScheduledAt: nextScheduledAt,
             options: options
         )
     }

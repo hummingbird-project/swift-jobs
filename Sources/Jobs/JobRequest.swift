@@ -23,13 +23,26 @@ public struct JobRequest<Parameters: JobParameters>: Encodable {
         parameters: Parameters,
         queuedAt: Date,
         attempts: Int,
-        lastScheduledAt: Date? = nil
+        lastScheduledAt: Date? = nil,
+        nextScheduledAt: Date? = nil
     ) {
-        self.data = .init(parameters: parameters, queuedAt: queuedAt, attempts: attempts, lastScheduledAt: lastScheduledAt)
+        self.data = .init(
+            parameters: parameters,
+            queuedAt: queuedAt,
+            attempts: attempts,
+            lastScheduledAt: lastScheduledAt,
+            nextScheduledAt: nextScheduledAt
+        )
     }
 
-    init(jobInstance: JobInstance<Parameters>, attempts: Int, lastScheduledAt: Date? = nil) {
-        self.data = .init(parameters: jobInstance.parameters, queuedAt: jobInstance.queuedAt, attempts: attempts, lastScheduledAt: lastScheduledAt)
+    init(jobInstance: JobInstance<Parameters>, attempts: Int, lastScheduledAt: Date? = nil, nextScheduledAt: Date? = nil) {
+        self.data = .init(
+            parameters: jobInstance.parameters,
+            queuedAt: jobInstance.queuedAt,
+            attempts: attempts,
+            lastScheduledAt: lastScheduledAt,
+            nextScheduledAt: nextScheduledAt
+        )
     }
 
     public func encode(to encoder: Encoder) throws {

@@ -137,7 +137,7 @@ public struct JobSchedule: MutableCollection, Sendable {
 
     /// AsyncSequence of Jobs based on a JobSchedule
     struct JobSequence: AsyncSequence {
-        typealias Element = (job: JobParameters, date: Date)
+        typealias Element = (job: JobParameters, date: Date, nextScheduledAt: Date?)
         let jobSchedule: JobSchedule
         let logger: Logger
 
@@ -168,7 +168,8 @@ public struct JobSchedule: MutableCollection, Sendable {
                         try await Task.sleep(until: .now + .seconds(timeInterval))
                     }
                     self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
-                    return (job.element.jobParameters, nextScheduledDate)
+                    var nextDate: Schedule = job.element.schedule
+                    return (job.element.jobParameters, nextScheduledDate, nextDate.nextDate(after: nextScheduledDate))
                 } catch {
                     return nil
                 }
@@ -224,7 +225,8 @@ public struct JobSchedule: MutableCollection, Sendable {
                     _ = try await job.job.push(
                         to: self.jobQueue,
                         currentSchedule: job.date,
-                        lastScheduledAt: lastScheduledAt
+                        lastScheduledAt: lastScheduledAt,
+                        nextScheduledAt: job.nextScheduledAt
                     )
                     try await self.jobQueue.setMetadata(key: .jobScheduleLastDate, value: job.date)
                 } catch {

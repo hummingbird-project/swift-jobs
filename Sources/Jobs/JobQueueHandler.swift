@@ -94,7 +94,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     jobInstanceID: jobID.description,
                     logger: logger,
                     queuedAt: job.queuedAt,
-                    lastScheduledAt: job.lastScheduledAt
+                    lastScheduledAt: job.lastScheduledAt,
+                    nextScheduledAt: job.nextScheduledAt
                 )
                 try await self.middleware.handleJob(job: job, context: context) { job, context in
                     try await job.execute(context: context)

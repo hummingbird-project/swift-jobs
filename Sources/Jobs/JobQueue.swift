@@ -113,13 +113,15 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         _ parameters: Parameters,
         currentSchedule: Date,
         lastScheduledAt: Date? = nil,
+        nextScheduledAt: Date?,
         options: JobOptions
     ) async throws -> Queue.JobID {
         let request = JobRequest(
             parameters: parameters,
             queuedAt: currentSchedule,
             attempts: 0,
-            lastScheduledAt: lastScheduledAt
+            lastScheduledAt: lastScheduledAt,
+            nextScheduledAt: nextScheduledAt
         )
         let instanceID = try await self.queue.push(request, options: options)
         await self.handler.middleware.onPushJob(parameters: parameters, jobInstanceID: instanceID.description)

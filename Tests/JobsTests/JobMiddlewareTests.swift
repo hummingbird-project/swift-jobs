@@ -86,7 +86,8 @@ final class JobMiddlewareTests: XCTestCase {
                 jobInstanceID: "0",
                 logger: .init(label: "Test"),
                 queuedAt: job.queuedAt,
-                lastScheduledAt: nil
+                lastScheduledAt: nil,
+                nextScheduledAt: nil
             )
         ) { _, _ in }
         XCTAssertEqual(observer1.handled, true)
@@ -127,7 +128,8 @@ final class JobMiddlewareTests: XCTestCase {
                     jobInstanceID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
-                    lastScheduledAt: nil
+                    lastScheduledAt: nil,
+                    nextScheduledAt: nil
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
@@ -150,6 +152,8 @@ final class JobMiddlewareTests: XCTestCase {
                 let queuedAt = Date.now
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
+                let lastScheduledAt: Date? = nil
+                let nextSchedule: Date? = Date.now
 
                 func execute(context: JobContext) async throws {}
             }
@@ -175,7 +179,8 @@ final class JobMiddlewareTests: XCTestCase {
                     jobInstanceID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
-                    lastScheduledAt: nil
+                    lastScheduledAt: nil,
+                    nextScheduledAt: nil
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
