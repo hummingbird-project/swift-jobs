@@ -29,7 +29,7 @@ public protocol JobQueueProtocol: Service {
     ///   - id: Job identifier
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
-    func push<Parameters: JobParameters>(
+    @discardableResult func push<Parameters: JobParameters>(
         _ parameters: Parameters,
         options: JobOptions
     ) async throws -> Queue.JobID
