@@ -23,7 +23,7 @@ import Foundation
 /// Generates a Date at regular intervals (hourly, daily, weekly etc)
 public struct Schedule: Sendable, Equatable {
     /// Day of week
-    public enum Day: Int, Sendable, Comparable, Equatable, Hashable {
+    public enum Day: Int, Sendable, Comparable, Equatable {
         case sunday = 1
         case monday = 2
         case tuesday = 3
@@ -67,7 +67,7 @@ public struct Schedule: Sendable, Equatable {
             self = .specific(value)
         }
 
-        init(_ values: [Value]) {
+        init<Seq: Sequence>(_ values: Seq) where Seq.Element == Value {
             self = .selection(.init(values.sorted()))
         }
 

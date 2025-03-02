@@ -89,4 +89,20 @@ final class ScheduleTests: XCTestCase {
             Schedule(minute: 15, hour: 10, date: 2, month: [.january, .june, .september], day: .any)
         )
     }
+    func testFixedSelections() throws {
+        XCTAssertEqual(
+            try Schedule(crontab: "* 8 * * *"),
+            Schedule(minute: .init(Array(0..<60)), hour: 8, date: .any, month: .any, day: .any)
+        )
+        XCTAssertEqual(
+            try Schedule(crontab: "* * * 6 *"),
+            Schedule(
+                minute: .init(0..<60),
+                hour: .init(0..<24),
+                date: .any,
+                month: .init(.june),
+                day: .init([.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday])
+            )
+        )
+    }
 }
