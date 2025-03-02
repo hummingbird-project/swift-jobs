@@ -21,12 +21,12 @@ import Foundation
 #endif
 
 extension Schedule {
-    ///  Initialize Scehdule using crontab style string
+    ///  Create Scehdule using crontab style string
     /// - Parameters:
     ///   - crontab: Crontab string
     ///   - timeZone: Timezone to run schedule in
     /// - Throws: ScheduleError for corrupt crontabs and crontabs we don't suppoty
-    init(crontab: String, timeZone: TimeZone = .current) throws {
+    static func crontab(_ crontab: String, timeZone: TimeZone = .current) throws -> Self {
         let values = crontab.split(separator: " ", omittingEmptySubsequences: true)
         guard values.count == 5 else { throw ScheduleError("Crontab string requires 5 values") }
         let minutes = try Self.parse(values[0], range: 0...60) { $0 }
@@ -45,10 +45,10 @@ extension Schedule {
             }
             return day
         }
-        self.init(second: .specific(0), minute: minutes, hour: hours, date: date, month: month, day: day, timeZone: timeZone)
+        let schedule = Self(second: .specific(0), minute: minutes, hour: hours, date: date, month: month, day: day, timeZone: timeZone)
 
         // if we have a selection set for either day or date we don't support setting the other value
-        switch (self.day, self.date) {
+        switch (schedule.day, schedule.date) {
         case (.selection, .specific), (.selection, .selection), (.specific, .selection):
             throw ScheduleError(
                 "Schedule does not support a combination of date and weekday where one is a selection of values and the other is not the wildcard '*'"
@@ -56,6 +56,7 @@ extension Schedule {
         default:
             break
         }
+        return schedule
     }
 
     static func parse<Value>(_ entry: Substring, range: ClosedRange<Int>, transform: (Int) throws -> Value) throws -> Parameter<Value> {
