@@ -21,6 +21,11 @@ import Foundation
 #endif
 
 extension Schedule {
+    ///  Initialize Scehdule using crontab style string
+    /// - Parameters:
+    ///   - crontab: Crontab string
+    ///   - timeZone: Timezone to run schedule in
+    /// - Throws: ScheduleError for corrupt crontabs and crontabs we don't suppoty
     init(crontab: String, timeZone: TimeZone = .current) throws {
         let values = crontab.split(separator: " ", omittingEmptySubsequences: true)
         guard values.count == 5 else { throw ScheduleError("Crontab string requires 5 values") }
