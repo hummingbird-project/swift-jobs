@@ -41,6 +41,16 @@ extension Schedule {
             return day
         }
         self.init(second: .specific(0), minute: minutes, hour: hours, date: date, month: month, day: day, timeZone: timeZone)
+
+        // if we have a selection set for either day or date we don't support setting the other value
+        switch (self.day, self.date) {
+        case (.selection, .specific), (.selection, .selection), (.specific, .selection):
+            throw ScheduleError(
+                "Schedule does not support a combination of date and weekday where one is a selection of values and the other is not the wildcard '*'"
+            )
+        default:
+            break
+        }
     }
 
     static func parse<Value>(_ entry: Substring, range: ClosedRange<Int>, transform: (Int) throws -> Value) throws -> Parameter<Value> {

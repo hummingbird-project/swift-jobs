@@ -23,7 +23,7 @@ import Foundation
 /// Generates a Date at regular intervals (hourly, daily, weekly etc)
 public struct Schedule: Sendable, Equatable {
     /// Day of week
-    public enum Day: Int, Sendable, Comparable, Equatable {
+    public enum Day: Int, Sendable, Comparable, Equatable, Hashable {
         case sunday = 1
         case monday = 2
         case tuesday = 3
@@ -73,6 +73,17 @@ public struct Schedule: Sendable, Equatable {
 
         init(arrayLiteral values: Value...) {
             self.init(values)
+        }
+
+        var notAny: Bool {
+            switch self {
+            case .specific:
+                true
+            case .selection:
+                true
+            case .any:
+                false
+            }
         }
 
         var value: Value? {
@@ -157,6 +168,24 @@ public struct Schedule: Sendable, Equatable {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = timeZone
             self.calendar = calendar
+        }
+        // if month is not any and both day and date are any then set day to selection with all the days
+        if self.month.notAny {
+            if case .any = self.day, case .any = self.date {
+                self.day = .selection([.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday])
+            }
+        }
+        // if either day or date are not any and hour is set to any then set it to selection with range of hours (0-23)
+        if self.date.notAny || self.day.notAny {
+            if case .any = hour {
+                self.hour = .selection(.init(0..<24))
+            }
+        }
+        // if hour is not any and minute is set to any then set minute to selection with all the minutes (0-59)
+        if self.hour.notAny {
+            if case .any = minute {
+                self.minute = .selection(.init(0..<60))
+            }
         }
     }
 
