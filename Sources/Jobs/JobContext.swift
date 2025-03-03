@@ -25,8 +25,6 @@ public struct JobContext {
     /// Time when the job was scheduled
     /// to run or queued at
     public let queuedAt: Date
-    /// Time job last scheduled
-    public let lastScheduledAt: Date?
     /// Next time job is scheduled to run
     public let nextScheduledAt: Date?
 }

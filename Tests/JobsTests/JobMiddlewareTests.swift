@@ -61,7 +61,6 @@ final class JobMiddlewareTests: XCTestCase {
             let maxRetryCount = 1
             let queuedAt = Date.now
             let attempts: Int? = 0
-            let lastScheduledAt: Date? = Date.now
             let nextScheduledAt: Date? = nil
             let traceContext: [String: String]? = nil
 
@@ -87,7 +86,6 @@ final class JobMiddlewareTests: XCTestCase {
                 jobInstanceID: "0",
                 logger: .init(label: "Test"),
                 queuedAt: job.queuedAt,
-                lastScheduledAt: job.lastScheduledAt,
                 nextScheduledAt: job.nextScheduledAt
             )
         ) { _, _ in }
@@ -129,7 +127,6 @@ final class JobMiddlewareTests: XCTestCase {
                     jobInstanceID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
-                    lastScheduledAt: job.lastScheduledAt,
                     nextScheduledAt: job.nextScheduledAt
                 )
             ) { _, _ in }
@@ -153,7 +150,6 @@ final class JobMiddlewareTests: XCTestCase {
                 let queuedAt = Date.now
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
-                let lastScheduledAt: Date? = nil
                 let nextScheduledAt: Date? = Date.now
 
                 func execute(context: JobContext) async throws {}
@@ -180,7 +176,6 @@ final class JobMiddlewareTests: XCTestCase {
                     jobInstanceID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
-                    lastScheduledAt: job.lastScheduledAt,
                     nextScheduledAt: job.nextScheduledAt
                 )
             ) { _, _ in }

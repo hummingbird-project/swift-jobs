@@ -106,13 +106,12 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// - Parameters:
     ///   - parameters: parameters for the job
     ///   - currentSchedule: current job schedule
-    ///   - lastScheduledAt: last time the job ran
+    ///   - nextScheduledAt: next schedule for the job
     ///   - options: job options
     /// - Returns: Identifier of queued job
     @discardableResult internal func schedule<Parameters: JobParameters>(
         _ parameters: Parameters,
         currentSchedule: Date,
-        lastScheduledAt: Date? = nil,
         nextScheduledAt: Date?,
         options: JobOptions
     ) async throws -> Queue.JobID {
@@ -120,7 +119,6 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
             parameters: parameters,
             queuedAt: currentSchedule,
             attempts: 0,
-            lastScheduledAt: lastScheduledAt,
             nextScheduledAt: nextScheduledAt
         )
         let instanceID = try await self.queue.push(request, options: options)
