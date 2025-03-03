@@ -36,7 +36,7 @@ extension Schedule {
             guard let month = Month(rawValue: $0) else { throw ScheduleError("Invalid month value") }
             return month
         }
-        let day = try Self.parse(values[4], range: 0...6) {
+        let weekDay = try Self.parse(values[4], range: 0...6) {
             guard let day = Day(rawValue: $0 + 1) else {
                 if $0 == 7 {
                     return Day.sunday
@@ -45,7 +45,7 @@ extension Schedule {
             }
             return day
         }
-        let schedule = Self(second: .specific(0), minute: minutes, hour: hours, date: date, month: month, day: day, timeZone: timeZone)
+        let schedule = Self(second: .specific(0), minute: minutes, hour: hours, date: date, month: month, day: weekDay, timeZone: timeZone)
 
         // if we have a selection set for either day or date we don't support setting the other value
         switch (schedule.day, schedule.date) {
@@ -115,7 +115,7 @@ extension Schedule {
             return .init(array)
         } else if let values = try? everyRegex.wholeMatch(in: entry) {
             let numberOfValues = (range.count + 1) / values.1
-            let array = try (0..<numberOfValues).map { try transform($0 * values.1) }
+            let array = try (0..<numberOfValues).map { try transform(range.lowerBound + $0 * values.1) }
             return .init(array)
         } else if let values = try? selectionRegex.wholeMatch(in: entry) {
             let array = try values.1.map { try transform($0) }
