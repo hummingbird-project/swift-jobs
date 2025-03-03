@@ -97,6 +97,8 @@ public struct Schedule: Sendable, Equatable {
             }
         }
 
+        /// Rotate values in schedule forward, if we have wrapped around back to
+        /// the first value return true
         mutating func nextValue() -> Bool {
             switch self {
             case .specific:
@@ -117,6 +119,8 @@ public struct Schedule: Sendable, Equatable {
                 return true
             }
         }
+        /// Rotate values in schedule backwards, if we have wrapped around back to
+        /// the first value return true
         mutating func prevValue() -> Bool {
             switch self {
             case .specific:
@@ -306,7 +310,7 @@ public struct Schedule: Sendable, Equatable {
     ///  Return next date in schedule after the supplied Date
     /// - Parameter date: start date
     public mutating func nextDate(after date: Date) -> Date? {
-        self.updateScheduleForNextDate()
+        self.updateScheduleForNextDate(currentDate: date)
         var dateComponents = DateComponents()
         dateComponents.nanosecond = 0
         dateComponents.second = self.second.value
@@ -318,21 +322,36 @@ public struct Schedule: Sendable, Equatable {
         return self.calendar.nextDate(after: date, matching: dateComponents, matchingPolicy: .strict)
     }
 
-    mutating func updateScheduleForNextDate() {
+    mutating func updateScheduleForNextDate(currentDate: Date) {
         if !self.second.nextValue() { return }
         if !self.minute.nextValue() { return }
         if !self.hour.nextValue() { return }
-        if !self.day.nextValue() { return }
-        if !self.date.nextValue() { return }
+        let dayWrapped = self.day.nextValue()
+        let dateWrapped = self.date.nextValue()
+        if let date = self.date.value, date > 28 {
+            let dateComponents = self.calendar.dateComponents([.month, .year], from: currentDate)
+            let daysInMonth =
+                // if february and it is a leap year
+                if dateComponents.month == 2 && dateComponents.year! & 0x3 == 0 {
+                    29
+                } else {
+                    Self.daysInMonth[dateComponents.month! - 1]
+                }
+            if date > daysInMonth {
+                while !self.date.nextValue() {}
+            }
+        }
+        if !dayWrapped || !dateWrapped { return }
         if !self.month.nextValue() { return }
     }
 
-    mutating func updateScheduleForPrevDate() {
+    mutating func updateScheduleForPrevDate(date: Date) {
         if !self.second.prevValue() { return }
         if !self.minute.prevValue() { return }
         if !self.hour.prevValue() { return }
-        if !self.day.prevValue() { return }
-        if !self.date.prevValue() { return }
+        let dayWrapped = self.day.prevValue()
+        let dateWrapped = self.date.prevValue()
+        if !dayWrapped || !dateWrapped { return }
         if !self.month.prevValue() { return }
     }
 
@@ -369,8 +388,10 @@ public struct Schedule: Sendable, Equatable {
             nextDate = nextDateUnwrapped
         }
         // move dates to previous date so it will supply the current date the next time we call nextDate()
-        self.updateScheduleForPrevDate()
+        self.updateScheduleForPrevDate(date: date)
     }
+
+    private static let daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 }
 
 extension Schedule.Parameter: ExpressibleByIntegerLiteral where Value == Int {

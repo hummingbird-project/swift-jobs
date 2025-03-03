@@ -396,6 +396,24 @@ final class JobSchedulerTests: XCTestCase {
         )
     }
 
+    // test we are getting the right dates after restarting scheduler
+    func testScheduleLastDateWithOutOfRangeDates() async throws {
+        try testScheduleAfterReadingLastData(
+            schedule: .crontab("0 10 27-30 * *", timeZone: .init(secondsFromGMT: 0)!),
+            accuracy: .latest,
+            lastScheduled: "2023-02-03T05:00:00Z",
+            now: "2023-02-03T05:29:00Z",
+            expected: ["2023-02-27T10:00:00Z", "2023-02-28T10:00:00Z", "2023-03-27T10:00:00Z", "2023-03-28T10:00:00Z"]
+        )
+        try testScheduleAfterReadingLastData(
+            schedule: .crontab("0 10 27-30 * *", timeZone: .init(secondsFromGMT: 0)!),
+            accuracy: .latest,
+            lastScheduled: "2024-02-03T05:00:00Z",
+            now: "2024-02-03T05:29:00Z",
+            expected: ["2024-02-27T10:00:00Z", "2024-02-28T10:00:00Z", "2024-02-29T10:00:00Z", "2024-03-27T10:00:00Z"]
+        )
+    }
+
     // test we are getting the right dates from accuracy all
     func testScheduleLastDateAccuracyAll() async throws {
         struct TestParameters: JobParameters {
