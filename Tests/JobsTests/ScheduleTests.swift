@@ -75,8 +75,26 @@ final class ScheduleTests: XCTestCase {
             Schedule(minute: 15, hour: 10, date: .any, month: .any, day: [.sunday, .tuesday, .thursday, .saturday])
         )
         XCTAssertEqual(
+            try Schedule.crontab("15 10 */6 * *"),
+            Schedule(minute: 15, hour: 10, date: [1, 7, 13, 19, 25, 31], month: .any, day: .any)
+        )
+        XCTAssertEqual(
             try Schedule.crontab("15 10 1 */3 *"),
             Schedule(minute: 15, hour: 10, date: 1, month: [.january, .april, .july, .october], day: .any)
+        )
+    }
+    func testCrontabEveryInRange() throws {
+        XCTAssertEqual(
+            try Schedule.crontab("5 3-15/6 * * *"),
+            Schedule(minute: 5, hour: [3, 9, 15], date: .any, month: .any, day: .any)
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("15 10 * * 1-6/2"),
+            Schedule(minute: 15, hour: 10, date: .any, month: .any, day: [.monday, .wednesday, .friday])
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("15 10 1 2-12/3 *"),
+            Schedule(minute: 15, hour: 10, date: 1, month: [.february, .may, .august, .november], day: .any)
         )
     }
     func testCrontabSelection() throws {

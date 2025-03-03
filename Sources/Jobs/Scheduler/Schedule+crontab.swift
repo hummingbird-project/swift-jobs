@@ -29,9 +29,9 @@ extension Schedule {
     static func crontab(_ crontab: String, timeZone: TimeZone = .current) throws -> Self {
         let values = crontab.split(separator: " ", omittingEmptySubsequences: true)
         guard values.count == 5 else { throw ScheduleError("Crontab string requires 5 values") }
-        let minutes = try Self.parse(values[0], range: 0...60) { $0 }
-        let hours = try Self.parse(values[1], range: 0...24) { $0 }
-        let date = try Self.parse(values[2], range: 0...31) { $0 }
+        let minutes = try Self.parse(values[0], range: 0...59) { $0 }
+        let hours = try Self.parse(values[1], range: 0...23) { $0 }
+        let date = try Self.parse(values[2], range: 1...31) { $0 }
         let month = try Self.parse(values[3], range: 1...12) {
             guard let month = Month(rawValue: $0) else { throw ScheduleError("Invalid month value") }
             return month
@@ -94,6 +94,27 @@ extension Schedule {
             }
             Anchor.endOfLine
         }
+        let everyInRangeRegex = Regex {
+            Anchor.startOfLine
+            Capture {
+                OneOrMore(.digit)
+            } transform: {
+                Int($0)!
+            }
+            "-"
+            Capture {
+                OneOrMore(.digit)
+            } transform: {
+                Int($0)!
+            }
+            "/"
+            Capture {
+                OneOrMore(.digit)
+            } transform: {
+                Int($0)!
+            }
+            Anchor.endOfLine
+        }
         let selectionRegex: Regex = Regex {
             Anchor.startOfLine
             Capture {
@@ -114,8 +135,13 @@ extension Schedule {
             let array = try (values.1...values.2).map { try transform($0) }
             return .init(array)
         } else if let values = try? everyRegex.wholeMatch(in: entry) {
-            let numberOfValues = (range.count + 1) / values.1
+            let numberOfValues = (range.count + values.1 - 1) / values.1
             let array = try (0..<numberOfValues).map { try transform(range.lowerBound + $0 * values.1) }
+            return .init(array)
+        } else if let values = try? everyInRangeRegex.wholeMatch(in: entry) {
+            let range = values.1...values.2
+            let numberOfValues = (range.count + values.3 - 1) / values.3
+            let array = try (0..<numberOfValues).map { try transform(range.lowerBound + $0 * values.3) }
             return .init(array)
         } else if let values = try? selectionRegex.wholeMatch(in: entry) {
             let array = try values.1.map { try transform($0) }
