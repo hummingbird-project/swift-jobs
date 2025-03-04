@@ -86,6 +86,26 @@ public struct Schedule: Sendable, Equatable {
             }
         }
 
+        func map<Return>(_ transform: (Value) throws -> Return) rethrows -> Parameter<Return> {
+            switch self {
+            case .specific(let value):
+                .specific(try transform(value))
+            case .selection(let values):
+                .selection(.init(try values.map { try transform($0) }))
+            case .any:
+                .any
+            }
+        }
+
+        func sorted() -> Parameter<Value> {
+            switch self {
+            case .selection(let values):
+                .selection(.init(values.sorted()))
+            default:
+                self
+            }
+        }
+
         var value: Value? {
             switch self {
             case .specific(let value):
@@ -391,6 +411,7 @@ public struct Schedule: Sendable, Equatable {
         self.updateScheduleForPrevDate(date: date)
     }
 
+    /// Days in each month
     private static let daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 }
 

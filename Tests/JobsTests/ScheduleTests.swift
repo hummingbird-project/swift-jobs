@@ -58,7 +58,7 @@ final class ScheduleTests: XCTestCase {
         )
         XCTAssertEqual(
             try Schedule.crontab("5 12 * * 6-7"),
-            Schedule(minute: 5, hour: 12, date: .any, month: .any, day: [.sunday, .saturday])
+            Schedule(minute: 5, hour: 12, date: .any, month: .any, day: [.saturday, .sunday])
         )
     }
     func testCrontabEvery() throws {
@@ -126,5 +126,59 @@ final class ScheduleTests: XCTestCase {
                 day: .init([.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday])
             )
         )
+    }
+    func testDayNames() throws {
+        XCTAssertEqual(
+            try Schedule.crontab("0 8 * * mon"),
+            Schedule(minute: 0, hour: 8, date: .any, month: .any, day: .init(.monday))
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("0 19 * 6 tue-sat"),
+            Schedule(
+                minute: 0,
+                hour: 19,
+                date: .any,
+                month: .init(.june),
+                day: .init([.tuesday, .wednesday, .thursday, .friday, .saturday])
+            )
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("0 19 * 6 sun,wed,fri"),
+            Schedule(
+                minute: 0,
+                hour: 19,
+                date: .any,
+                month: .init(.june),
+                day: .init([.sunday, .wednesday, .friday])
+            )
+        )
+        XCTAssertThrowsError(try Schedule.crontab("0 19 * 6 sun,jan,fri"))
+    }
+    func testMonthNames() throws {
+        XCTAssertEqual(
+            try Schedule.crontab("0 8 * jan *"),
+            Schedule(minute: 0, hour: 8, date: .any, month: .init(.january), day: .any)
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("0 19 * feb-may *"),
+            Schedule(
+                minute: 0,
+                hour: 19,
+                date: .any,
+                month: [.february, .march, .april, .may],
+                day: .any
+            )
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("0 19 * jun,jul,aug *"),
+            Schedule(
+                minute: 0,
+                hour: 19,
+                date: .any,
+                month: [.june, .july, .august],
+                day: .any
+            )
+        )
+        XCTAssertThrowsError(try Schedule.crontab("0 19 * 6 jan-sat"))
     }
 }
