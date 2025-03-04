@@ -33,7 +33,11 @@ public protocol JobMiddleware: Sendable {
     ///   - context: Job context
     ///   - next: Next handler
     /// - Throws:
-    func handleJob(job: any JobInstanceProtocol, context: JobContext, next: (any JobInstanceProtocol, JobContext) async throws -> Void) async throws
+    func handleJob(
+        job: any JobInstanceProtocol,
+        context: JobContext,
+        next: (any JobInstanceProtocol, JobContext) async throws -> Void
+    ) async throws
 }
 
 @_documentation(visibility: internal)

@@ -19,8 +19,8 @@ import Tracing
 public protocol JobInstanceProtocol: Sendable {
     /// Parameters job requries
     associatedtype Parameters: JobParameters
-    /// Maximum number of times a job will be retried before being classed as failed
-    var maxRetryCount: Int { get }
+    /// Retry strategy
+    var retryStrategy: any JobRetryStrategy { get }
     /// Time job was queued
     var queuedAt: Date { get }
     /// Number of attempts so far
@@ -39,14 +39,9 @@ extension JobInstanceProtocol {
         Parameters.jobName
     }
 
-    /// Number of remaining attempts
-    public var remainingAttempts: Int {
-        maxRetryCount - (attempts ?? 0)
-    }
-
-    /// If job failed after n number of attempts
-    public var didFail: Bool {
-        (attempts ?? 0) >= maxRetryCount
+    /// Should we retry this job
+    public func shouldRetry(error: Error) -> Bool {
+        self.retryStrategy.shouldRetry(attempt: self.attempts ?? 0, error: error)
     }
 
     /// Extract trace context from job instance data
@@ -69,8 +64,8 @@ struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
     let job: JobDefinition<Parameters>
     /// job parameters
     let data: JobInstanceData<Parameters>
-    /// max retry count for a job
-    var maxRetryCount: Int { self.job.maxRetryCount }
+    /// Retry strategy
+    var retryStrategy: any JobRetryStrategy { job.retryStrategy }
     /// Time job was queued
     var queuedAt: Date { self.data.queuedAt }
     /// Number of attempts so far

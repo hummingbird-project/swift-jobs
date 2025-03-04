@@ -342,13 +342,12 @@ final class MetricsTests: XCTestCase {
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             .memory,
-            logger: logger,
-            options: .init(
-                maxJitter: 0.25,
-                minJitter: 0.01
-            )
+            logger: logger
         ) { MetricsJobMiddleware() }
-        jobQueue.registerJob(parameters: TestParameter.self, maxRetryCount: 3) { _, _ in
+        jobQueue.registerJob(
+            parameters: TestParameter.self,
+            retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: 0.5, minJitter: 0.0, maxJitter: 0.25)
+        ) { _, _ in
 
             defer {
                 currentJobTryCount.withLockedValue {
@@ -391,14 +390,12 @@ final class MetricsTests: XCTestCase {
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             MemoryQueue { _, _ in failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed) },
-            logger: logger,
-            options: .init(
-                maximumBackoff: 0.5,
-                maxJitter: 0.01,
-                minJitter: 0.0
-            )
+            logger: logger
         ) { MetricsJobMiddleware() }
-        jobQueue.registerJob(parameters: TestParameter.self, maxRetryCount: 3) { _, _ in
+        jobQueue.registerJob(
+            parameters: TestParameter.self,
+            retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: 0.5, minJitter: 0.0, maxJitter: 0.01)
+        ) { _, _ in
             expectation.fulfill()
             throw FailedError()
         }
