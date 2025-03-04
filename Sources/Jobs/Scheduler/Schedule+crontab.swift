@@ -31,12 +31,12 @@ extension Schedule {
         guard values.count == 5 else { throw ScheduleError("Crontab string requires 5 values") }
         let minutes = try Self.parse(values[0], range: 0...59) { $0 }
         let hours = try Self.parse(values[1], range: 0...23) { $0 }
-        let date = try Self.parse(values[2], range: 1...31) { $0 }
+        let dayOfMonth = try Self.parse(values[2], range: 1...31) { $0 }
         let month = try Self.parse(values[3], range: 1...12) {
             guard let month = Month(rawValue: $0) else { throw ScheduleError("Invalid month value") }
             return month
         }
-        let weekDay = try Self.parse(values[4], range: 0...6) {
+        let dayOfWeek = try Self.parse(values[4], range: 0...6) {
             guard let day = Day(rawValue: $0 + 1) else {
                 if $0 == 7 {
                     return Day.sunday
@@ -45,7 +45,7 @@ extension Schedule {
             }
             return day
         }
-        let schedule = Self(second: .specific(0), minute: minutes, hour: hours, date: date, month: month, day: weekDay, timeZone: timeZone)
+        let schedule = Self(second: .specific(0), minute: minutes, hour: hours, date: dayOfMonth, month: month, day: dayOfWeek, timeZone: timeZone)
 
         // if we have a selection set for either day or date we don't support setting the other value
         switch (schedule.day, schedule.date) {
