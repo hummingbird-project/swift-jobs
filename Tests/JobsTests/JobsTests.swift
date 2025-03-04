@@ -106,13 +106,12 @@ final class JobsTests: XCTestCase {
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             .memory,
-            logger: logger,
-            options: .init(
-                maxJitter: 0.25,
-                minJitter: 0.01
-            )
+            logger: logger
         )
-        jobQueue.registerJob(parameters: TestParameters.self, maxRetryCount: 3) { _, _ in
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
+        ) { _, _ in
             defer {
                 currentJobTryCount.withLockedValue {
                     $0 += 1
@@ -142,16 +141,58 @@ final class JobsTests: XCTestCase {
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             MemoryQueue { _, _ in failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed) },
-            logger: logger,
-            options: .init(
-                maximumBackoff: 0.5,
-                maxJitter: 0.01,
-                minJitter: 0.0
-            )
+            logger: logger
         )
-        jobQueue.registerJob(parameters: TestParameters.self, maxRetryCount: 3) { _, _ in
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: 0.5, minJitter: 0.0, maxJitter: 0.01)
+        ) { _, _ in
             expectation.fulfill()
             throw FailedError()
+        }
+        try await testJobQueue(jobQueue) {
+            try await jobQueue.push(TestParameters())
+
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+        XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
+    }
+
+    /// Test retry policy that does different things based on the error passed to it
+    func testRetryHandlerErrorChecking() async throws {
+        struct TestError: Error {}
+        // retry strategy that retires indefinitely unless error is TestError
+        struct TestRetryStrategy: JobRetryStrategy {
+            let jitterRetry: ExponentialJitterJobRetryStrategy
+            init() {
+                self.jitterRetry = .init(maxAttempts: .max)
+            }
+            func shouldRetry(attempt: Int, error: any Error) -> Bool {
+                if error is TestError { return false }
+                return jitterRetry.shouldRetry(attempt: attempt, error: error)
+            }
+
+            func calculateBackoff(attempt: Int) -> TimeInterval {
+                jitterRetry.calculateBackoff(attempt: attempt)
+            }
+        }
+        struct TestParameters: JobParameters {
+            static let jobName = "testErrorRetryCount"
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let failedJobCount = ManagedAtomic(0)
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            MemoryQueue { _, _ in failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed) },
+            logger: logger
+        )
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: TestRetryStrategy()
+        ) { _, _ in
+            expectation.fulfill()
+            throw TestError()
         }
         try await testJobQueue(jobQueue) {
             try await jobQueue.push(TestParameters())

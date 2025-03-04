@@ -14,19 +14,20 @@
 
 /// Job definition type
 public struct JobDefinition<Parameters: JobParameters>: Sendable {
-    let maxRetryCount: Int
+    let retryStrategy: any JobRetryStrategy
     let _execute: @Sendable (Parameters, JobContext) async throws -> Void
 
     ///  Initialize JobDefinition
     /// - Parameters:
-    ///   - id: Job identifier
-    ///   - maxRetryCount: Maxiumum times this job will be retried if it fails
+    ///   - parameters: Job parameter type
+    ///   - retryStrategy: Retry strategy for failed jobs
     ///   - execute: Closure that executes job
     public init(
-        maxRetryCount: Int = 0,
+        parameters: Parameters.Type = Parameters.self,
+        retryStrategy: any JobRetryStrategy = .dontRetry,
         execute: @escaping @Sendable (Parameters, JobContext) async throws -> Void
-    ) {
-        self.maxRetryCount = maxRetryCount
+    ) where Parameters: JobParameters {
+        self.retryStrategy = retryStrategy
         self._execute = execute
     }
 
@@ -37,10 +38,11 @@ public struct JobDefinition<Parameters: JobParameters>: Sendable {
     ///   - execute: Closure that executes job
     public init(
         parameters: Parameters.Type = Parameters.self,
-        maxRetryCount: Int = 0,
+        maxRetryCount: Int,
         execute: @escaping @Sendable (Parameters, JobContext) async throws -> Void
     ) where Parameters: JobParameters {
-        self.init(maxRetryCount: maxRetryCount, execute: execute)
+        self.retryStrategy = ExponentialJitterJobRetryStrategy(maxAttempts: maxRetryCount)
+        self._execute = execute
     }
 
     func execute(_ parameters: Parameters, context: JobContext) async throws {

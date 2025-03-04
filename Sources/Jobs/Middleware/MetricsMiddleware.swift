@@ -136,7 +136,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
             )
             throw error
         } catch {
-            if job.didFail {
+            if !job.shouldRetry(error: error) {
                 self.updateMetrics(
                     for: job.name,
                     startTime: startTime,

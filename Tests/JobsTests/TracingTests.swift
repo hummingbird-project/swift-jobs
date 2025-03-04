@@ -75,10 +75,13 @@ final class TracingTests: XCTestCase {
         let failJob = NIOLockedValueBox(true)
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: logger, options: .init(maxJitter: 0.25, minJitter: 0.01)) {
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: logger) {
             TracingJobMiddleware()
         }
-        jobQueue.registerJob(parameters: TestParameters.self, maxRetryCount: 4) { parameters, context in
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: .exponentialJitter(maxAttempts: 4, maxBackoff: 0.5, minJitter: 0.0, maxJitter: 0.25)
+        ) { parameters, context in
             if failJob.withLockedValue({
                 let value = $0
                 $0 = false

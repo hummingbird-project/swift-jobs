@@ -58,7 +58,7 @@ final class JobMiddlewareTests: XCTestCase {
         }
         struct FakeJobInstance: JobInstanceProtocol {
             let parameters = TestParameters(value: "test")
-            let maxRetryCount = 1
+            let retryStrategy: JobRetryStrategy = .exponentialJitter(maxAttempts: 1)
             let queuedAt = Date.now
             let attempts: Int? = 0
             let traceContext: [String: String]? = nil
@@ -93,7 +93,7 @@ final class JobMiddlewareTests: XCTestCase {
             }
             struct FakeJobInstance: JobInstanceProtocol {
                 let parameters = TestParameters(value: "test")
-                let maxRetryCount = 1
+                let retryStrategy: JobRetryStrategy = .exponentialJitter(maxAttempts: 1)
                 let queuedAt = Date.now
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
@@ -127,7 +127,7 @@ final class JobMiddlewareTests: XCTestCase {
             }
             struct FakeJobInstance: JobInstanceProtocol {
                 let parameters = TestParameters(value: "test")
-                let maxRetryCount = 1
+                let retryStrategy: JobRetryStrategy = .exponentialJitter(maxAttempts: 1)
                 let queuedAt = Date.now
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil

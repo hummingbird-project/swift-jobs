@@ -38,9 +38,27 @@ public protocol JobQueueProtocol: Service {
     /// - Parameters:
     ///   - job: Job definition
     func registerJob(_ job: JobDefinition<some JobParameters>)
+
+    /// Job queue options
+    var options: JobQueueOptions { get }
 }
 
 extension JobQueueProtocol {
+    ///  Initialize JobDefinition
+    /// - Parameters:
+    ///   - parameters: Job parameter type
+    ///   - retryStrategy: Retry strategy for failed jobs
+    ///   - execute: Closure that executes job
+    public func registerJob<Parameters: JobParameters>(
+        parameters: Parameters.Type = Parameters.self,
+        retryStrategy: (any JobRetryStrategy)? = nil,
+        execute: @escaping @Sendable (Parameters, JobContext) async throws -> Void
+    ) where Parameters: JobParameters {
+        self.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
+        let job = JobDefinition<Parameters>(retryStrategy: retryStrategy ?? self.options.retryStrategy, execute: execute)
+        self.registerJob(job)
+    }
+
     ///  Register job type
     /// - Parameters:
     ///   - parameters: Job Parameters
@@ -48,15 +66,10 @@ extension JobQueueProtocol {
     ///   - execute: Job code
     public func registerJob<Parameters: JobParameters>(
         parameters: Parameters.Type = Parameters.self,
-        maxRetryCount: Int = 0,
-        execute: @escaping @Sendable (
-            Parameters,
-            JobContext
-        ) async throws -> Void
+        maxRetryCount: Int,
+        execute: @escaping @Sendable (Parameters, JobContext) async throws -> Void
     ) {
-        self.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
-        let job = JobDefinition<Parameters>(maxRetryCount: maxRetryCount, execute: execute)
-        self.registerJob(job)
+        self.registerJob(parameters: parameters, retryStrategy: .exponentialJitter(maxAttempts: maxRetryCount), execute: execute)
     }
 }
 
@@ -121,7 +134,10 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         try await self.handler.run()
     }
 
+    /// Logger used by Job queue and its handler
     public var logger: Logger { self.handler.logger }
+    /// Job queue options
+    public var options: JobQueueOptions { self.handler.options }
 }
 
 extension JobQueue {
