@@ -192,11 +192,19 @@ final class ScheduleTests: XCTestCase {
             Schedule(minute: 0, hour: 0, date: .any, month: .any, day: .any)
         )
         XCTAssertEqual(
+            try Schedule.crontab("@weekly"),
+            Schedule(minute: 0, hour: 0, date: .any, month: .any, day: .init(.sunday))
+        )
+        XCTAssertEqual(
             try Schedule.crontab("@monthly"),
             Schedule(minute: 0, hour: 0, date: 1, month: .any, day: .any)
         )
         XCTAssertEqual(
             try Schedule.crontab("@yearly"),
+            Schedule(minute: 0, hour: 0, date: 1, month: .init(.january), day: .any)
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("@annually"),
             Schedule(minute: 0, hour: 0, date: 1, month: .init(.january), day: .any)
         )
         XCTAssertThrowsError(try Schedule.crontab("@unrecognised"))
