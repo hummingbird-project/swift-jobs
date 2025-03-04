@@ -2,7 +2,7 @@
 //
 // This source file is part of the Hummingbird server framework project
 //
-// Copyright (c) 2024 the Hummingbird authors
+// Copyright (c) 2024-2025 the Hummingbird authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -21,9 +21,9 @@ import Foundation
 #endif
 
 /// Generates a Date at regular intervals (hourly, daily, weekly etc)
-public struct Schedule: Sendable {
+public struct Schedule: Sendable, Equatable {
     /// Day of week
-    public enum Day: Int, Sendable, Comparable {
+    public enum Day: Int, Sendable, Comparable, Equatable {
         case sunday = 1
         case monday = 2
         case tuesday = 3
@@ -38,7 +38,7 @@ public struct Schedule: Sendable {
     }
 
     /// Month of the year
-    public enum Month: Int, Sendable, Comparable {
+    public enum Month: Int, Sendable, Comparable, Equatable {
         case january = 1
         case february = 2
         case march = 3
@@ -58,10 +58,53 @@ public struct Schedule: Sendable {
     }
 
     /// Schedule parameter
-    enum Parameter<Value: Sendable>: Sendable {
+    enum Parameter<Value: Sendable & Comparable>: Sendable, Equatable, ExpressibleByArrayLiteral {
         case any
         case specific(Value)
         case selection(Deque<Value>)
+
+        init(_ value: Value) {
+            self = .specific(value)
+        }
+
+        init<Seq: Sequence>(_ values: Seq) where Seq.Element == Value {
+            self = .selection(.init(values.sorted()))
+        }
+
+        init(arrayLiteral values: Value...) {
+            self.init(values)
+        }
+
+        var notAny: Bool {
+            switch self {
+            case .specific:
+                true
+            case .selection:
+                true
+            case .any:
+                false
+            }
+        }
+
+        func map<Return>(_ transform: (Value) throws -> Return) rethrows -> Parameter<Return> {
+            switch self {
+            case .specific(let value):
+                .specific(try transform(value))
+            case .selection(let values):
+                .selection(.init(try values.map { try transform($0) }))
+            case .any:
+                .any
+            }
+        }
+
+        func sorted() -> Parameter<Value> {
+            switch self {
+            case .selection(let values):
+                .selection(.init(values.sorted()))
+            default:
+                self
+            }
+        }
 
         var value: Value? {
             switch self {
@@ -74,34 +117,48 @@ public struct Schedule: Sendable {
             }
         }
 
-        mutating func nextValue() -> Value? {
+        /// Rotate values in schedule forward, if we have wrapped around back to
+        /// the first value return true
+        mutating func nextValue() -> Bool {
             switch self {
-            case .specific(let value):
-                return value
+            case .specific:
+                return true
             case .selection(var values):
-                let second = values.popFirst()
-                if let second {
-                    values.append(second)
+                let first = values.popFirst()
+                if let first {
+                    values.append(first)
                     self = .selection(values)
+                    if values.first! > first {
+                        return false
+                    } else {
+                        return true
+                    }
                 }
-                return second
+                return false
             case .any:
-                return nil
+                return true
             }
         }
-        mutating func prevValue() -> Value? {
+        /// Rotate values in schedule backwards, if we have wrapped around back to
+        /// the first value return true
+        mutating func prevValue() -> Bool {
             switch self {
-            case .specific(let value):
-                return value
+            case .specific:
+                return true
             case .selection(var values):
-                let second = values.popLast()
-                if let second {
-                    values.prepend(second)
+                let last = values.popLast()
+                if let last {
+                    values.prepend(last)
                     self = .selection(values)
+                    if values.last! < last {
+                        return false
+                    } else {
+                        return true
+                    }
                 }
-                return second
+                return false
             case .any:
-                return nil
+                return true
             }
         }
     }
@@ -115,7 +172,7 @@ public struct Schedule: Sendable {
     var calendar: Calendar
 
     init(
-        second: Parameter<Int> = .any,
+        second: Parameter<Int> = .specific(0),
         minute: Parameter<Int> = .any,
         hour: Parameter<Int> = .any,
         date: Parameter<Int> = .any,
@@ -135,6 +192,32 @@ public struct Schedule: Sendable {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = timeZone
             self.calendar = calendar
+        }
+        // if month is not any and both day and date are any then set day to selection with all the days
+        if self.month.notAny {
+            if case .any = self.day, case .any = self.date {
+                self.day = .selection([.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday])
+            }
+        }
+        // if either day or date are not any and hour is set to any then set it to selection with range of hours (0-23)
+        if self.date.notAny || self.day.notAny {
+            if case .any = hour {
+                self.hour = .selection(.init(0..<24))
+            }
+        }
+        // if hour is not any and minute is set to any then set minute to selection with all the minutes (0-59)
+        if self.hour.notAny {
+            if case .any = minute {
+                self.minute = .selection(.init(0..<60))
+            }
+        }
+    }
+
+    public struct ScheduleError: Error {
+        let message: String
+
+        init(_ message: String) {
+            self.message = message
         }
     }
 
@@ -247,15 +330,49 @@ public struct Schedule: Sendable {
     ///  Return next date in schedule after the supplied Date
     /// - Parameter date: start date
     public mutating func nextDate(after date: Date) -> Date? {
+        self.updateScheduleForNextDate(currentDate: date)
         var dateComponents = DateComponents()
         dateComponents.nanosecond = 0
-        dateComponents.second = self.second.nextValue()
-        dateComponents.minute = self.minute.nextValue()
-        dateComponents.hour = self.hour.nextValue()
-        dateComponents.weekday = self.day.nextValue()?.rawValue
-        dateComponents.day = self.date.nextValue()
-        dateComponents.month = self.month.nextValue()?.rawValue
+        dateComponents.second = self.second.value
+        dateComponents.minute = self.minute.value
+        dateComponents.hour = self.hour.value
+        dateComponents.weekday = self.day.value?.rawValue
+        dateComponents.day = self.date.value
+        dateComponents.month = self.month.value?.rawValue
         return self.calendar.nextDate(after: date, matching: dateComponents, matchingPolicy: .strict)
+    }
+
+    mutating func updateScheduleForNextDate(currentDate: Date) {
+        if !self.second.nextValue() { return }
+        if !self.minute.nextValue() { return }
+        if !self.hour.nextValue() { return }
+        let dayWrapped = self.day.nextValue()
+        let dateWrapped = self.date.nextValue()
+        if let date = self.date.value, date > 28 {
+            let dateComponents = self.calendar.dateComponents([.month, .year], from: currentDate)
+            let daysInMonth =
+                // if february and it is a leap year
+                if dateComponents.month == 2 && dateComponents.year! & 0x3 == 0 {
+                    29
+                } else {
+                    Self.daysInMonth[dateComponents.month! - 1]
+                }
+            if date > daysInMonth {
+                while !self.date.nextValue() {}
+            }
+        }
+        if !dayWrapped || !dateWrapped { return }
+        if !self.month.nextValue() { return }
+    }
+
+    mutating func updateScheduleForPrevDate(date: Date) {
+        if !self.second.prevValue() { return }
+        if !self.minute.prevValue() { return }
+        if !self.hour.prevValue() { return }
+        let dayWrapped = self.day.prevValue()
+        let dateWrapped = self.date.prevValue()
+        if !dayWrapped || !dateWrapped { return }
+        if !self.month.prevValue() { return }
     }
 
     ///  Set up scheduler to return the correct next date, based on a supplied Date.
@@ -291,15 +408,15 @@ public struct Schedule: Sendable {
             nextDate = nextDateUnwrapped
         }
         // move dates to previous date so it will supply the current date the next time we call nextDate()
-        self.moveToPreviousScheduledDate()
+        self.updateScheduleForPrevDate(date: date)
     }
 
-    mutating func moveToPreviousScheduledDate() {
-        _ = self.second.prevValue()
-        _ = self.minute.prevValue()
-        _ = self.hour.prevValue()
-        _ = self.day.prevValue()
-        _ = self.date.prevValue()
-        _ = self.month.prevValue()
+    /// Days in each month
+    private static let daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+}
+
+extension Schedule.Parameter: ExpressibleByIntegerLiteral where Value == Int {
+    init(integerLiteral value: Int) {
+        self = .specific(value)
     }
 }
