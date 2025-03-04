@@ -134,12 +134,14 @@ extension Schedule {
         if let values = try? numberRegex.wholeMatch(in: entry), let value = transform(values.1) {
             return .init(value)
         } else if let values = try? rangeRegex.wholeMatch(in: entry), let lower = transform(values.1), let upper = transform(values.2) {
+            guard lower < upper else { throw ScheduleError("Crontab range requires first value to be before the second: \(values.0)") }
             return .init(lower...upper)
         } else if let values = try? everyRegex.wholeMatch(in: entry) {
             let numberOfValues = (count + values.1 - 1) / values.1
             let array = (0..<numberOfValues).map { range.lowerBound + $0 * values.1 }
             return .init(array)
         } else if let values = try? everyInRangeRegex.wholeMatch(in: entry), let lower = transform(values.1), let upper = transform(values.2) {
+            guard lower < upper else { throw ScheduleError("Crontab range requires first value to be before the second: \(values.0)") }
             let range = lower...upper
             let numberOfValues = (range.count + values.3 - 1) / values.3
             let array = (0..<numberOfValues).map { range.lowerBound + $0 * values.3 }

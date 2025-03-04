@@ -179,6 +179,7 @@ final class ScheduleTests: XCTestCase {
                 day: .any
             )
         )
-        XCTAssertThrowsError(try Schedule.crontab("0 19 * 6 jan-sat"))
+        XCTAssertThrowsError(try Schedule.crontab("0 19 * jan-sat *"))
+        XCTAssertThrowsError(try Schedule.crontab("0 19 * may-feb"))
     }
 }
