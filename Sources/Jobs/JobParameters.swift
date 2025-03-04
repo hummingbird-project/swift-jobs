@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import struct Foundation.Date
+
 /// Defines job parameters and identifier
 public protocol JobParameters: Codable, Sendable {
     /// Job type name
@@ -25,5 +27,22 @@ extension JobParameters {
         options: JobOptions = .init()
     ) async throws -> Queue.JobID {
         try await jobQueue.push(self, options: options)
+    }
+}
+
+extension JobParameters {
+    /// Added so it's possible for the scheduler to add date partitions
+    internal func push<Queue: JobQueueDriver>(
+        to jobQueue: JobQueue<Queue>,
+        currentSchedule: Date,
+        nextScheduledAt: Date?,
+        options: JobOptions = .init()
+    ) async throws -> Queue.JobID {
+        try await jobQueue.schedule(
+            self,
+            currentSchedule: currentSchedule,
+            nextScheduledAt: nextScheduledAt,
+            options: options
+        )
     }
 }
