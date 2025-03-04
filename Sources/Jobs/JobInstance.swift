@@ -62,15 +62,6 @@ extension JobInstanceProtocol {
     }
 }
 
-extension JobInstanceProtocol {
-    /// Default conformance
-    public var nextScheduledAt: Date? {
-        get {
-            nil
-        }
-    }
-}
-
 /// Job decoded from Queue
 ///
 /// Includes everything needed to run the job plus any other data that was encoded

@@ -107,6 +107,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let queuedAt = Date.now
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
+                var nextScheduledAt: Date? = nil
 
                 func execute(context: JobContext) async throws {}
             }
