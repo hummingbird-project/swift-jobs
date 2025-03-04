@@ -14,12 +14,6 @@
 
 import Foundation
 
-/// Define whether a job should be retried or not and how long before retrying
-public enum JobRetryResult {
-    case retryAfter(TimeInterval)
-    case dontRetry
-}
-
 /// Strategy deciding whether we should retry a failed job
 public protocol JobRetryStrategy: Sendable {
     ///  Calculate whether we should retry a failed job and how long we wait before retrying
