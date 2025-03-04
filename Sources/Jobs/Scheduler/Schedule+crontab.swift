@@ -27,6 +27,10 @@ extension Schedule {
     ///   - timeZone: Timezone to run schedule in
     /// - Throws: ScheduleError for corrupt crontabs and crontabs we don't suppoty
     static func crontab(_ crontab: String, timeZone: TimeZone = .current) throws -> Self {
+        if crontab.first == "@" {
+            guard let crontab = Self.crontabNicknames[crontab] else { throw ScheduleError("Unrecognised crontab nick name \(crontab)") }
+            return try Self.crontab(crontab, timeZone: timeZone)
+        }
         let values = crontab.split(separator: " ", omittingEmptySubsequences: true)
         guard values.count == 5 else { throw ScheduleError("Crontab string requires 5 values") }
         let minutes = try Self.parse(values[0], range: 0...59, count: 60)
@@ -157,6 +161,15 @@ extension Schedule {
         }
     }
 
+    private static let crontabNicknames: [String: String] = [
+        "@yearly": "0 0 1 1 *",
+        "@annually": "0 0 1 1 *",
+        "@monthly": "0 0 1 * *",
+        "@weekly": "0 0 * * 0",
+        "@daily": "0 0 * * *",
+        "@hourly": "0 * * * *",
+    ]
+
     private static let dayNameNumberMap: [Substring: Int] = [
         "sun": 0,
         "mon": 1,
@@ -181,43 +194,4 @@ extension Schedule {
         "nov": 11,
         "dec": 12,
     ]
-}
-
-protocol ExpressibleByRegexName {
-    init?<S: StringProtocol>(regexName: S)
-}
-
-extension Schedule.Day: ExpressibleByRegexName {
-    init?<S: StringProtocol>(regexName: S) {
-        switch regexName {
-        case "sun": self = .sunday
-        case "mon": self = .monday
-        case "tue": self = .tuesday
-        case "wed": self = .wednesday
-        case "thu": self = .thursday
-        case "fri": self = .friday
-        case "sat": self = .saturday
-        default: return nil
-        }
-    }
-}
-
-extension Schedule.Month: ExpressibleByRegexName {
-    init?<S: StringProtocol>(regexName: S) {
-        switch regexName {
-        case "jan": self = .january
-        case "feb": self = .february
-        case "mar": self = .march
-        case "apr": self = .april
-        case "may": self = .may
-        case "jun": self = .june
-        case "jul": self = .july
-        case "aug": self = .august
-        case "sep": self = .september
-        case "oct": self = .october
-        case "nov": self = .november
-        case "dec": self = .december
-        default: return nil
-        }
-    }
 }

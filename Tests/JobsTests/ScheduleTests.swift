@@ -182,4 +182,23 @@ final class ScheduleTests: XCTestCase {
         XCTAssertThrowsError(try Schedule.crontab("0 19 * jan-sat *"))
         XCTAssertThrowsError(try Schedule.crontab("0 19 * may-feb"))
     }
+    func testNicknames() throws {
+        XCTAssertEqual(
+            try Schedule.crontab("@hourly"),
+            Schedule(minute: 0, hour: .any, date: .any, month: .any, day: .any)
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("@daily"),
+            Schedule(minute: 0, hour: 0, date: .any, month: .any, day: .any)
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("@monthly"),
+            Schedule(minute: 0, hour: 0, date: 1, month: .any, day: .any)
+        )
+        XCTAssertEqual(
+            try Schedule.crontab("@yearly"),
+            Schedule(minute: 0, hour: 0, date: 1, month: .init(.january), day: .any)
+        )
+        XCTAssertThrowsError(try Schedule.crontab("@unrecognised"))
+    }
 }
