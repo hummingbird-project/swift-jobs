@@ -20,10 +20,15 @@ import Foundation
 
 /// JobQueueOptions
 public struct JobQueueOptions: Sendable {
-    let retryStrategy: JobRetryStrategy
+    let jobRetryStrategy: JobRetryStrategy
+    let driverRetryStrategy: JobRetryStrategy
 
     /// Initialize a JobQueueOptions
-    public init(defaultRetryStrategy: any JobRetryStrategy = .exponentialJitter()) {
-        self.retryStrategy = defaultRetryStrategy
+    public init(
+        jobRetryStrategy: any JobRetryStrategy = .exponentialJitter(),
+        driverRetryStrategy: any JobRetryStrategy = .exponentialJitter(maxAttempts: .max, maxBackoff: 120)
+    ) {
+        self.jobRetryStrategy = jobRetryStrategy
+        self.driverRetryStrategy = driverRetryStrategy
     }
 }

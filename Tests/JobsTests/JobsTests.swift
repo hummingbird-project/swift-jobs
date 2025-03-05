@@ -16,6 +16,7 @@ import Atomics
 import Jobs
 import Logging
 import NIOConcurrencyHelpers
+import NIOCore
 import ServiceLifecycle
 import XCTest
 
@@ -379,6 +380,100 @@ final class JobsTests: XCTestCase {
                 await serviceGroup.triggerGracefulShutdown()
                 throw error
             }
+        }
+    }
+
+    func testFailedJobQueueDriver() async throws {
+        struct DriverFailed: Error {}
+        struct TestJobQueueDriver: JobQueueDriver {
+            // amount of times driver fails before being successful
+            let failCount: Int
+
+            typealias JobID = MemoryQueue.JobID
+            typealias Element = MemoryQueue.Element
+
+            init(failCount: Int) {
+                self.memory = .init()
+                self.failCount = failCount
+            }
+
+            func registerJob<Parameters>(_ job: Jobs.JobDefinition<Parameters>) where Parameters: Jobs.JobParameters {
+                self.memory.registerJob(job)
+            }
+
+            func push<Parameters>(_ jobRequest: Jobs.JobRequest<Parameters>, options: Jobs.JobOptions) async throws -> JobID
+            where Parameters: Jobs.JobParameters {
+                try await self.memory.push(jobRequest, options: options)
+            }
+
+            func retry<Parameters>(_ id: JobID, jobRequest: Jobs.JobRequest<Parameters>, options: Jobs.JobOptions) async throws
+            where Parameters: Jobs.JobParameters {
+                try await self.memory.retry(id, jobRequest: jobRequest, options: options)
+            }
+
+            func finished(jobID: JobID) async throws {
+                try await self.memory.finished(jobID: jobID)
+            }
+
+            func failed(jobID: JobID, error: any Error) async throws {
+                try await self.memory.failed(jobID: jobID, error: error)
+            }
+
+            func stop() async {
+                await self.memory.stop()
+            }
+
+            func shutdownGracefully() async {
+                await self.memory.shutdownGracefully()
+            }
+
+            func getMetadata(_ key: String) async throws -> ByteBuffer? {
+                await self.memory.getMetadata(key)
+            }
+
+            func setMetadata(key: String, value: ByteBuffer) async throws {
+                await self.memory.setMetadata(key: key, value: value)
+            }
+
+            struct AsyncIterator: AsyncIteratorProtocol {
+                var memory: MemoryQueue.AsyncIterator
+                var failCount: Int
+
+                mutating func next() async throws -> Element? {
+                    if failCount > 0 {
+                        failCount -= 1
+                        throw JobQueueDriverError(.connectionError, underlyingError: DriverFailed())
+                    }
+                    return try await self.memory.next()
+                }
+            }
+
+            func makeAsyncIterator() -> AsyncIterator {
+                .init(memory: memory.makeAsyncIterator(), failCount: self.failCount)
+            }
+
+            let memory: MemoryQueue
+        }
+
+        struct TestJobParameters: JobParameters {
+            static let jobName: String = "TestJobParameters"
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called")
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .debug
+        let jobQueue = JobQueue(
+            TestJobQueueDriver(failCount: 3),
+            numWorkers: 3,
+            logger: logger,
+            options: .init(driverRetryStrategy: .exponentialJitter(maxAttempts: .max, maxBackoff: 0.1, maxJitter: 0.01))
+        )
+        jobQueue.registerJob(parameters: TestJobParameters.self) { parameters, _ in
+            expectation.fulfill()
+        }
+        try await testJobQueue(jobQueue) {
+            try await jobQueue.push(TestJobParameters())
+
+            await fulfillment(of: [expectation], timeout: 5)
         }
     }
 }

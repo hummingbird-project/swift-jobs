@@ -37,7 +37,11 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 var iterator = self.queue.makeAsyncIterator()
                 for _ in 0..<self.numWorkers {
-                    if let jobResult = try await iterator.next() {
+                    if let jobResult = try await withExponentialBackoff(
+                        "Pop next job",
+                        logger: self.logger,
+                        operation: { try await iterator.next() }
+                    ) {
                         group.addTask {
                             try await self.processJobResult(jobResult)
                         }
@@ -45,7 +49,13 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 }
                 while true {
                     try await group.next()
-                    guard let jobResult = try await iterator.next() else { break }
+                    guard
+                        let jobResult = try await withExponentialBackoff(
+                            "Pop next job",
+                            logger: self.logger,
+                            operation: { try await iterator.next() }
+                        )
+                    else { break }
                     group.addTask {
                         try await self.processJobResult(jobResult)
                     }
@@ -56,6 +66,32 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             Task {
                 await self.queue.stop()
             }
+        }
+    }
+
+    /// Run operation and retry with exponential backoff if it fails
+    func withExponentialBackoff<Value: Sendable>(
+        _ message: @autoclosure () -> String,
+        logger: Logger,
+        operation: () async throws -> Value
+    ) async throws -> Value {
+        var attempt = 0
+        while true {
+            do {
+                return try await operation()
+            } catch let error as JobQueueDriverError where error.code == .connectionError {
+                logger.debug("\(message()) failed")
+                if self.options.driverRetryStrategy.shouldRetry(attempt: attempt, error: error) {
+                    let wait = self.options.driverRetryStrategy.calculateBackoff(attempt: attempt)
+                    try await cancelWhenGracefulShutdown {
+                        try await Task.sleep(for: .seconds(wait))
+                    }
+                    attempt += 1
+                } else {
+                    throw error
+                }
+            }
+            logger.debug("Retrying \(message())")
         }
     }
 
@@ -85,7 +121,9 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             default:
                 logger.debug("Job failed to decode")
             }
-            try await self.queue.failed(jobID: jobResult.id, error: error)
+            try await withExponentialBackoff("Tag job as failed", logger: logger) {
+                try await self.queue.failed(jobID: jobResult.id, error: error)
+            }
             await self.middleware.onPopJob(result: .failure(error), jobInstanceID: jobResult.id.description)
         }
     }
@@ -111,28 +149,33 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 // as soon as we create it so can guarantee the Task is done when we leave the
                 // function.
                 try await Task {
-                    try await self.queue.failed(jobID: jobID, error: error)
+                    try await withExponentialBackoff("Tag job as failed", logger: logger) {
+                        try await self.queue.failed(jobID: jobID, error: error)
+                    }
                 }.value
                 return
             } catch {
                 if !job.shouldRetry(error: error) {
                     logger.debug("Job: failed")
-                    try await self.queue.failed(jobID: jobID, error: error)
+                    try await withExponentialBackoff("Tag job as failed", logger: logger) {
+                        try await self.queue.failed(jobID: jobID, error: error)
+                    }
                     return
                 }
 
-                let attempts = (job.attempts ?? 0) + 1
+                let attempts = (job.attempts ?? 0)
                 let delay = job.retryStrategy.calculateBackoff(attempt: attempts)
                 let delayUntil = Date.now.addingTimeInterval(delay)
 
                 /// retry the current job
-                try await self.queue.retry(
-                    jobID,
-                    job: job,
-                    attempts: attempts,
-                    options: .init(delayUntil: delayUntil)
-                )
-
+                try await withExponentialBackoff("Retry Job", logger: logger) {
+                    try await self.queue.retry(
+                        jobID,
+                        job: job,
+                        attempts: attempts + 1,
+                        options: .init(delayUntil: delayUntil)
+                    )
+                }
                 logger.debug(
                     "Retrying Job",
                     metadata: [
@@ -145,7 +188,9 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 return
             }
             logger.debug("Finished Job")
-            try await self.queue.finished(jobID: jobID)
+            try await withExponentialBackoff("Finish Job", logger: logger) {
+                try await self.queue.finished(jobID: jobID)
+            }
         } catch {
             logger.debug("Failed to set job status")
         }
