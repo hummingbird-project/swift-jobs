@@ -74,7 +74,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         while true {
             do {
                 return try await operation()
-            } catch {
+            } catch let error as JobQueueDriverError where error.code == .connectionError {
                 logger.debug("\(message()) failed")
                 if self.options.driverRetryStrategy.shouldRetry(attempt: attempt, error: error) {
                     let wait = self.options.driverRetryStrategy.calculateBackoff(attempt: attempt)

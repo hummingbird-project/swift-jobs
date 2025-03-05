@@ -442,7 +442,7 @@ final class JobsTests: XCTestCase {
                 mutating func next() async throws -> Element? {
                     if failCount > 0 {
                         failCount -= 1
-                        throw DriverFailed()
+                        throw JobQueueDriverError(.connectionError, underlyingError: DriverFailed())
                     }
                     return try await self.memory.next()
                 }
