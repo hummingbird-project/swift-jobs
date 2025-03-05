@@ -12,7 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// Request to run job, pushed to job queue
 public struct JobRequest<Parameters: JobParameters>: Encodable {

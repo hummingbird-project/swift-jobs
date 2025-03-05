@@ -12,8 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Foundation
+import Dispatch
 import Metrics
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 /// Add publishing of Metrics to a job queue
 public struct MetricsJobMiddleware: JobMiddleware {

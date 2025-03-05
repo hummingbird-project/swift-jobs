@@ -12,8 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Foundation
 import Tracing
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 /// Protocol for a Job
 public protocol JobInstanceProtocol: Sendable {

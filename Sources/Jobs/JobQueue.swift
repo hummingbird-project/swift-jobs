@@ -12,11 +12,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Foundation
 import Logging
 import NIOCore
 import NIOFoundationCompat
 import ServiceLifecycle
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 /// Protocol for Job queue. Allows us to pass job queues around as existentials
 public protocol JobQueueProtocol: Service {

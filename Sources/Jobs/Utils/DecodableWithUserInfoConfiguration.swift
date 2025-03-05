@@ -12,9 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Foundation
 import NIOCore
 import NIOFoundationCompat
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 /// Implementation of DecodableWithConfiguration which extracts the configuration from the userInfo array
 ///

@@ -13,8 +13,13 @@
 //===----------------------------------------------------------------------===//
 
 import Collections
-import Foundation
 import NIOCore
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
 public final class MemoryQueue: JobQueueDriver {

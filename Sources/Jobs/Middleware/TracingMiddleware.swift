@@ -12,8 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Foundation
 import Tracing
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 /// Add distributed trace spans to each job instance a job queue runs
 public struct TracingJobMiddleware: JobMiddleware {
