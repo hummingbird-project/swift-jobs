@@ -24,7 +24,7 @@ extension JobParameters {
     /// Added so it is possible to push JobParameters referenced as Existentials to a Job queue
     @discardableResult public func push<Queue: JobQueueDriver>(
         to jobQueue: JobQueue<Queue>,
-        options: JobOptions = .init()
+        options: Queue.JobOptions = .init(delayUntil: nil)
     ) async throws -> Queue.JobID {
         try await jobQueue.push(self, options: options)
     }
@@ -36,7 +36,7 @@ extension JobParameters {
         to jobQueue: JobQueue<Queue>,
         currentSchedule: Date,
         nextScheduledAt: Date?,
-        options: JobOptions = .init()
+        options: Queue.JobOptions = .init(delayUntil: nil)
     ) async throws -> Queue.JobID {
         try await jobQueue.schedule(
             self,
