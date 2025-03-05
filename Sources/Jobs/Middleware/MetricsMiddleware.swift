@@ -75,7 +75,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
                 label: Self.discardedCounter,
                 dimensions: [
                     ("reason", error.code.description),
-                    ("jobID", jobInstanceID)
+                    ("jobID", jobInstanceID),
                 ]
             ).increment()
 
@@ -85,7 +85,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
                 label: Self.meterLabel,
                 dimensions: [
                     ("status", JobStatus.queued.rawValue),
-                    ("name", job.name)
+                    ("name", job.name),
                 ]
             ).decrement()
 

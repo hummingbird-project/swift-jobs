@@ -106,7 +106,7 @@ final class TracingTests: XCTestCase {
             span.attributes,
             [
                 "job.id": "\(jobID.uuidString)",
-                "job.attempt": 1
+                "job.attempt": 1,
             ]
         )
         let span2 = try XCTUnwrap(tracer.spans.last)
