@@ -25,6 +25,15 @@ import Foundation
 public final class MemoryQueue: JobQueueDriver {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
+    /// Job options
+    public struct JobOptions: JobOptionsProtocol, Sendable {
+        /// When to execute the job
+        public let delayUntil: Date
+
+        public init(delayUntil: Date? = nil) {
+            self.delayUntil = delayUntil ?? Date.now
+        }
+    }
 
     /// queue of jobs
     fileprivate let queue: Internal

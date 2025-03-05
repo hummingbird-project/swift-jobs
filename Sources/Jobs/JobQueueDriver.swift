@@ -41,11 +41,17 @@ public struct JobQueueResult<JobID: Sendable>: Sendable {
     }
 }
 
+public protocol JobOptionsProtocol: Sendable {
+    init(delayUntil: Date?)
+}
+
 /// Job queue protocol.
 ///
 /// Defines how to push and pop job data off a queue
 public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueueResult<JobID> {
     associatedtype JobID: CustomStringConvertible & Sendable
+    associatedtype JobOptions: JobOptionsProtocol
+
     /// Called when JobQueueHandler is initialised with this queue
     func onInit() async throws
     /// Register job definition with driver
