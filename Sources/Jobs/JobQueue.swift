@@ -55,7 +55,7 @@ extension JobQueueProtocol {
         execute: @escaping @Sendable (Parameters, JobContext) async throws -> Void
     ) where Parameters: JobParameters {
         self.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
-        let job = JobDefinition<Parameters>(retryStrategy: retryStrategy ?? self.options.retryStrategy, execute: execute)
+        let job = JobDefinition<Parameters>(retryStrategy: retryStrategy ?? self.options.jobRetryStrategy, execute: execute)
         self.registerJob(job)
     }
 
