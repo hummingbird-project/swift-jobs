@@ -2,7 +2,7 @@
 //
 // This source file is part of the Hummingbird server framework project
 //
-// Copyright (c) 2021-2024 the Hummingbird authors
+// Copyright (c) 2021-2025 the Hummingbird authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 /// Job Queue Error type
-public struct JobQueueError: Error, Equatable {
+public struct JobQueueError: Error {
     public struct ErrorCode: Equatable, Sendable, CustomStringConvertible {
         /// failed to decode job. Possibly because it hasn't been registered or data that was expected
         /// is not available
