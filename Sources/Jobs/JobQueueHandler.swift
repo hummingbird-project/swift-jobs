@@ -105,24 +105,22 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 }.value
                 return
             } catch {
-                if job.didFail {
+                if !job.shouldRetry(error: error) {
                     logger.debug("Job: failed")
                     try await self.queue.failed(jobID: jobID, error: error)
                     return
                 }
 
                 let attempts = (job.attempts ?? 0) + 1
+                let delay = job.retryStrategy.calculateBackoff(attempt: attempts)
+                let delayUntil = Date.now.addingTimeInterval(delay)
 
-                let delay = self.calculateBackoff(attempts: attempts)
-
-                /// update the current job
+                /// retry the current job
                 try await self.queue.retry(
                     jobID,
                     job: job,
                     attempts: attempts,
-                    options: .init(
-                        delayUntil: delay
-                    )
+                    options: .init(delayUntil: delayUntil)
                 )
 
                 logger.debug(
@@ -131,7 +129,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                         "JobID": .stringConvertible(jobID),
                         "JobName": .string(job.name),
                         "attempts": .stringConvertible(attempts),
-                        "delayedUntil": .stringConvertible(delay),
+                        "delayedUntil": .stringConvertible(delayUntil),
                     ]
                 )
                 return
@@ -144,7 +142,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     }
 
     let queue: Queue
-    private let options: JobQueueOptions
+    let options: JobQueueOptions
     private let numWorkers: Int
     let middleware: any JobMiddleware
     let logger: Logger
@@ -152,12 +150,4 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
 extension JobQueueHandler: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
-}
-
-extension JobQueueHandler {
-    func calculateBackoff(attempts: Int) -> Date {
-        let exp = exp2(Double(attempts))
-        let delay = min(exp, self.options.maximumBackoff)
-        return Date.now.addingTimeInterval(TimeInterval(self.options.jitter + delay))
-    }
 }

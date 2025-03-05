@@ -43,7 +43,7 @@ public struct TracingJobMiddleware: JobMiddleware {
                 try await next(job, context)
             } catch {
                 span.recordError(error)
-                if job.didFail || error is CancellationError {
+                if !job.shouldRetry(error: error) || error is CancellationError {
                     span.attributes["job.failed"] = true
                 }
                 throw error
