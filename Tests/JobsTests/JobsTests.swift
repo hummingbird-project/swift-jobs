@@ -215,6 +215,7 @@ final class JobsTests: XCTestCase {
         let delayedJobParameters = TestParameters(value: 23)
         let notDelayedJobParameters = TestParameters(value: 89)
         let jobExecutionSequence: NIOLockedValueBox<[TestParameters]> = .init([])
+        let delayedJobQueuedAt: NIOLockedValueBox<Date> = .init(Date.now)
         jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             jobExecutionSequence.withLockedValue {
@@ -224,6 +225,9 @@ final class JobsTests: XCTestCase {
 
             if parameters == delayedJobParameters {
                 delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
+                delayedJobQueuedAt.withLockedValue {
+                    $0 = context.queuedAt
+                }
             }
         }
         try await testJobQueue(jobQueue) {
@@ -236,6 +240,7 @@ final class JobsTests: XCTestCase {
         }
 
         XCTAssertEqual(jobExecutionSequence.withLockedValue { $0 }, [notDelayedJobParameters, delayedJobParameters])
+        XCTAssertGreaterThan(Date.now, delayedJobQueuedAt.withLockedValue { $0 })
     }
 
     func testJobParameters() async throws {

@@ -449,7 +449,10 @@ final class JobSchedulerTests: XCTestCase {
         logger.logLevel = .debug
 
         let jobQueue = JobQueue(MemoryQueue(), logger: logger)
-        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, _ in
+        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, context in
+            XCTAssertNotNil(context.nextScheduledAt)
+            XCTAssertGreaterThan(context.nextScheduledAt!, context.queuedAt)
+
             source.yield()
         }
         // create schedule that ensures a job will be run in the next second
@@ -482,7 +485,7 @@ final class JobSchedulerTests: XCTestCase {
         logger.logLevel = .debug
 
         let jobQueue = JobQueue(MemoryQueue(), logger: logger)
-        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, _ in
+        jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, context in
             source.yield()
         }
         // create schedule that ensures a job should have been run 15 seconds ago

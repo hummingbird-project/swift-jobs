@@ -99,7 +99,6 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
 
     ///  Push Job onto queue
     /// - Parameters:
-    ///   - id: Job identifier
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
     @discardableResult public func push<Parameters: JobParameters>(
@@ -107,6 +106,34 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         options: JobOptions = .init()
     ) async throws -> Queue.JobID {
         let request = JobRequest(parameters: parameters, queuedAt: .now, attempts: 0)
+        let instanceID = try await self.queue.push(request, options: options)
+        await self.handler.middleware.onPushJob(parameters: parameters, jobInstanceID: instanceID.description)
+        self.logger.debug(
+            "Pushed Job",
+            metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(Parameters.jobName)]
+        )
+        return instanceID
+    }
+
+    ///  Push Job onto queue
+    /// - Parameters:
+    ///   - parameters: parameters for the job
+    ///   - currentSchedule: current job schedule
+    ///   - nextScheduledAt: next schedule for the job
+    ///   - options: job options
+    /// - Returns: Identifier of queued job
+    @discardableResult internal func schedule<Parameters: JobParameters>(
+        _ parameters: Parameters,
+        currentSchedule: Date,
+        nextScheduledAt: Date?,
+        options: JobOptions
+    ) async throws -> Queue.JobID {
+        let request = JobRequest(
+            parameters: parameters,
+            queuedAt: currentSchedule,
+            attempts: 0,
+            nextScheduledAt: nextScheduledAt
+        )
         let instanceID = try await self.queue.push(request, options: options)
         await self.handler.middleware.onPushJob(parameters: parameters, jobInstanceID: instanceID.description)
         self.logger.debug(

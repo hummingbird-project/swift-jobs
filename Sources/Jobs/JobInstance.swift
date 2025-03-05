@@ -29,6 +29,8 @@ public protocol JobInstanceProtocol: Sendable {
     var parameters: Parameters { get }
     /// Trace context
     var traceContext: [String: String]? { get }
+    /// Next time job is scheduled to run
+    var nextScheduledAt: Date? { get }
     /// Function to execute the job
     func execute(context: JobContext) async throws
 }
@@ -74,6 +76,8 @@ struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
     var traceContext: [String: String]? { self.data.traceContext }
     /// Job parameters
     var parameters: Parameters { self.data.parameters }
+    /// Next time job is scheduled to run
+    var nextScheduledAt: Date? { self.data.nextScheduledAt }
 
     func execute(context: JobContext) async throws {
         try await self.job.execute(self.data.parameters, context: context)
@@ -89,21 +93,26 @@ struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
 public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
     /// Job parameters
     let parameters: Parameters
-    /// Date job was queued
+    /// Time job was queued
     let queuedAt: Date
     /// Number of attempts so far
     let attempts: Int?
     /// trace context
     let traceContext: [String: String]?
+    /// Next time job is scheduled to run
+    let nextScheduledAt: Date?
 
     init(
         parameters: Parameters,
         queuedAt: Date,
-        attempts: Int?
+        attempts: Int?,
+        nextScheduledAt: Date? = nil
     ) {
         self.parameters = parameters
         self.queuedAt = queuedAt
         self.attempts = attempts
+        self.nextScheduledAt = nextScheduledAt
+
         var traceContext: [String: String]? = nil
         if let serviceContext = ServiceContext.current {
             var tempTraceContext = [String: String]()
@@ -121,6 +130,7 @@ public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
         case queuedAt = "q"
         case attempts = "a"
         case traceContext = "t"
+        case nextScheduledAt = "n"
     }
 }
 
