@@ -74,24 +74,27 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///   - jobInstanceID: Job instance identifer
     @inlinable
     public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {
-        // Decrement the current queue by 1
-        Meter(
-            label: Self.meterLabel,
-            dimensions: [
-                ("status", JobStatus.queued.rawValue)
-            ]
-        ).decrement()
 
         switch result {
         case .failure(let error):
             Counter(
                 label: Self.discardedCounter,
                 dimensions: [
-                    ("reason", error.code.description)
+                    ("reason", error.code.description),
+                    ("jobID", jobInstanceID),
                 ]
             ).increment()
 
         case .success(let job):
+            // Decrement the current queue by 1
+            Meter(
+                label: Self.meterLabel,
+                dimensions: [
+                    ("status", JobStatus.queued.rawValue),
+                    ("name", job.name),
+                ]
+            ).decrement()
+
             // Calculate wait time from queued to processing
             let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
             Timer(
@@ -119,14 +122,16 @@ public struct MetricsJobMiddleware: JobMiddleware {
         Meter(
             label: Self.meterLabel,
             dimensions: [
-                ("status", JobStatus.processing.rawValue)
+                ("status", JobStatus.processing.rawValue),
+                ("name", job.name),
             ]
         ).increment()
         defer {
             Meter(
                 label: Self.meterLabel,
                 dimensions: [
-                    ("status", JobStatus.processing.rawValue)
+                    ("status", JobStatus.processing.rawValue),
+                    ("name", job.name),
                 ]
             ).decrement()
         }
@@ -154,7 +159,8 @@ public struct MetricsJobMiddleware: JobMiddleware {
                 Meter(
                     label: Self.meterLabel,
                     dimensions: [
-                        ("status", JobStatus.queued.rawValue)
+                        ("status", JobStatus.queued.rawValue),
+                        ("name", job.name),
                     ]
                 ).increment()
 
