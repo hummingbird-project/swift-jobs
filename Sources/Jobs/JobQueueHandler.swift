@@ -12,10 +12,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Foundation
 import Logging
 import NIOCore
 import ServiceLifecycle
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 /// Object handling a single job queue
 final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {

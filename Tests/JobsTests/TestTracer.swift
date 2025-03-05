@@ -26,10 +26,15 @@
 //===----------------------------------------------------------------------===//
 
 import Dispatch
-import Foundation
 import Instrumentation
 import ServiceContextModule
 import Tracing
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 /// Only intended to be used in single-threaded testing.
 final class TestTracer: Tracer {

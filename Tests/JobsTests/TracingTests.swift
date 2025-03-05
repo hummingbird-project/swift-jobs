@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Foundation
 import Jobs
 import Logging
 import NIOConcurrencyHelpers
@@ -20,6 +19,12 @@ import Tracing
 import XCTest
 
 @testable import Instrumentation
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 final class TracingTests: XCTestCase {
     func testTraceOutput() async throws {

@@ -14,10 +14,14 @@
 
 import Collections
 
-#if os(Linux)
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+#if compiler(<6.0)
 @preconcurrency import Foundation
 #else
 import Foundation
+#endif
 #endif
 
 /// Generates a Date at regular intervals (hourly, daily, weekly etc)

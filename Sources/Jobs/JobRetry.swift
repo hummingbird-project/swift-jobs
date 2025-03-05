@@ -12,7 +12,23 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
+
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#elseif canImport(Darwin)
+import Darwin.C
+#elseif canImport(Android)
+import Android
+#else
+#error("Unsupported platform")
+#endif
 
 /// Strategy deciding whether we should retry a failed job
 public protocol JobRetryStrategy: Sendable {
