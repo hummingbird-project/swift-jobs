@@ -78,7 +78,6 @@ public struct MetricsJobMiddleware: JobMiddleware {
             ]
 
             if let jobName = error.jobName {
-                
                 let jobNameDimension = ("name", jobName)
                 counterDimensions.append(jobNameDimension)
 
@@ -95,16 +94,6 @@ public struct MetricsJobMiddleware: JobMiddleware {
                 label: Self.discardedCounter,
                 dimensions: counterDimensions
             ).increment()
-
-            if let jobName = error.jobName {
-                Meter(
-                     label: Self.meterLabel,
-                     dimensions: [
-                         ("status", JobStatus.queued.rawValue),
-                         ("name", jobName),
-                     ]
-                 ).decrement()
-            }
 
         case .success(let job):
             // Decrement the current queue by 1
