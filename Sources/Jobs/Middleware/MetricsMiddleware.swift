@@ -73,7 +73,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
         switch result {
         case .failure(let error):
             var counterDimensions: [(String, String)] = [
-                ("reason", error.code.description),
+                ("reason", error.code.description)
             ]
 
             if let jobName = error.jobName {
