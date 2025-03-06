@@ -346,7 +346,7 @@ final class MetricsTests: XCTestCase {
         ) { MetricsJobMiddleware() }
         jobQueue.registerJob(
             parameters: TestParameter.self,
-            retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: 0.5, minJitter: 0.0, maxJitter: 0.25)
+            retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: .seconds(0.5), minJitter: -0.25, maxJitter: 0.25)
         ) { _, _ in
 
             defer {
@@ -394,7 +394,7 @@ final class MetricsTests: XCTestCase {
         ) { MetricsJobMiddleware() }
         jobQueue.registerJob(
             parameters: TestParameter.self,
-            retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: 0.5, minJitter: 0.0, maxJitter: 0.01)
+            retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.01)
         ) { _, _ in
             expectation.fulfill()
             throw FailedError()

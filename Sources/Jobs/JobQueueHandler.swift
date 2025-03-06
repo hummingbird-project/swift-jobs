@@ -123,7 +123,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
                 let attempts = (job.attempts ?? 0) + 1
                 let delay = job.retryStrategy.calculateBackoff(attempt: attempts)
-                let delayUntil = Date.now.addingTimeInterval(delay)
+                let delayUntil = Date.now._advanced(by: delay)
 
                 /// retry the current job
                 try await self.queue.retry(
@@ -160,4 +160,14 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
 extension JobQueueHandler: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
+}
+
+extension Date {
+    // private version of advancing Date by Duration
+    internal func _advanced(by duration: Duration) -> Date {
+        var timeValue = self.timeIntervalSinceReferenceDate
+        timeValue += Double(duration.components.seconds)
+        timeValue += Double(duration.components.attoseconds) / 1_000_000_000_000_000_000
+        return Date(timeIntervalSinceReferenceDate: timeValue)
+    }
 }
