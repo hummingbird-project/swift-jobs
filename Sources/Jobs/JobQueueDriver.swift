@@ -21,31 +21,13 @@ import FoundationEssentials
 import Foundation
 #endif
 
-/// Type returned from iterating a JobQueueDriver
-///
-/// The `JobQueueResult`` can hold either a job instance or the error created when iterating
-/// the job queue. If the error is returned in `JobQueueResult` then the job queue handler will
-/// handle the error. If the job queue throws an error when it is iterated then the job queue
-/// will throw that error.
-public struct JobQueueResult<JobID: Sendable>: Sendable {
-    public let id: JobID
-    public let result: Result<any JobInstanceProtocol, JobQueueError>
-
-    ///  Initialize JobQueueResult
-    /// - Parameters:
-    ///   - id: id of job
-    ///   - result: Result (job instance or error)
-    public init(id: JobID, result: Result<any JobInstanceProtocol, JobQueueError>) {
-        self.id = id
-        self.result = result
-    }
-}
-
 /// Job queue protocol.
 ///
 /// Defines how to push and pop job data off a queue
 public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueueResult<JobID> {
     associatedtype JobID: CustomStringConvertible & Sendable
+    associatedtype JobOptions: JobOptionsProtocol
+
     /// Called when JobQueueHandler is initialised with this queue
     func onInit() async throws
     /// Register job definition with driver
@@ -61,7 +43,7 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     ///   - id: Job instance ID
     ///   - jobRequest: Job Request
     ///   - options: JobOptions
-    func retry<Parameters: JobParameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobOptions) async throws
+    func retry<Parameters: JobParameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobRetryOptions) async throws
     /// This is called to say job has finished processing and it can be deleted
     func finished(jobID: JobID) async throws
     /// This is called to say job has failed to run and should be put aside
@@ -82,8 +64,43 @@ extension JobQueueDriver {
 }
 
 extension JobQueueDriver {
-    func retry(_ jobID: JobID, job: some JobInstanceProtocol, attempts: Int, options: JobOptions) async throws {
+    func retry(_ jobID: JobID, job: some JobInstanceProtocol, attempts: Int, options: JobRetryOptions) async throws {
         let jobRequest = JobRequest(parameters: job.parameters, queuedAt: job.queuedAt, attempts: attempts)
         return try await self.retry(jobID, jobRequest: jobRequest, options: options)
+    }
+}
+
+/// Type returned from iterating a JobQueueDriver
+///
+/// The `JobQueueResult`` can hold either a job instance or the error created when iterating
+/// the job queue. If the error is returned in `JobQueueResult` then the job queue handler will
+/// handle the error. If the job queue throws an error when it is iterated then the job queue
+/// will throw that error.
+public struct JobQueueResult<JobID: Sendable>: Sendable {
+    public let id: JobID
+    public let result: Result<any JobInstanceProtocol, JobQueueError>
+
+    ///  Initialize JobQueueResult
+    /// - Parameters:
+    ///   - id: id of job
+    ///   - result: Result (job instance or error)
+    public init(id: JobID, result: Result<any JobInstanceProtocol, JobQueueError>) {
+        self.id = id
+        self.result = result
+    }
+}
+
+public protocol JobOptionsProtocol: Sendable {
+    /// Initialize job options with default value
+    init()
+}
+
+/// Options for retrying a job
+public struct JobRetryOptions {
+    /// When to execute the job
+    public let delayUntil: Date
+
+    init(delayUntil: Date) {
+        self.delayUntil = delayUntil
     }
 }

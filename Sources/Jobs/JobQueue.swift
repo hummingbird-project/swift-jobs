@@ -36,7 +36,7 @@ public protocol JobQueueProtocol: Service {
     /// - Returns: Identifier of queued job
     @discardableResult func push<Parameters: JobParameters>(
         _ parameters: Parameters,
-        options: JobOptions
+        options: Queue.JobOptions
     ) async throws -> Queue.JobID
 
     ///  Register job type
@@ -108,7 +108,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// - Returns: Identifier of queued job
     @discardableResult public func push<Parameters: JobParameters>(
         _ parameters: Parameters,
-        options: JobOptions = .init()
+        options: Queue.JobOptions = .init()
     ) async throws -> Queue.JobID {
         let request = JobRequest(parameters: parameters, queuedAt: .now, attempts: 0)
         let instanceID = try await self.queue.push(request, options: options)
@@ -131,7 +131,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         _ parameters: Parameters,
         currentSchedule: Date,
         nextScheduledAt: Date?,
-        options: JobOptions
+        options: Queue.JobOptions
     ) async throws -> Queue.JobID {
         let request = JobRequest(
             parameters: parameters,

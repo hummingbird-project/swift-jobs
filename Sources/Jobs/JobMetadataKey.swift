@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-struct JobMetadataKey<Value>: Sendable, Hashable, ExpressibleByStringLiteral {
+struct JobMetadataKey<Value>: Sendable, Hashable, ExpressibleByStringLiteral, ExpressibleByStringInterpolation {
     let name: String
     /// Initialize a JobMetadataKey
     ///
@@ -30,6 +30,18 @@ struct JobMetadataKey<Value>: Sendable, Hashable, ExpressibleByStringLiteral {
     /// This can only be used in a situation where the Value type is defined elsewhere
     /// - Parameter string:
     init(stringLiteral string: String) {
+        self.name = string
+    }
+
+    /// Initialize a JobMetadataKey from a string literal
+    ///
+    /// ```swift
+    /// extension JobMetadataKey where Value == MyValue {
+    ///     static var myMetadataKey: Self { .init("myMetadata")}
+    /// }
+    /// This can only be used in a situation where the Value type is defined elsewhere
+    /// - Parameter string:
+    init(stringInterpolation string: String) {
         self.name = string
     }
 }
