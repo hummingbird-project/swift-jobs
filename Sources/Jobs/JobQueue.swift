@@ -108,7 +108,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// - Returns: Identifier of queued job
     @discardableResult public func push<Parameters: JobParameters>(
         _ parameters: Parameters,
-        options: Queue.JobOptions = .init(delayUntil: nil)
+        options: Queue.JobOptions = .init()
     ) async throws -> Queue.JobID {
         let request = JobRequest(parameters: parameters, queuedAt: .now, attempts: 0)
         let instanceID = try await self.queue.push(request, options: options)

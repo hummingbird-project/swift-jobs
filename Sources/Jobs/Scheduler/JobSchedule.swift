@@ -96,7 +96,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     public func scheduler<Queue: JobQueueDriver>(
         on jobQueue: JobQueue<Queue>,
         named name: String = "default",
-        jobOptions: Queue.JobOptions = .init(delayUntil: nil)
+        jobOptions: Queue.JobOptions = .init()
     ) async -> Scheduler<Queue> {
         await .init(named: name, jobQueue: jobQueue, jobOptions: jobOptions, jobSchedule: self)
     }

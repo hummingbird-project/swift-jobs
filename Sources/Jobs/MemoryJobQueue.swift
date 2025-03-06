@@ -26,11 +26,16 @@ public final class MemoryQueue: JobQueueDriver {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
     /// Job options
-    public struct JobOptions: JobOptionsProtocol, Sendable {
+    public struct JobOptions: JobOptionsProtocol {
         /// When to execute the job
         public let delayUntil: Date
 
-        public init(delayUntil: Date? = nil) {
+        /// Requirement from `JobOptionsProtocol`
+        public init() {
+            self.delayUntil = Date.now
+        }
+
+        public init(delayUntil: Date?) {
             self.delayUntil = delayUntil ?? Date.now
         }
     }
@@ -79,8 +84,9 @@ public final class MemoryQueue: JobQueueDriver {
     ///   - id: Job ID
     ///   - jobRequest: Job Request
     ///   - options: Job options
-    public func retry<Parameters: JobParameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobOptions) async throws {
+    public func retry<Parameters: JobParameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobRetryOptions) async throws {
         let buffer = try self.jobRegistry.encode(jobRequest: jobRequest)
+        let options = JobOptions(delayUntil: options.delayUntil)
         try await self.queue.retry(id, buffer: buffer, options: options)
     }
 
