@@ -31,7 +31,7 @@ public protocol JobQueueProtocol: Service {
 
     ///  Push Job onto queue
     /// - Parameters:
-    ///   - id: Job identifier
+    ///   - parameters: Job parameters
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
     @discardableResult func push<Parameters: JobParameters>(
@@ -49,6 +49,16 @@ public protocol JobQueueProtocol: Service {
 }
 
 extension JobQueueProtocol {
+    ///  Push Job onto queue
+    /// - Parameters:
+    ///   - parameters: Job parameters
+    /// - Returns: Identifier of queued job
+    @discardableResult public func push<Parameters: JobParameters>(
+        _ parameters: Parameters
+    ) async throws -> Queue.JobID {
+        try await self.push(parameters, options: .init())
+    }
+
     ///  Initialize JobDefinition
     /// - Parameters:
     ///   - parameters: Job parameter type

@@ -383,6 +383,27 @@ final class JobsTests: XCTestCase {
         }
     }
 
+    /// Test we can user `any JobQueueProtocol` to register and push jobs
+    func testJobQueueProtocol() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testBasic"
+            let value: Int
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let jobQueue: any JobQueueProtocol = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        let job = JobDefinition { (parameters: TestParameters, context) in
+            context.logger.info("Parameters=\(parameters.value)")
+            try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
+            expectation.fulfill()
+        }
+        jobQueue.registerJob(job)
+        try await testJobQueue(jobQueue) {
+            try await jobQueue.push(TestParameters(value: 1))
+
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+    }
+
     // verify advance by gives us at least millisecond accuracy across 30000 years
     func testAdvancedBy() {
         for _ in 0..<100 {
