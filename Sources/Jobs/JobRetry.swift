@@ -42,14 +42,13 @@ public protocol JobRetryStrategy: Sendable {
     ///  Calculate backoff amount
     /// - Parameter attempt: Attempt number
     /// - Returns: Retry backoff
-    func calculateBackoff(attempt: Int) -> TimeInterval
+    func calculateBackoff(attempt: Int) -> Duration
 }
 
 /// Never retry failed jobs
 public struct NoRetryJobRetryStrategy: JobRetryStrategy {
     public func shouldRetry(attempt: Int, error: Error) -> Bool { false }
-    public func calculateBackoff(attempt: Int) -> TimeInterval { 0 }
-
+    public func calculateBackoff(attempt: Int) -> Duration { .seconds(0) }
 }
 
 extension JobRetryStrategy where Self == NoRetryJobRetryStrategy {
@@ -64,13 +63,13 @@ public struct ExponentialJitterJobRetryStrategy: JobRetryStrategy {
     /// Maximum attempts - default is 4
     public var maxAttempts: Int
     /// Maximum Delay - default is 120.0 seconds
-    public var maxBackoff: Double
+    public var maxBackoff: Duration
     /// Minimum jitter - default is 0 seconds
-    public var minJitter: TimeInterval
+    public var minJitter: Double
     /// Maximum jitter - default is 10 seconds
-    public var maxJitter: TimeInterval
+    public var maxJitter: Double
 
-    public init(maxAttempts: Int = 4, maxBackoff: TimeInterval = 120, minJitter: TimeInterval = 0, maxJitter: TimeInterval = 10) {
+    public init(maxAttempts: Int = 4, maxBackoff: Duration = .seconds(120), minJitter: Double = -0.5, maxJitter: Double = 0.5) {
         self.maxAttempts = maxAttempts
         self.maxBackoff = maxBackoff
         self.maxJitter = maxJitter
@@ -81,10 +80,11 @@ public struct ExponentialJitterJobRetryStrategy: JobRetryStrategy {
         attempt < maxAttempts
     }
 
-    public func calculateBackoff(attempt: Int) -> TimeInterval {
-        let exp = exp2(Double(attempt))
+    public func calculateBackoff(attempt: Int) -> Duration {
+        let exp = Duration.seconds(exp2(Double(attempt)))
         let delay = min(exp, self.maxBackoff)
-        return TimeInterval(Double.random(in: self.minJitter..<self.maxJitter) + delay)
+        let jitter = Double.random(in: minJitter..<maxJitter)
+        return delay * (1 + jitter)
     }
 }
 
@@ -97,8 +97,8 @@ extension JobRetryStrategy where Self == ExponentialJitterJobRetryStrategy {
     ///   - maxJitter: Maximum jitter
     public static func exponentialJitter(
         maxAttempts: Int = 4,
-        maxBackoff: TimeInterval = 120,
-        minJitter: TimeInterval = 0,
-        maxJitter: TimeInterval = 10
+        maxBackoff: Duration = .seconds(120),
+        minJitter: Double = -0.5,
+        maxJitter: Double = 0.5
     ) -> Self { .init(maxAttempts: maxAttempts, maxBackoff: maxBackoff, minJitter: minJitter, maxJitter: maxJitter) }
 }

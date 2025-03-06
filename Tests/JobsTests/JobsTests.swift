@@ -13,11 +13,12 @@
 //===----------------------------------------------------------------------===//
 
 import Atomics
-import Jobs
 import Logging
 import NIOConcurrencyHelpers
 import ServiceLifecycle
 import XCTest
+
+@testable import Jobs
 
 extension XCTestExpectation {
     convenience init(description: String, expectedFulfillmentCount: Int) {
@@ -145,7 +146,7 @@ final class JobsTests: XCTestCase {
         )
         jobQueue.registerJob(
             parameters: TestParameters.self,
-            retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: 0.5, minJitter: 0.0, maxJitter: 0.01)
+            retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.01)
         ) { _, _ in
             expectation.fulfill()
             throw FailedError()
@@ -172,7 +173,7 @@ final class JobsTests: XCTestCase {
                 return jitterRetry.shouldRetry(attempt: attempt, error: error)
             }
 
-            func calculateBackoff(attempt: Int) -> TimeInterval {
+            func calculateBackoff(attempt: Int) -> Duration {
                 jitterRetry.calculateBackoff(attempt: attempt)
             }
         }
@@ -379,6 +380,17 @@ final class JobsTests: XCTestCase {
                 await serviceGroup.triggerGracefulShutdown()
                 throw error
             }
+        }
+    }
+
+    // verify advance by gives us at least millisecond accuracy across 30000 years
+    func testAdvancedBy() {
+        for _ in 0..<100 {
+            let date = Date(timeIntervalSinceReferenceDate: TimeInterval.random(in: 0..<1_000_000_000_000))
+            let offset = Double.random(in: 0..<1_000_000_000)
+            let duration = Duration.seconds(offset)
+            let newDate = date._advanced(by: duration)
+            XCTAssertEqual(date.advanced(by: offset).timeIntervalSinceReferenceDate, newDate.timeIntervalSinceReferenceDate, accuracy: 0.001)
         }
     }
 }

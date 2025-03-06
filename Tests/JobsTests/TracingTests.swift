@@ -85,7 +85,7 @@ final class TracingTests: XCTestCase {
         }
         jobQueue.registerJob(
             parameters: TestParameters.self,
-            retryStrategy: .exponentialJitter(maxAttempts: 4, maxBackoff: 0.5, minJitter: 0.0, maxJitter: 0.25)
+            retryStrategy: .exponentialJitter(maxAttempts: 4, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.25)
         ) { parameters, context in
             if failJob.withLockedValue({
                 let value = $0
