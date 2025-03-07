@@ -480,12 +480,10 @@ final class MetricsTests: XCTestCase {
 
         let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift.jobs.queued.duration"] as? TestTimer)
         XCTAssertGreaterThan(timer.values.withLockedValue { $0 }[0].1, 50_000_000)
-        XCTAssertEqual(timer.dimensions.count, 3)
+        XCTAssertEqual(timer.dimensions.count, 2)
         XCTAssertEqual(timer.dimensions[0].0, "name")
         XCTAssertEqual(timer.dimensions[0].1, "testJobQueuedTime")
-        XCTAssertEqual(timer.dimensions[1].0, "status")
-        XCTAssertEqual(timer.dimensions[1].1, "succeeded")
-        XCTAssertEqual(timer.dimensions[2].0, "queue")
-        XCTAssertEqual(timer.dimensions[2].1, "default")
+        XCTAssertEqual(timer.dimensions[1].0, "queue")
+        XCTAssertEqual(timer.dimensions[1].1, "default")
     }
 }
