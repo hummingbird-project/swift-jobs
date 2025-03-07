@@ -67,7 +67,7 @@ extension JobQueueProtocol {
     public func registerJob<Parameters: JobParameters>(
         parameters: Parameters.Type = Parameters.self,
         retryStrategy: (any JobRetryStrategy)? = nil,
-        execute: @escaping @Sendable (Parameters, JobContext) async throws -> Void
+        execute: @escaping @Sendable (Parameters, JobExecutionContext) async throws -> Void
     ) where Parameters: JobParameters {
         self.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
         let job = JobDefinition<Parameters>(retryStrategy: retryStrategy ?? self.options.retryStrategy, execute: execute)
@@ -82,7 +82,7 @@ extension JobQueueProtocol {
     public func registerJob<Parameters: JobParameters>(
         parameters: Parameters.Type = Parameters.self,
         maxRetryCount: Int,
-        execute: @escaping @Sendable (Parameters, JobContext) async throws -> Void
+        execute: @escaping @Sendable (Parameters, JobExecutionContext) async throws -> Void
     ) {
         self.registerJob(parameters: parameters, retryStrategy: .exponentialJitter(maxAttempts: maxRetryCount), execute: execute)
     }
@@ -122,7 +122,10 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     ) async throws -> Queue.JobID {
         let request = JobRequest(parameters: parameters, queuedAt: .now, attempts: 0)
         let instanceID = try await self.queue.push(request, options: options)
-        await self.handler.middleware.onPushJob(parameters: parameters, jobInstanceID: instanceID.description)
+        await self.handler.middleware.onPushJob(
+            parameters: parameters,
+            context: .init(jobInstanceID: instanceID.description)
+        )
         self.logger.debug(
             "Pushed Job",
             metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(Parameters.jobName)]
@@ -150,7 +153,10 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
             nextScheduledAt: nextScheduledAt
         )
         let instanceID = try await self.queue.push(request, options: options)
-        await self.handler.middleware.onPushJob(parameters: parameters, jobInstanceID: instanceID.description)
+        await self.handler.middleware.onPushJob(
+            parameters: parameters,
+            context: .init(jobInstanceID: instanceID.description)
+        )
         self.logger.debug(
             "Pushed Job",
             metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(Parameters.jobName)]

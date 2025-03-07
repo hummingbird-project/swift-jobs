@@ -22,18 +22,23 @@ import Foundation
 
 /// Add distributed trace spans to each job instance a job queue runs
 public struct TracingJobMiddleware: JobMiddleware {
-    public init() {}
+    @usableFromInline
+    let queueName: String
+
+    public init(queueName: String = "default") {
+        self.queueName = queueName
+    }
 
     @inlinable
-    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {}
+    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, context: JobQueueContext) async {}
     @inlinable
-    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {}
+    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {}
 
     @inlinable
     public func handleJob(
         job: any JobInstanceProtocol,
-        context: JobContext,
-        next: (any JobInstanceProtocol, JobContext) async throws -> Void
+        context: JobExecutionContext,
+        next: (any JobInstanceProtocol, JobExecutionContext) async throws -> Void
     ) async throws {
         let linkContext = job.serviceContext()
         return try await withSpan(job.name, ofKind: .server) { span in
@@ -43,6 +48,7 @@ public struct TracingJobMiddleware: JobMiddleware {
             span.updateAttributes { attributes in
                 attributes["job.id"] = context.jobInstanceID
                 attributes["job.attempt"] = (job.attempts ?? 0) + 1
+                attributes["job.queue"] = self.queueName
             }
             do {
                 try await next(job, context)

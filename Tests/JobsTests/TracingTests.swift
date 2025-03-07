@@ -62,6 +62,7 @@ final class TracingTests: XCTestCase {
             [
                 "job.id": "\(jobID.uuidString)",
                 "job.attempt": 1,
+                "job.queue": "default",
             ]
         )
     }
@@ -115,6 +116,7 @@ final class TracingTests: XCTestCase {
             [
                 "job.id": "\(jobID.uuidString)",
                 "job.attempt": 1,
+                "job.queue": "default",
             ]
         )
         let span2 = try XCTUnwrap(tracer.spans.last)
@@ -143,7 +145,7 @@ final class TracingTests: XCTestCase {
         InstrumentationSystem.bootstrapInternal(tracer)
 
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) {
-            TracingJobMiddleware()
+            TracingJobMiddleware(queueName: "tracing")
         }
         jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
@@ -184,6 +186,7 @@ final class TracingTests: XCTestCase {
             [
                 "job.id": "\(jobID.uuidString)",
                 "job.attempt": 1,
+                "job.queue": "tracing",
             ]
         )
     }

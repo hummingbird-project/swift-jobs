@@ -21,7 +21,7 @@ import Foundation
 #endif
 
 /// Context of running job
-public struct JobContext {
+public struct JobExecutionContext {
     /// Job instance identifier
     public let jobInstanceID: String
     /// Logger
@@ -31,4 +31,10 @@ public struct JobContext {
     public let queuedAt: Date
     /// Next time job is scheduled to run
     public let nextScheduledAt: Date?
+}
+
+/// context for job being adding/removed from queue
+public struct JobQueueContext {
+    /// Job instance identifier
+    public let jobInstanceID: String
 }
