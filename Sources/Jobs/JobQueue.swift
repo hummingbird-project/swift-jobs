@@ -124,7 +124,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         let instanceID = try await self.queue.push(request, options: options)
         await self.handler.middleware.onPushJob(
             parameters: parameters,
-            context: .init(jobInstanceID: instanceID.description)
+            context: .init(jobID: instanceID.description)
         )
         self.logger.debug(
             "Pushed Job",
@@ -155,7 +155,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         let instanceID = try await self.queue.push(request, options: options)
         await self.handler.middleware.onPushJob(
             parameters: parameters,
-            context: .init(jobInstanceID: instanceID.description)
+            context: .init(jobID: instanceID.description)
         )
         self.logger.debug(
             "Pushed Job",

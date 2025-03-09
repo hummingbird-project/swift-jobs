@@ -23,7 +23,7 @@ import Foundation
 /// Context of running job
 public struct JobExecutionContext {
     /// Job instance identifier
-    public let jobInstanceID: String
+    public let jobID: String
     /// Logger
     public let logger: Logger
     /// Time when the job was scheduled
@@ -36,5 +36,5 @@ public struct JobExecutionContext {
 /// context for job being adding/removed from queue
 public struct JobQueueContext {
     /// Job instance identifier
-    public let jobInstanceID: String
+    public let jobID: String
 }

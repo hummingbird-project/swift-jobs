@@ -68,7 +68,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         case .success(let job):
             await self.middleware.onPopJob(
                 result: .success(job),
-                context: .init(jobInstanceID: jobResult.id.description)
+                context: .init(jobID: jobResult.id.description)
             )
             logger[metadataKey: "JobName"] = .string(job.name)
             try await self.runJob(id: jobResult.id, job: job, logger: logger)
@@ -91,7 +91,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             try await self.queue.failed(jobID: jobResult.id, error: error)
             await self.middleware.onPopJob(
                 result: .failure(error),
-                context: .init(jobInstanceID: jobResult.id.description)
+                context: .init(jobID: jobResult.id.description)
             )
         }
     }
@@ -102,7 +102,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         do {
             do {
                 let context = JobExecutionContext(
-                    jobInstanceID: jobID.description,
+                    jobID: jobID.description,
                     logger: logger,
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt

@@ -73,17 +73,17 @@ final class JobMiddlewareTests: XCTestCase {
             TestJobMiddleware()
             observer2
         }
-        await observers.onPushJob(parameters: TestParameters(value: "test"), context: .init(jobInstanceID: "0"))
+        await observers.onPushJob(parameters: TestParameters(value: "test"), context: .init(jobID: "0"))
         XCTAssertEqual(observer1.pushed, true)
         XCTAssertEqual(observer2.pushed, true)
-        await observers.onPopJob(result: .success(FakeJobInstance()), context: .init(jobInstanceID: "0"))
+        await observers.onPopJob(result: .success(FakeJobInstance()), context: .init(jobID: "0"))
         XCTAssertEqual(observer1.popped, true)
         XCTAssertEqual(observer2.popped, true)
         let job = FakeJobInstance()
         try await observers.handleJob(
             job: job,
             context: .init(
-                jobInstanceID: "0",
+                jobID: "0",
                 logger: .init(label: "Test"),
                 queuedAt: job.queuedAt,
                 nextScheduledAt: job.nextScheduledAt
@@ -117,15 +117,15 @@ final class JobMiddlewareTests: XCTestCase {
                     middleware1
                 }
             }
-            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), context: .init(jobInstanceID: "0"))
+            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), context: .init(jobID: "0"))
             XCTAssertEqual(middleware1.pushed, first == true)
-            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), context: .init(jobInstanceID: "0"))
+            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), context: .init(jobID: "0"))
             XCTAssertEqual(middleware1.popped, first == true)
             let job = FakeJobInstance()
             try await middlewareChain.handleJob(
                 job: job,
                 context: .init(
-                    jobInstanceID: "0",
+                    jobID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt
@@ -164,17 +164,17 @@ final class JobMiddlewareTests: XCTestCase {
                     middleware2
                 }
             }
-            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), context: .init(jobInstanceID: "0"))
+            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), context: .init(jobID: "0"))
             XCTAssertEqual(middleware1.pushed, first == true)
             XCTAssertEqual(middleware2.pushed, first != true)
-            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), context: .init(jobInstanceID: "0"))
+            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), context: .init(jobID: "0"))
             XCTAssertEqual(middleware1.popped, first == true)
             XCTAssertEqual(middleware2.popped, first != true)
             let job = FakeJobInstance()
             try await middlewareChain.handleJob(
                 job: job,
                 context: .init(
-                    jobInstanceID: "0",
+                    jobID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt

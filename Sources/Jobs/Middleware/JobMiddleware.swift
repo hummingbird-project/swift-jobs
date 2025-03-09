@@ -18,13 +18,13 @@ public protocol JobMiddleware: Sendable {
     ///
     /// - Parameters:
     ///   - parameters: Job parameters
-    ///   - jobInstanceID: Job instance identifier
+    ///   - jobID: Job instance identifier
     func onPushJob<Parameters: JobParameters>(parameters: Parameters, context: JobQueueContext) async
     /// Job has been popped off the queue and decoded (with decode errors reported)
     ///
     /// - Parameters:
     ///   - result: Result of popping the job from the queue (Either job instance or error)
-    ///   - jobInstanceID: Job instance identifer
+    ///   - jobID: Job instance identifer
     func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async
     /// Handle job and pass it onto next handler
     ///
