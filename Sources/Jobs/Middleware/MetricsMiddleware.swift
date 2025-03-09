@@ -23,7 +23,12 @@ import Foundation
 
 /// Add publishing of Metrics to a job queue
 public struct MetricsJobMiddleware: JobMiddleware {
-    public init() {}
+    @usableFromInline
+    let queueName: String
+
+    public init(queueName: String = "default") {
+        self.queueName = queueName
+    }
 
     /// Counter label
     @usableFromInline
@@ -56,14 +61,15 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///
     /// - Parameters:
     ///   - parameters: Job parameters
-    ///   - jobInstanceID: Job instance identifier
+    ///   - jobID: Job instance identifier
     @inlinable
-    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {
+    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, context: JobQueueContext) async {
         Meter(
             label: Self.meterLabel,
             dimensions: [
                 ("status", JobStatus.queued.rawValue),
                 ("name", Parameters.jobName),
+                ("queue", self.queueName),
             ]
         ).increment()
     }
@@ -72,14 +78,15 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///
     /// - Parameters:
     ///   - result: Result of popping the job from the queue (Either job instance or error)
-    ///   - jobInstanceID: Job instance identifer
+    ///   - jobID: Job instance identifer
     @inlinable
-    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {
+    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {
 
         switch result {
         case .failure(let error):
             var counterDimensions: [(String, String)] = [
-                ("reason", error.code.description)
+                ("reason", error.code.description),
+                ("queue", self.queueName),
             ]
 
             if let jobName = error.jobName {
@@ -90,6 +97,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
                     label: Self.meterLabel,
                     dimensions: [
                         ("status", JobStatus.queued.rawValue),
+                        ("queue", self.queueName),
                         jobNameDimension,
                     ]
                 ).decrement()
@@ -107,6 +115,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
                 dimensions: [
                     ("status", JobStatus.queued.rawValue),
                     ("name", job.name),
+                    ("queue", self.queueName),
                 ]
             ).decrement()
 
@@ -114,7 +123,10 @@ public struct MetricsJobMiddleware: JobMiddleware {
             let jobQueuedDuration = Date.now.timeIntervalSince(job.queuedAt)
             Timer(
                 label: Self.queuedTimerLabel,
-                dimensions: [("name", job.name)],
+                dimensions: [
+                    ("name", job.name),
+                    ("queue", self.queueName),
+                ],
                 preferredDisplayUnit: .seconds
             ).recordSeconds(jobQueuedDuration)
         }
@@ -130,8 +142,8 @@ public struct MetricsJobMiddleware: JobMiddleware {
     @inlinable
     public func handleJob(
         job: any JobInstanceProtocol,
-        context: JobContext,
-        next: (any JobInstanceProtocol, JobContext) async throws -> Void
+        context: JobExecutionContext,
+        next: (any JobInstanceProtocol, JobExecutionContext) async throws -> Void
     ) async throws {
         let startTime = DispatchTime.now().uptimeNanoseconds
         Meter(
@@ -139,6 +151,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
             dimensions: [
                 ("status", JobStatus.processing.rawValue),
                 ("name", job.name),
+                ("queue", self.queueName),
             ]
         ).increment()
         defer {
@@ -147,6 +160,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
                 dimensions: [
                     ("status", JobStatus.processing.rawValue),
                     ("name", job.name),
+                    ("queue", self.queueName),
                 ]
             ).decrement()
         }
@@ -176,6 +190,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
                     dimensions: [
                         ("status", JobStatus.queued.rawValue),
                         ("name", job.name),
+                        ("queue", self.queueName),
                     ]
                 ).increment()
 
@@ -207,7 +222,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
         if retrying {
             Counter(
                 label: Self.counterLabel,
-                dimensions: [("name", name), ("status", JobStatus.retried.rawValue)]
+                dimensions: [("name", name), ("status", JobStatus.retried.rawValue), ("queue", queueName)]
             ).increment()
             return
         }
@@ -226,6 +241,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
         let dimensions: [(String, String)] = [
             ("name", name),
             ("status", jobStatus.rawValue),
+            ("queue", queueName),
         ]
 
         // Calculate job execution time

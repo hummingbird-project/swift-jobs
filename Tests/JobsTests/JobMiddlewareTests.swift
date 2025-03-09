@@ -32,18 +32,18 @@ final class JobMiddlewareTests: XCTestCase {
             self.handled = false
         }
 
-        func onPushJob<Parameters: JobParameters>(parameters: Parameters, jobInstanceID: String) async {
+        func onPushJob<Parameters: JobParameters>(parameters: Parameters, context: JobQueueContext) async {
             self.pushed = true
         }
 
-        func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, jobInstanceID: String) async {
+        func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {
             self.popped = true
         }
 
         func handleJob(
             job: any JobInstanceProtocol,
-            context: JobContext,
-            next: (any JobInstanceProtocol, JobContext) async throws -> Void
+            context: JobExecutionContext,
+            next: (any JobInstanceProtocol, JobExecutionContext) async throws -> Void
         ) async throws {
             self.handled = true
             try await next(job, context)
@@ -64,7 +64,7 @@ final class JobMiddlewareTests: XCTestCase {
             let nextScheduledAt: Date? = nil
             let traceContext: [String: String]? = nil
 
-            func execute(context: JobContext) async throws {}
+            func execute(context: JobExecutionContext) async throws {}
         }
         let observer1 = TestJobMiddleware()
         let observer2 = TestJobMiddleware()
@@ -73,17 +73,17 @@ final class JobMiddlewareTests: XCTestCase {
             TestJobMiddleware()
             observer2
         }
-        await observers.onPushJob(parameters: TestParameters(value: "test"), jobInstanceID: "0")
+        await observers.onPushJob(parameters: TestParameters(value: "test"), context: .init(jobID: "0"))
         XCTAssertEqual(observer1.pushed, true)
         XCTAssertEqual(observer2.pushed, true)
-        await observers.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
+        await observers.onPopJob(result: .success(FakeJobInstance()), context: .init(jobID: "0"))
         XCTAssertEqual(observer1.popped, true)
         XCTAssertEqual(observer2.popped, true)
         let job = FakeJobInstance()
         try await observers.handleJob(
             job: job,
             context: .init(
-                jobInstanceID: "0",
+                jobID: "0",
                 logger: .init(label: "Test"),
                 queuedAt: job.queuedAt,
                 nextScheduledAt: job.nextScheduledAt
@@ -109,7 +109,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let traceContext: [String: String]? = nil
                 var nextScheduledAt: Date? = nil
 
-                func execute(context: JobContext) async throws {}
+                func execute(context: JobExecutionContext) async throws {}
             }
             let middleware1 = TestJobMiddleware()
             let middlewareChain = buildJobMiddleware {
@@ -117,15 +117,15 @@ final class JobMiddlewareTests: XCTestCase {
                     middleware1
                 }
             }
-            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), jobInstanceID: "0")
+            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), context: .init(jobID: "0"))
             XCTAssertEqual(middleware1.pushed, first == true)
-            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
+            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), context: .init(jobID: "0"))
             XCTAssertEqual(middleware1.popped, first == true)
             let job = FakeJobInstance()
             try await middlewareChain.handleJob(
                 job: job,
                 context: .init(
-                    jobInstanceID: "0",
+                    jobID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt
@@ -153,7 +153,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let traceContext: [String: String]? = nil
                 let nextScheduledAt: Date? = Date.now
 
-                func execute(context: JobContext) async throws {}
+                func execute(context: JobExecutionContext) async throws {}
             }
             let middleware1 = TestJobMiddleware()
             let middleware2 = TestJobMiddleware()
@@ -164,17 +164,17 @@ final class JobMiddlewareTests: XCTestCase {
                     middleware2
                 }
             }
-            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), jobInstanceID: "0")
+            await middlewareChain.onPushJob(parameters: TestParameters(value: "test"), context: .init(jobID: "0"))
             XCTAssertEqual(middleware1.pushed, first == true)
             XCTAssertEqual(middleware2.pushed, first != true)
-            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), jobInstanceID: "0")
+            await middlewareChain.onPopJob(result: .success(FakeJobInstance()), context: .init(jobID: "0"))
             XCTAssertEqual(middleware1.popped, first == true)
             XCTAssertEqual(middleware2.popped, first != true)
             let job = FakeJobInstance()
             try await middlewareChain.handleJob(
                 job: job,
                 context: .init(
-                    jobInstanceID: "0",
+                    jobID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt

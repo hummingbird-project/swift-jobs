@@ -37,7 +37,7 @@ public protocol JobInstanceProtocol: Sendable {
     /// Next time job is scheduled to run
     var nextScheduledAt: Date? { get }
     /// Function to execute the job
-    func execute(context: JobContext) async throws
+    func execute(context: JobExecutionContext) async throws
 }
 
 extension JobInstanceProtocol {
@@ -84,7 +84,7 @@ struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
     /// Next time job is scheduled to run
     var nextScheduledAt: Date? { self.data.nextScheduledAt }
 
-    func execute(context: JobContext) async throws {
+    func execute(context: JobExecutionContext) async throws {
         try await self.job.execute(self.data.parameters, context: context)
     }
 

@@ -66,7 +66,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
 
         switch jobResult.result {
         case .success(let job):
-            await self.middleware.onPopJob(result: .success(job), jobInstanceID: jobResult.id.description)
+            await self.middleware.onPopJob(
+                result: .success(job),
+                context: .init(jobID: jobResult.id.description)
+            )
             logger[metadataKey: "JobName"] = .string(job.name)
             try await self.runJob(id: jobResult.id, job: job, logger: logger)
 
@@ -86,7 +89,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 logger.debug("Job failed to decode")
             }
             try await self.queue.failed(jobID: jobResult.id, error: error)
-            await self.middleware.onPopJob(result: .failure(error), jobInstanceID: jobResult.id.description)
+            await self.middleware.onPopJob(
+                result: .failure(error),
+                context: .init(jobID: jobResult.id.description)
+            )
         }
     }
 
@@ -95,8 +101,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         logger.debug("Starting Job")
         do {
             do {
-                let context = JobContext(
-                    jobInstanceID: jobID.description,
+                let context = JobExecutionContext(
+                    jobID: jobID.description,
                     logger: logger,
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt
