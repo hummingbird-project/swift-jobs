@@ -26,7 +26,7 @@ extension Schedule {
     ///   - crontab: Crontab string
     ///   - timeZone: Timezone to run schedule in
     /// - Throws: ScheduleError for corrupt crontabs and crontabs we don't suppoty
-    static func crontab(_ crontab: String, timeZone: TimeZone = .current) throws -> Self {
+    public static func crontab(_ crontab: String, timeZone: TimeZone = .current) throws -> Self {
         if crontab.first == "@" {
             guard let crontab = Self.crontabNicknames[crontab] else { throw ScheduleError("Unrecognised crontab nick name \(crontab)") }
             return try Self.crontab(crontab, timeZone: timeZone)
