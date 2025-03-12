@@ -112,10 +112,6 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.pauseJob(jobID: jobID)
     }
 
-    public func isEmpty() async -> Bool {
-        await self.queue.isEmpty()
-    }
-
     public func getMetadata(_ key: String) async -> ByteBuffer? {
         await self.queue.getMetadata(key)
     }
@@ -158,19 +154,22 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
 
         func cancelJob(jobID: JobID) {
-            clearPendingJob(jobID: jobID)
+            self.queue.removeAll(where: { $0.job.id == jobID })
         }
 
         func pauseJob(jobID: JobID) {
-            clearPendingJob(jobID: jobID)
+            let job = self.queue.first(where: { $0.job.id == jobID })
+            self.pendingJobs[jobID] = job?.job.jobBuffer
+            self.queue.removeAll(where: { $0.job.id == jobID })
         }
 
         func resumeJob(jobID: JobID) {
-            self.pendingJobs[jobID] = self.queue.first(where: { $0.job.id == jobID })?.job.jobBuffer
-        }
-
-        func isEmpty() -> Bool {
-            self.queue.isEmpty && self.pendingJobs.isEmpty
+            if let jobBuffer = self.pendingJobs[jobID] {
+                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init()))
+            } else {
+                print("Warning: attempted to resume job \(jobID) which is not pending")
+            }
+            self.clearPendingJob(jobID: jobID)
         }
 
         func clearAndReturnPendingJob(jobID: JobID) -> ByteBuffer? {

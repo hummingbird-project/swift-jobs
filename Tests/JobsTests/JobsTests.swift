@@ -415,14 +415,13 @@ final class JobsTests: XCTestCase {
         }
     }
 
-    func testCancelThenResume() async throws {
-        // Placeholder test since this is the default expectation
-        // other job queue drivers have actual tests which verifies implementation
+    func testCancelledJob() async throws {
         struct TestParameters: JobParameters {
-            static let jobName = "testCancelledAndThenResume"
+            static let jobName = "testCancelledJob"
+            let value: Int
         }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
-        let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
+        let jobProcessed: NIOLockedValueBox<[Int]> = .init([])
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
@@ -432,36 +431,44 @@ final class JobsTests: XCTestCase {
         jobQueue.registerJob(
             parameters: TestParameters.self,
             retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
-        ) { _, _ in
-            currentJobTryCount.withLockedValue {
-                $0 += 1
+        ) { parameters, _ in
+            jobProcessed.withLockedValue {
+                $0.append(parameters.value)
             }
             expectation.fulfill()
         }
-        try await testJobQueue(jobQueue) {
-            let cancellableJobId = try await jobQueue.push(TestParameters(), options: .init(delayUntil: .now.addingTimeInterval(1)))
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            let serviceGroup = ServiceGroup(
+                configuration: .init(
+                    services: [jobQueue],
+                    gracefulShutdownSignals: [.sigterm, .sigint],
+                    logger: Logger(label: "JobQueueService")
+                )
+            )
 
-            let isEmpty = await jobQueue.queue.isEmpty()
-            XCTAssertFalse(isEmpty)
+            try await jobQueue.push(TestParameters(value: 15))
 
-            try await jobQueue.cancelJob(jobID: cancellableJobId)
+            let cancellable = try await jobQueue.push(TestParameters(value: 30))
+
+            try await jobQueue.cancelJob(jobID: cancellable)
+
+            group.addTask {
+                try await serviceGroup.run()
+            }
 
             await fulfillment(of: [expectation], timeout: 5)
-            try await jobQueue.resumeJob(jobID: cancellableJobId)
-            let emptyAfterResume = await jobQueue.queue.isEmpty()
-            XCTAssertTrue(emptyAfterResume)
+            await serviceGroup.triggerGracefulShutdown()
         }
-        XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 1)
+        XCTAssertEqual(jobProcessed.withLockedValue { $0 }, [15])
     }
 
     func testPausedThenResume() async throws {
-        // Placeholder test since this is the default expectation
-        // other job queue drivers have actual tests which verifies implementation
         struct TestParameters: JobParameters {
             static let jobName = "testPausedAndThenResume"
+            let value: Int
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
-        let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let jobRunSequence: NIOLockedValueBox<[Int]> = .init([])
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
@@ -471,24 +478,37 @@ final class JobsTests: XCTestCase {
         jobQueue.registerJob(
             parameters: TestParameters.self,
             retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
-        ) { _, _ in
-            currentJobTryCount.withLockedValue {
-                $0 += 1
+        ) { parameters, context in
+            context.logger.info("Parameters=\(parameters)")
+            jobRunSequence.withLockedValue {
+                $0.append(parameters.value)
             }
             expectation.fulfill()
         }
-        try await testJobQueue(jobQueue) {
-            let pausableJob = try await jobQueue.push(TestParameters(), options: .init(delayUntil: .now.addingTimeInterval(1)))
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            let serviceGroup = ServiceGroup(
+                configuration: .init(
+                    services: [jobQueue],
+                    gracefulShutdownSignals: [.sigterm, .sigint],
+                    logger: Logger(label: "JobQueueService")
+                )
+            )
+
+            let pausableJob = try await jobQueue.push(TestParameters(value: 15))
+
+            try await jobQueue.push(TestParameters(value: 30))
+
             try await jobQueue.pauseJob(jobID: pausableJob)
 
-            let isEmpty = await jobQueue.queue.isEmpty()
-            XCTAssertFalse(isEmpty)
+            group.addTask {
+                try await serviceGroup.run()
+            }
 
-            await fulfillment(of: [expectation], timeout: 5)
             try await jobQueue.resumeJob(jobID: pausableJob)
-            let emptyAfterResume = await jobQueue.queue.isEmpty()
-            XCTAssertTrue(emptyAfterResume)
+            await fulfillment(of: [expectation], timeout: 5)
+            await serviceGroup.triggerGracefulShutdown()
         }
-        XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 1)
+        XCTAssertEqual(jobRunSequence.withLockedValue { $0 }, [30, 15])
     }
 }
