@@ -101,7 +101,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueueProtocol, Res
     }
 
     public func cancel(jobID: JobID) async throws {
-        await self.queue.pauseJob(jobID: jobID)
+        await self.queue.cancelJob(jobID: jobID)
     }
 
     public func resume(jobID: JobID) async throws {
