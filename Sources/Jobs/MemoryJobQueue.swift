@@ -175,7 +175,7 @@ public final class MemoryQueue: JobQueueDriver {
         }
 
         func isEmpty() -> Bool {
-            return self.queue.isEmpty && self.pendingJobs.isEmpty
+            self.queue.isEmpty && self.pendingJobs.isEmpty
         }
 
         func next() async throws -> QueuedJob? {
