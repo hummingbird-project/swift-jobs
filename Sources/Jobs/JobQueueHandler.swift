@@ -71,7 +71,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 context: .init(jobID: jobResult.id.description)
             )
             logger[metadataKey: "JobName"] = .string(job.name)
-            try await self.runJobWithOptionalTimeout(id: jobResult.id, job: job, logger: logger)
+            try await self.runJob(id: jobResult.id, job: job, logger: logger)
 
         case .failure(let error):
             if let jobName = error.jobName {
@@ -96,31 +96,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
         }
     }
 
-    /// Run job and add an optional cancellation timeout if job
-    func runJobWithOptionalTimeout(id jobID: Queue.JobID, job: any JobInstanceProtocol, logger: Logger) async throws {
-        if let timeout = job.timeout {
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    try await self.runJob(id: jobID, job: job, logger: logger)
-                }
-                group.addTask {
-                    try await Task.sleep(for: timeout)
-                    throw JobQueueError(code: .jobTimedOut, jobName: job.name)
-                }
-                do {
-                    try await group.next()
-                } catch let error as JobQueueError where error.code == .jobTimedOut {
-                    group.cancelAll()
-                    logger.debug("Job: timed out")
-                    throw error
-                }
-                group.cancelAll()
-            }
-        } else {
-            try await runJob(id: jobID, job: job, logger: logger)
-        }
-    }
-
     /// Run job
     func runJob(id jobID: Queue.JobID, job: any JobInstanceProtocol, logger: Logger) async throws {
         logger.debug("Starting Job")
@@ -132,9 +107,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt
                 )
-                try await self.middleware.handleJob(job: job, context: context) { job, context in
-                    try await job.execute(context: context)
-                }
+                try await handleJob(job: job, context: context)
             } catch let error as CancellationError {
                 logger.debug("Job cancelled")
                 // We need to wrap the failed call in a unstructured Task to stop propagation of
@@ -179,6 +152,34 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             try await self.queue.finished(jobID: jobID)
         } catch {
             logger.debug("Failed to set job status")
+        }
+    }
+
+    func handleJob(job: any JobInstanceProtocol, context: JobExecutionContext) async throws {
+        if let timeout = job.timeout {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await self.middleware.handleJob(job: job, context: context) { job, context in
+                        try await job.execute(context: context)
+                    }
+                }
+                group.addTask {
+                    try await Task.sleep(for: timeout)
+                    throw JobQueueError(code: .jobTimedOut, jobName: job.name)
+                }
+                do {
+                    try await group.next()
+                } catch let error as JobQueueError where error.code == .jobTimedOut {
+                    group.cancelAll()
+                    logger.debug("Job: timed out")
+                    throw error
+                }
+                group.cancelAll()
+            }
+        } else {
+            try await self.middleware.handleJob(job: job, context: context) { job, context in
+                try await job.execute(context: context)
+            }
         }
     }
 

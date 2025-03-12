@@ -412,7 +412,10 @@ final class JobsTests: XCTestCase {
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
-            MemoryQueue { _, _ in expectation.fulfill() },
+            MemoryQueue { _, error in
+                XCTAssertEqual((error as? JobQueueError)?.code, .jobTimedOut)
+                expectation.fulfill()
+            },
             logger: logger
         )
         jobQueue.registerJob(
