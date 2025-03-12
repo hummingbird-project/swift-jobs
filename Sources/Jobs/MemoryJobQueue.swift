@@ -156,20 +156,16 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueueProtocol, Res
         func clearPendingJob(jobID: JobID) {
             self.pendingJobs[jobID] = nil
         }
-        
+
         func cancelJob(jobID: JobID) {
-            //self.queue.removeAll(where: { $0.job.id == jobID })
             clearPendingJob(jobID: jobID)
         }
-        
+
         func pauseJob(jobID: JobID) {
             clearPendingJob(jobID: jobID)
         }
-        
+
         func resumeJob(jobID: JobID) {
-//            if let jobBuffer = self.pendingJobs[jobID] {
-//                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init()))
-//            }
             self.pendingJobs[jobID] = self.queue.first(where: { $0.job.id == jobID })?.job.jobBuffer
         }
 

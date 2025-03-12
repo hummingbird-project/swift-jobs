@@ -433,10 +433,10 @@ final class JobsTests: XCTestCase {
             parameters: TestParameters.self,
             retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
         ) { _, _ in
-         currentJobTryCount.withLockedValue {
-             $0 += 1
-         }
-         expectation.fulfill()
+            currentJobTryCount.withLockedValue {
+                $0 += 1
+            }
+            expectation.fulfill()
         }
         try await testJobQueue(jobQueue) {
             let jobId = try await jobQueue.push(TestParameters())
