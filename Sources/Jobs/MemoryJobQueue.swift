@@ -22,7 +22,7 @@ import Foundation
 #endif
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
-public final class MemoryQueue: JobQueueDriver {
+public final class MemoryQueue: JobQueueDriver, CancellableJobQueueProtocol, ResumeableJobQueueProtocol {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
     /// Job options
@@ -100,6 +100,22 @@ public final class MemoryQueue: JobQueueDriver {
         }
     }
 
+    public func cancel(jobID: JobID) async throws {
+        await self.queue.pauseJob(jobID: jobID)
+    }
+
+    public func resume(jobID: JobID) async throws {
+        await self.queue.resumeJob(jobID: jobID)
+    }
+
+    public func pause(jobID: JobID) async throws {
+        await self.queue.pauseJob(jobID: jobID)
+    }
+
+    public func isEmpty() async -> Bool {
+        await self.queue.isEmpty()
+    }
+
     public func getMetadata(_ key: String) async -> ByteBuffer? {
         await self.queue.getMetadata(key)
     }
@@ -139,6 +155,26 @@ public final class MemoryQueue: JobQueueDriver {
 
         func clearPendingJob(jobID: JobID) {
             self.pendingJobs[jobID] = nil
+        }
+        
+        func cancelJob(jobID: JobID) {
+            //self.queue.removeAll(where: { $0.job.id == jobID })
+            clearPendingJob(jobID: jobID)
+        }
+        
+        func pauseJob(jobID: JobID) {
+            clearPendingJob(jobID: jobID)
+        }
+        
+        func resumeJob(jobID: JobID) {
+//            if let jobBuffer = self.pendingJobs[jobID] {
+//                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init()))
+//            }
+            self.pendingJobs[jobID] = self.queue.first(where: { $0.job.id == jobID })?.job.jobBuffer
+        }
+
+        func isEmpty() -> Bool {
+            self.queue.isEmpty && self.pendingJobs.isEmpty
         }
 
         func clearAndReturnPendingJob(jobID: JobID) -> ByteBuffer? {

@@ -414,4 +414,45 @@ final class JobsTests: XCTestCase {
             XCTAssertEqual(date.advanced(by: offset).timeIntervalSinceReferenceDate, newDate.timeIntervalSinceReferenceDate, accuracy: 0.001)
         }
     }
+
+    func testPausedCancelledAndThenResume() async throws {
+        // Placeholder test since this is the default expectation
+        // other job queue drivers have actual tests which verifies implementation
+        struct TestParameters: JobParameters {
+            static let jobName = "testPausedCancelledAndThenResume"
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            .memory,
+            logger: logger
+        )
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
+        ) { _, _ in
+         currentJobTryCount.withLockedValue {
+             $0 += 1
+         }
+         expectation.fulfill()
+        }
+        try await testJobQueue(jobQueue) {
+            let jobId = try await jobQueue.push(TestParameters())
+            let cancellableJobId = try await jobQueue.push(TestParameters(), options: .init(delayUntil: .now.addingTimeInterval(1)))
+            try await jobQueue.pauseJob(jobID: jobId)
+
+            let isEmpty = await jobQueue.queue.isEmpty()
+            XCTAssertFalse(isEmpty)
+
+            try await jobQueue.cancelJob(jobID: cancellableJobId)
+
+            await fulfillment(of: [expectation], timeout: 5)
+            try await jobQueue.resumeJob(jobID: jobId)
+            let emptyAfterResume = await jobQueue.queue.isEmpty()
+            XCTAssertTrue(emptyAfterResume)
+        }
+        XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 2)
+    }
 }
