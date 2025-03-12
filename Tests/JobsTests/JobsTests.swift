@@ -414,7 +414,7 @@ final class JobsTests: XCTestCase {
             XCTAssertEqual(date.advanced(by: offset).timeIntervalSinceReferenceDate, newDate.timeIntervalSinceReferenceDate, accuracy: 0.001)
         }
     }
-    
+
     func testCancelThenResume() async throws {
         // Placeholder test since this is the default expectation
         // other job queue drivers have actual tests which verifies implementation
