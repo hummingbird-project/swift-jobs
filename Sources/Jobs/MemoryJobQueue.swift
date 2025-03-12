@@ -25,6 +25,7 @@ import Foundation
 public final class MemoryQueue: JobQueueDriver {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
+
     /// Job options
     public struct JobOptions: JobOptionsProtocol {
         /// When to execute the job
@@ -81,31 +82,46 @@ public final class MemoryQueue: JobQueueDriver {
 
     /// Retry an existing job
     /// - Parameters:
-    ///   - id: Job ID
+    ///   - jobID: Job ID
     ///   - jobRequest: Job Request
     ///   - options: Job options
-    public func retry<Parameters: JobParameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobRetryOptions) async throws {
+    public func retry<Parameters: JobParameters>(_ jobID: JobID, jobRequest: JobRequest<Parameters>, options: JobRetryOptions) async throws {
         let buffer = try self.jobRegistry.encode(jobRequest: jobRequest)
         let options = JobOptions(delayUntil: options.delayUntil)
-        try await self.queue.retry(id, buffer: buffer, options: options)
+        try await self.queue.retry(jobID, buffer: buffer, options: options)
     }
-
+    /// Marks a job as complete
     public func finished(jobID: JobID) async throws {
         await self.queue.clearPendingJob(jobID: jobID)
     }
-
+    /// Marks a job as failed
     public func failed(jobID: JobID, error: any Error) async throws {
         if await self.queue.clearAndReturnPendingJob(jobID: jobID) != nil {
             self.onFailedJob(jobID, error)
         }
     }
-
+    /// Get metadata for a given key
     public func getMetadata(_ key: String) async -> ByteBuffer? {
         await self.queue.getMetadata(key)
     }
-
+    /// Set metadata
+    /// - Parameters:
+    ///   - key: Metadata Key
+    ///   - value: Byte Buffer
     public func setMetadata(key: String, value: ByteBuffer) async {
         await self.queue.setMetadata(key: key, value: value)
+    }
+    /// Perform action on a job
+    /// - Parameters:
+    ///   - jobID: Job ID
+    ///   - jobRequest: Job Request
+    ///   - options: Job options
+    public func performAction(jobID: JobID, action: JobAction) async throws {
+        await self.queue.performAction(jobID: jobID, action: action)
+    }
+    
+    public func isEmpty() async throws -> Bool {
+        await self.queue.isEmpty()
     }
 
     /// Internal actor managing the job queue
@@ -145,6 +161,21 @@ public final class MemoryQueue: JobQueueDriver {
             let instance = self.pendingJobs[jobID]
             self.pendingJobs[jobID] = nil
             return instance
+        }
+        
+        func performAction(jobID: JobID, action: JobAction) async {
+            switch action.rawValue {
+                case .cancel:
+                    self.pendingJobs[jobID] = nil
+                case .pause:
+                    self.pendingJobs[jobID] = nil
+                case .resume:
+                    self.pendingJobs[jobID] = self.queue.first(where: { $0.job.id == jobID})?.job.jobBuffer
+            }
+        }
+        
+        func isEmpty() -> Bool {
+            return self.queue.isEmpty && self.pendingJobs.isEmpty
         }
 
         func next() async throws -> QueuedJob? {

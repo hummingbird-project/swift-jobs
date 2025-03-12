@@ -48,14 +48,16 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     func finished(jobID: JobID) async throws
     /// This is called to say job has failed to run and should be put aside
     func failed(jobID: JobID, error: any Error) async throws
-    /// stop serving jobs
+    /// Stop serving jobs
     func stop() async
-    /// shutdown queue
+    /// Shutdown queue
     func shutdownGracefully() async
-    /// get job queue metadata
+    /// Get job queue metadata
     func getMetadata(_ key: String) async throws -> ByteBuffer?
-    /// set job queue metadata
+    /// Set job queue metadata
     func setMetadata(key: String, value: ByteBuffer) async throws
+    /// Perfoms action such as pause, resume or cancel a job
+    func performAction(jobID: JobID, action: JobAction) async throws
 }
 
 extension JobQueueDriver {

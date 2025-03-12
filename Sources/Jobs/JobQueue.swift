@@ -163,6 +163,14 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         )
         return instanceID
     }
+    
+    ///  Perform actions on a job
+    /// - Parameters:
+    ///   - jobID: Job ID
+    ///   - action: Job Action
+    public func performAction(jobID: Queue.JobID, action: JobAction) async throws {
+        try await self.queue.performAction(jobID: jobID, action: action)
+    }
 
     ///  Register job type
     /// - Parameters:
