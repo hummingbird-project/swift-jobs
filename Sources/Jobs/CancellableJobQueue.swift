@@ -19,6 +19,5 @@ public protocol CancellableJobQueue {
     /// Cancels a job
     /// - Parameters:
     ///  - jobID: Job id
-    /// - Throws
     func cancel(jobID: JobID) async throws
 }
