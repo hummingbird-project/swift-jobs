@@ -170,7 +170,7 @@ public final class MemoryQueue: JobQueueDriver {
             case .pause:
                 self.pendingJobs[jobID] = nil
             case .resume:
-                self.pendingJobs[jobID] = self.queue.first(where: { $0.job.id == jobID})?.job.jobBuffer
+                self.pendingJobs[jobID] = self.queue.first(where: { $0.job.id == jobID })?.job.jobBuffer
             }
         }
 
