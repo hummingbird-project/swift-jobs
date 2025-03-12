@@ -119,7 +119,7 @@ public final class MemoryQueue: JobQueueDriver {
     public func performAction(jobID: JobID, action: JobAction) async throws {
         await self.queue.performAction(jobID: jobID, action: action)
     }
-    
+
     public func isEmpty() async throws -> Bool {
         await self.queue.isEmpty()
     }
@@ -162,7 +162,7 @@ public final class MemoryQueue: JobQueueDriver {
             self.pendingJobs[jobID] = nil
             return instance
         }
-        
+
         func performAction(jobID: JobID, action: JobAction) async {
             switch action.rawValue {
                 case .cancel:
@@ -173,7 +173,7 @@ public final class MemoryQueue: JobQueueDriver {
                     self.pendingJobs[jobID] = self.queue.first(where: { $0.job.id == jobID})?.job.jobBuffer
             }
         }
-        
+
         func isEmpty() -> Bool {
             return self.queue.isEmpty && self.pendingJobs.isEmpty
         }

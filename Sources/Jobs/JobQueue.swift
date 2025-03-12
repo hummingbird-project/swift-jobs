@@ -163,7 +163,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         )
         return instanceID
     }
-    
+
     ///  Perform actions on a job
     /// - Parameters:
     ///   - jobID: Job ID

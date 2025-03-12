@@ -14,13 +14,13 @@
 
 /// Option to perform on a job
 public struct JobAction: Sendable, Equatable {
-    
+
     enum _Action {
         case cancel
         case pause
         case resume
     }
-    
+
     let rawValue: _Action
     /// Cancel action
     public static func cancel() -> JobAction {

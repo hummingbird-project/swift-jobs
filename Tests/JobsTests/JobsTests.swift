@@ -137,7 +137,7 @@ final class JobsTests: XCTestCase {
         struct TestParameters: JobParameters {
             static let jobName = "testPausedAndThenResume"
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
         let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
@@ -156,14 +156,19 @@ final class JobsTests: XCTestCase {
         }
         try await testJobQueue(jobQueue) {
             let jobId = try await jobQueue.push(TestParameters())
-            try await jobQueue.performAction(jobID: jobId, action: .pause() )
+            let cancelJobId = try await jobQueue.push(TestParameters())
+            try await jobQueue.performAction(jobID: jobId, action: .pause())
             let isEmpty = try await jobQueue.queue.isEmpty()
             XCTAssertFalse(isEmpty)
+
+            try await jobQueue.performAction(jobID: cancelJobId, action: .cancel())
+
             await fulfillment(of: [expectation], timeout: 5)
+            try await jobQueue.performAction(jobID: cancelJobId, action: .resume())
             let emptyAfterResume = try await jobQueue.queue.isEmpty()
             XCTAssertTrue(emptyAfterResume)
         }
-        XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 1)
+        XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 2)
     }
 
     func testErrorRetryCount() async throws {
