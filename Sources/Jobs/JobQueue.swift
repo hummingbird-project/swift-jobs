@@ -63,14 +63,20 @@ extension JobQueueProtocol {
     /// - Parameters:
     ///   - parameters: Job parameter type
     ///   - retryStrategy: Retry strategy for failed jobs
+    ///   - timeout: Timeout for long running jobs
     ///   - execute: Closure that executes job
     public func registerJob<Parameters: JobParameters>(
         parameters: Parameters.Type = Parameters.self,
         retryStrategy: (any JobRetryStrategy)? = nil,
+        timeout: Duration? = nil,
         execute: @escaping @Sendable (Parameters, JobExecutionContext) async throws -> Void
     ) where Parameters: JobParameters {
         self.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
-        let job = JobDefinition<Parameters>(retryStrategy: retryStrategy ?? self.options.retryStrategy, execute: execute)
+        let job = JobDefinition<Parameters>(
+            retryStrategy: retryStrategy ?? self.options.retryStrategy,
+            timeout: timeout,
+            execute: execute
+        )
         self.registerJob(job)
     }
 
@@ -79,6 +85,7 @@ extension JobQueueProtocol {
     ///   - parameters: Job Parameters
     ///   - maxRetryCount: Maximum number of times job is retried before being flagged as failed
     ///   - execute: Job code
+    @available(*, deprecated, renamed: "init(parameters:retryStrategy:timeout:execute:)")
     public func registerJob<Parameters: JobParameters>(
         parameters: Parameters.Type = Parameters.self,
         maxRetryCount: Int,

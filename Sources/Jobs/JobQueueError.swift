@@ -22,11 +22,14 @@ public struct JobQueueError: Error, Equatable {
         public static var unrecognisedJobId: Self { .init(.unrecognisedJobId) }
         /// failed to get job from queue
         public static var dequeueError: Self { .init(.dequeueError) }
+        /// job timed out
+        public static var jobTimedOut: Self { .init(.jobTimedOut) }
 
         private enum _ErrorCode: String {
             case decodeJobFailed
             case unrecognisedJobId
             case dequeueError
+            case jobTimedOut
         }
 
         private let code: _ErrorCode

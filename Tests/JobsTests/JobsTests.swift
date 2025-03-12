@@ -386,7 +386,7 @@ final class JobsTests: XCTestCase {
     /// Test we can user `any JobQueueProtocol` to register and push jobs
     func testJobQueueProtocol() async throws {
         struct TestParameters: JobParameters {
-            static let jobName = "testBasic"
+            static let jobName = "testJobQueueProtocol"
             let value: Int
         }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
@@ -402,6 +402,57 @@ final class JobsTests: XCTestCase {
 
             await fulfillment(of: [expectation], timeout: 5)
         }
+    }
+
+    func testJobTimeout() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testJobTimeout"
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            MemoryQueue { _, _ in expectation.fulfill() },
+            logger: logger
+        )
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: .dontRetry,
+            timeout: .milliseconds(50)
+        ) { _, _ in
+            try await Task.sleep(for: .seconds(1))
+        }
+        try await testJobQueue(jobQueue) {
+            try await jobQueue.push(TestParameters())
+
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+    }
+
+    func testJobWithTimeoutThatSucceeded() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testJobWithoutTimeout"
+            let value: Int
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let failedJobCount = ManagedAtomic(0)
+        let jobQueue = JobQueue(
+            MemoryQueue { _, _ in failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed) },
+            numWorkers: 1,
+            logger: Logger(label: "JobsTests")
+        )
+        let job = JobDefinition(timeout: .seconds(1)) { (parameters: TestParameters, context) in
+            context.logger.info("Parameters=\(parameters.value)")
+            try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
+            expectation.fulfill()
+        }
+        jobQueue.registerJob(job)
+        try await testJobQueue(jobQueue) {
+            try await jobQueue.push(TestParameters(value: 1))
+
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+        XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 0)
     }
 
     // verify advance by gives us at least millisecond accuracy across 30000 years

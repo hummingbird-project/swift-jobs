@@ -71,7 +71,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 context: .init(jobID: jobResult.id.description)
             )
             logger[metadataKey: "JobName"] = .string(job.name)
-            try await self.runJob(id: jobResult.id, job: job, logger: logger)
+            try await self.runJobWithOptionalTimeout(id: jobResult.id, job: job, logger: logger)
 
         case .failure(let error):
             if let jobName = error.jobName {
@@ -93,6 +93,31 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 result: .failure(error),
                 context: .init(jobID: jobResult.id.description)
             )
+        }
+    }
+
+    /// Run job and add an optional cancellation timeout if job
+    func runJobWithOptionalTimeout(id jobID: Queue.JobID, job: any JobInstanceProtocol, logger: Logger) async throws {
+        if let timeout = job.timeout {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await self.runJob(id: jobID, job: job, logger: logger)
+                }
+                group.addTask {
+                    try await Task.sleep(for: timeout)
+                    throw JobQueueError(code: .jobTimedOut, jobName: job.name)
+                }
+                do {
+                    try await group.next()
+                } catch let error as JobQueueError where error.code == .jobTimedOut {
+                    group.cancelAll()
+                    logger.debug("Job: timed out")
+                    throw error
+                }
+                group.cancelAll()
+            }
+        } else {
+            try await runJob(id: jobID, job: job, logger: logger)
         }
     }
 
