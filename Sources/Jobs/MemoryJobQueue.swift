@@ -165,12 +165,12 @@ public final class MemoryQueue: JobQueueDriver {
 
         func performAction(jobID: JobID, action: JobAction) async {
             switch action.rawValue {
-                case .cancel:
-                    self.pendingJobs[jobID] = nil
-                case .pause:
-                    self.pendingJobs[jobID] = nil
-                case .resume:
-                    self.pendingJobs[jobID] = self.queue.first(where: { $0.job.id == jobID})?.job.jobBuffer
+            case .cancel:
+                self.pendingJobs[jobID] = nil
+            case .pause:
+                self.pendingJobs[jobID] = nil
+            case .resume:
+                self.pendingJobs[jobID] = self.queue.first(where: { $0.job.id == jobID})?.job.jobBuffer
             }
         }
 
