@@ -12,13 +12,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-/// Protocol for Job queue driver which implement cancellable jobs
-public protocol CancellableJobQueueProtocol {
+/// Protocol for Job queue driver which implements resumable jobs
+public protocol ResumableJobQueue {
     associatedtype JobID: CustomStringConvertible & Sendable
-
-    /// Cancels a job
+    /// Pauses a job
     /// - Parameters:
     ///  - jobID: Job id
-    /// - Throws
-    func cancel(jobID: JobID) async throws
+    func pause(jobID: JobID) async throws
+    /// Resumes a job
+    /// - Parameters:
+    ///  - jobID: Job id
+    func resume(jobID: JobID) async throws
 }

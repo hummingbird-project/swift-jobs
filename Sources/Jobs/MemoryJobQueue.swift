@@ -22,7 +22,7 @@ import Foundation
 #endif
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
-public final class MemoryQueue: JobQueueDriver, CancellableJobQueueProtocol, ResumeableJobQueueProtocol {
+public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJobQueue {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
     /// Job options

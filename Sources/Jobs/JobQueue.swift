@@ -176,7 +176,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     ///   - jobID: an existing job id
     public func cancelJob(
         jobID: Queue.JobID
-    ) async throws where Queue: CancellableJobQueueProtocol {
+    ) async throws where Queue: CancellableJobQueue {
         try await self.queue.cancel(jobID: jobID)
     }
 
@@ -185,7 +185,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     ///   - jobID: an existing job id
     public func pauseJob(
         jobID: Queue.JobID
-    ) async throws where Queue: ResumeableJobQueueProtocol {
+    ) async throws where Queue: ResumableJobQueue {
         try await self.queue.pause(jobID: jobID)
     }
 
@@ -194,7 +194,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     ///   - jobID: an existing job id
     public func resumeJob(
         jobID: Queue.JobID
-    ) async throws where Queue: ResumeableJobQueueProtocol {
+    ) async throws where Queue: ResumableJobQueue {
         try await self.queue.resume(jobID: jobID)
     }
 
