@@ -446,9 +446,9 @@ final class JobsTests: XCTestCase {
                 )
             )
 
-            try await jobQueue.push(TestParameters(value: 15))
-
             let cancellable = try await jobQueue.push(TestParameters(value: 30))
+
+            try await jobQueue.push(TestParameters(value: 15))
 
             try await jobQueue.cancelJob(jobID: cancellable)
 
