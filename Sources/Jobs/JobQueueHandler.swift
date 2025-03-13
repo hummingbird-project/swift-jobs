@@ -107,9 +107,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt
                 )
-                try await self.middleware.handleJob(job: job, context: context) { job, context in
-                    try await job.execute(context: context)
-                }
+                try await handleJob(job: job, context: context)
             } catch let error as CancellationError {
                 logger.debug("Job cancelled")
                 // We need to wrap the failed call in a unstructured Task to stop propagation of
@@ -154,6 +152,34 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             try await self.queue.finished(jobID: jobID)
         } catch {
             logger.debug("Failed to set job status")
+        }
+    }
+
+    func handleJob(job: any JobInstanceProtocol, context: JobExecutionContext) async throws {
+        if let timeout = job.timeout {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await self.middleware.handleJob(job: job, context: context) { job, context in
+                        try await job.execute(context: context)
+                    }
+                }
+                group.addTask {
+                    try await Task.sleep(for: timeout)
+                    throw JobQueueError(code: .jobTimedOut, jobName: job.name)
+                }
+                do {
+                    try await group.next()
+                } catch let error as JobQueueError where error.code == .jobTimedOut {
+                    group.cancelAll()
+                    logger.debug("Job: timed out")
+                    throw error
+                }
+                group.cancelAll()
+            }
+        } else {
+            try await self.middleware.handleJob(job: job, context: context) { job, context in
+                try await job.execute(context: context)
+            }
         }
     }
 

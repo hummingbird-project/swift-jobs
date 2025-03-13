@@ -21,7 +21,7 @@ import Foundation
 #endif
 
 /// Context of running job
-public struct JobExecutionContext {
+public struct JobExecutionContext: Sendable {
     /// Job instance identifier
     public let jobID: String
     /// Logger

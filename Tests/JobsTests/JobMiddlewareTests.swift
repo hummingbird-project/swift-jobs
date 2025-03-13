@@ -63,6 +63,7 @@ final class JobMiddlewareTests: XCTestCase {
             let attempts: Int? = 0
             let nextScheduledAt: Date? = nil
             let traceContext: [String: String]? = nil
+            let timeout: Duration? = nil
 
             func execute(context: JobExecutionContext) async throws {}
         }
@@ -108,6 +109,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
                 var nextScheduledAt: Date? = nil
+                let timeout: Duration? = nil
 
                 func execute(context: JobExecutionContext) async throws {}
             }
@@ -152,6 +154,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let attempts: Int? = 0
                 let traceContext: [String: String]? = nil
                 let nextScheduledAt: Date? = Date.now
+                let timeout: Duration? = nil
 
                 func execute(context: JobExecutionContext) async throws {}
             }
