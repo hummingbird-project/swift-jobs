@@ -468,4 +468,101 @@ final class JobsTests: XCTestCase {
             XCTAssertEqual(date.advanced(by: offset).timeIntervalSinceReferenceDate, newDate.timeIntervalSinceReferenceDate, accuracy: 0.001)
         }
     }
+
+    func testCancelledJob() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testCancelledJob"
+            let value: Int
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let jobProcessed: NIOLockedValueBox<[Int]> = .init([])
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            .memory,
+            logger: logger
+        )
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
+        ) { parameters, _ in
+            jobProcessed.withLockedValue {
+                $0.append(parameters.value)
+            }
+            expectation.fulfill()
+        }
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            let serviceGroup = ServiceGroup(
+                configuration: .init(
+                    services: [jobQueue],
+                    gracefulShutdownSignals: [.sigterm, .sigint],
+                    logger: Logger(label: "JobQueueService")
+                )
+            )
+
+            let cancellable = try await jobQueue.push(TestParameters(value: 30))
+
+            try await jobQueue.push(TestParameters(value: 15))
+
+            try await jobQueue.cancelJob(jobID: cancellable)
+
+            group.addTask {
+                try await serviceGroup.run()
+            }
+
+            await fulfillment(of: [expectation], timeout: 5)
+            await serviceGroup.triggerGracefulShutdown()
+        }
+        XCTAssertEqual(jobProcessed.withLockedValue { $0 }, [15])
+    }
+
+    func testPausedThenResume() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testPausedAndThenResume"
+            let value: Int
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let jobRunSequence: NIOLockedValueBox<[Int]> = .init([])
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            .memory,
+            logger: logger
+        )
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
+        ) { parameters, context in
+            context.logger.info("Parameters=\(parameters)")
+            jobRunSequence.withLockedValue {
+                $0.append(parameters.value)
+            }
+            expectation.fulfill()
+        }
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            let serviceGroup = ServiceGroup(
+                configuration: .init(
+                    services: [jobQueue],
+                    gracefulShutdownSignals: [.sigterm, .sigint],
+                    logger: Logger(label: "JobQueueService")
+                )
+            )
+
+            let pausableJob = try await jobQueue.push(TestParameters(value: 15))
+
+            try await jobQueue.push(TestParameters(value: 30))
+
+            try await jobQueue.pauseJob(jobID: pausableJob)
+
+            group.addTask {
+                try await serviceGroup.run()
+            }
+
+            try await jobQueue.resumeJob(jobID: pausableJob)
+            await fulfillment(of: [expectation], timeout: 5)
+            await serviceGroup.triggerGracefulShutdown()
+        }
+        XCTAssertEqual(jobRunSequence.withLockedValue { $0 }, [30, 15])
+    }
 }

@@ -178,6 +178,33 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         self.handler.queue.registerJob(job)
     }
 
+    /// Attempt to cancel a job
+    /// - Parameters:
+    ///   - jobID: an existing job id
+    public func cancelJob(
+        jobID: Queue.JobID
+    ) async throws where Queue: CancellableJobQueue {
+        try await self.queue.cancel(jobID: jobID)
+    }
+
+    /// Attempt to pause a job
+    /// - Parameters:
+    ///   - jobID: an existing job id
+    public func pauseJob(
+        jobID: Queue.JobID
+    ) async throws where Queue: ResumableJobQueue {
+        try await self.queue.pause(jobID: jobID)
+    }
+
+    /// Resumes a job that was paused
+    /// - Parameters:
+    ///   - jobID: an existing job id
+    public func resumeJob(
+        jobID: Queue.JobID
+    ) async throws where Queue: ResumableJobQueue {
+        try await self.queue.resume(jobID: jobID)
+    }
+
     ///  Run queue handler
     public func run() async throws {
         do {
