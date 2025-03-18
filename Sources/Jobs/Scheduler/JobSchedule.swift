@@ -28,7 +28,7 @@ import Foundation
 ///
 /// ```swift
 /// let jobSchedule = JobSchedule([
-///     (job: RemoveDeadSessionsJob(), schedule: .weekly(day: .sunday, hour: 4))
+///     .init(job: RemoveDeadSessionsJob(), schedule: .weekly(day: .sunday, hour: 4))
 /// ])
 /// let serviceGroup = ServiceGroup(
 ///     configuration: .init(
@@ -68,6 +68,34 @@ public struct JobSchedule: MutableCollection, Sendable {
             self.jobParameters = job
             self.accuracy = accuracy
         }
+
+        mutating func setInitialNextDate(after date: Date, now: Date = .now, logger: Logger) {
+            switch self.accuracy {
+            case .all:
+                // set nextScheduledDate based on date supplied
+                self.nextScheduledDate = self.schedule.setInitialNextDate(after: date) ?? .distantFuture
+            case .latest:
+                // set nextScheduledDate based on date supplied
+                self.nextScheduledDate = self.schedule.setInitialNextDate(after: date) ?? .distantFuture
+                // if schedule accuracy is set to latest that means it should only supply at the most one job
+                // prior to current date. If there are one of more jobs scheduled between date supplied and now
+                // return now. If there are no jobs scheduled between date supplied and now return the next scheduled
+                // date
+                if self.accuracy == .latest, self.nextScheduledDate < now {
+                    self.schedule.setInitialNextDateJustBefore(date: now)
+                    self.nextScheduledDate = now
+                }
+            default:
+                preconditionFailure("Unsupported schedule accuracy")
+            }
+            logger.debug(
+                "First scheduled date for job",
+                metadata: [
+                    "JobName": .stringConvertible(type(of: self.jobParameters).jobName),
+                    "JobTime": .stringConvertible(self.nextScheduledDate),
+                ]
+            )
+        }
     }
 
     /// Initialize JobSchedule with no jobs
@@ -91,7 +119,10 @@ public struct JobSchedule: MutableCollection, Sendable {
     }
 
     ///  Create Job scheduler Service
-    /// - Parameter jobQueue: Job queue to place jobs
+    /// - Parameters
+    ///   - jobQueue: Job queue to place jobs
+    ///   - name: Job schedule name, used when storing metadata for schedule
+    ///   - jobOptions: Job options applied to all jobs scheduled
     /// - Returns: JobScheduler
     public func scheduler<Queue: JobQueueDriver>(
         on jobQueue: JobQueue<Queue>,
@@ -114,33 +145,20 @@ public struct JobSchedule: MutableCollection, Sendable {
         }
     }
 
-    mutating func setInitialNextDate(after date: Date, now: Date = .now, logger: Logger) {
+    mutating func setInitialNextDate(
+        logger: Logger,
+        getLastScheduledDate: (String) async throws -> Date?
+    ) async throws {
         for index in 0..<self.count {
-            switch self[index].accuracy {
-            case .all:
-                // set nextScheduledDate based on date supplied
-                self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
-            case .latest:
-                // set nextScheduledDate based on date supplied
-                self[index].nextScheduledDate = self[index].schedule.setInitialNextDate(after: date) ?? .distantFuture
-                // if schedule accuracy is set to latest that means it should only supply at the most one job
-                // prior to current date. If there are one of more jobs scheduled between date supplied and now
-                // return now. If there are no jobs scheduled between date supplied and now return the next scheduled
-                // date
-                if self[index].accuracy == .latest, self[index].nextScheduledDate < now {
-                    self[index].schedule.setInitialNextDateJustBefore(date: now)
-                    self[index].nextScheduledDate = now
-                }
-            default:
-                preconditionFailure("Unsupported schedule accuracy")
+            let date: Date
+            if let lastDate = try await getLastScheduledDate(type(of: self.elements[index].jobParameters).jobName) {
+                date = lastDate
+                logger.info("Last scheduled date \(date).")
+            } else {
+                date = .now
+                logger.info("No last scheduled date so scheduling from now.")
             }
-            logger.debug(
-                "First scheduled date for job",
-                metadata: [
-                    "JobName": .stringConvertible(type(of: self[index].jobParameters).jobName),
-                    "JobTime": .stringConvertible(self[index].nextScheduledDate),
-                ]
-            )
+            self[index].setInitialNextDate(after: date, logger: logger)
         }
     }
 
@@ -199,13 +217,13 @@ public struct JobSchedule: MutableCollection, Sendable {
 
     /// Job Scheduler Service
     public struct Scheduler<Driver: JobQueueDriver>: Service, CustomStringConvertible {
-        let lastScheduledMetadataKey: JobMetadataKey<Date>
+        let name: String
         let jobQueue: JobQueue<Driver>
         let jobSchedule: JobSchedule
         let jobOptions: Driver.JobOptions
 
         init(named name: String, jobQueue: JobQueue<Driver>, jobOptions: Driver.JobOptions, jobSchedule: JobSchedule) async {
-            self.lastScheduledMetadataKey = .jobScheduleLastDate(schedulerName: name)
+            self.name = name
             self.jobQueue = jobQueue
             self.jobSchedule = jobSchedule
             self.jobOptions = jobOptions
@@ -217,15 +235,9 @@ public struct JobSchedule: MutableCollection, Sendable {
             var jobSchedule = self.jobSchedule
             // Update next scheduled date for each job schedule based off the last scheduled date stored
             do {
-                let date: Date
-                if let lastDate = try await self.jobQueue.getMetadata(self.lastScheduledMetadataKey) {
-                    date = lastDate
-                    self.jobQueue.logger.info("Last scheduled date \(date).")
-                } else {
-                    date = .now
-                    self.jobQueue.logger.info("No last scheduled date so scheduling from now.")
+                try await jobSchedule.setInitialNextDate(logger: self.jobQueue.logger) { jobName in
+                    try await self.jobQueue.getMetadata(.jobScheduleLastDate(schedulerName: self.name, jobName: jobName))
                 }
-                jobSchedule.setInitialNextDate(after: date, logger: self.jobQueue.logger)
             } catch {
                 self.jobQueue.logger.error(
                     "Failed to get last scheduled job date.",
@@ -246,7 +258,10 @@ public struct JobSchedule: MutableCollection, Sendable {
                         nextScheduledAt: job.nextScheduledAt,
                         options: self.jobOptions
                     )
-                    try await self.jobQueue.setMetadata(key: self.lastScheduledMetadataKey, value: job.date)
+                    try await self.jobQueue.setMetadata(
+                        key: .jobScheduleLastDate(schedulerName: self.name, jobName: type(of: job.job).jobName),
+                        value: job.date
+                    )
                 } catch {
                     self.jobQueue.logger.error(
                         "Failed: to schedule job",
@@ -282,5 +297,5 @@ extension JobSchedule {
 }
 
 extension JobMetadataKey where Value == Date {
-    static func jobScheduleLastDate(schedulerName: String) -> Self { "\(schedulerName).jobScheduleLastDate" }
+    static func jobScheduleLastDate(schedulerName: String, jobName: String) -> Self { "\(schedulerName).\(jobName).jobScheduleLastDate" }
 }
