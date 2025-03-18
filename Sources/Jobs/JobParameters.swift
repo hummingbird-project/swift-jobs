@@ -25,16 +25,6 @@ public protocol JobParameters: Codable, Sendable {
 }
 
 extension JobParameters {
-    /// Added so it is possible to push JobParameters referenced as Existentials to a Job queue
-    @discardableResult public func push<Queue: JobQueueDriver>(
-        to jobQueue: JobQueue<Queue>,
-        options: Queue.JobOptions = .init()
-    ) async throws -> Queue.JobID {
-        try await jobQueue.push(self, options: options)
-    }
-}
-
-extension JobParameters {
     /// Added so it's possible for the scheduler to add date partitions
     internal func push<Queue: JobQueueDriver>(
         to jobQueue: JobQueue<Queue>,
