@@ -34,7 +34,9 @@ final class TracingTests: XCTestCase {
         }
         let expectation = expectation(description: "Expected span to be ended.")
         let tracer = TestTracer()
-        tracer.onEndSpan = { _ in expectation.fulfill() }
+        tracer.onEndSpan = { _ in
+            expectation.fulfill()
+        }
         InstrumentationSystem.bootstrapInternal(tracer)
 
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) {

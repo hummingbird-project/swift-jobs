@@ -61,7 +61,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///
     /// - Parameters:
     ///   - parameters: Job parameters
-    ///   - jobID: Job instance identifier
+    ///   - context: Job queue context
     @inlinable
     public func onPushJob<Parameters: JobParameters>(parameters: Parameters, context: JobQueueContext) async {
         Meter(
@@ -78,7 +78,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///
     /// - Parameters:
     ///   - result: Result of popping the job from the queue (Either job instance or error)
-    ///   - jobID: Job instance identifer
+    ///   - context: Job queue context
     @inlinable
     public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {
 
