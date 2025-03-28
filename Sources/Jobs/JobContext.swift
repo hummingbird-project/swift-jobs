@@ -31,6 +31,9 @@ public struct JobExecutionContext: Sendable {
     public let queuedAt: Date
     /// Next time job is scheduled to run
     public let nextScheduledAt: Date?
+    /// Attempt number for this job.
+    /// Starts at 1 and increments for every retry until max
+    public let attempt: Int
 }
 
 /// context for job being adding/removed from queue

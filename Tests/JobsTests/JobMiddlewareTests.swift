@@ -87,7 +87,8 @@ final class JobMiddlewareTests: XCTestCase {
                 jobID: "0",
                 logger: .init(label: "Test"),
                 queuedAt: job.queuedAt,
-                nextScheduledAt: job.nextScheduledAt
+                nextScheduledAt: job.nextScheduledAt,
+                attempt: job.attempts ?? 0
             )
         ) { _, _ in }
         XCTAssertEqual(observer1.handled, true)
@@ -130,7 +131,8 @@ final class JobMiddlewareTests: XCTestCase {
                     jobID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
-                    nextScheduledAt: job.nextScheduledAt
+                    nextScheduledAt: job.nextScheduledAt,
+                    attempt: job.attempts ?? 0
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
@@ -180,7 +182,8 @@ final class JobMiddlewareTests: XCTestCase {
                     jobID: "0",
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
-                    nextScheduledAt: job.nextScheduledAt
+                    nextScheduledAt: job.nextScheduledAt,
+                    attempt: job.attempts ?? 0
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)

@@ -137,6 +137,7 @@ final class JobsTests: XCTestCase {
         }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 4)
         let failedJobCount = ManagedAtomic(0)
+        let attemptCounter: NIOLockedValueBox<Int> = .init(0)
         struct FailedError: Error {}
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
@@ -147,8 +148,12 @@ final class JobsTests: XCTestCase {
         jobQueue.registerJob(
             parameters: TestParameters.self,
             retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.01)
-        ) { _, _ in
+        ) { _, context in
             expectation.fulfill()
+            context.logger.info("TestJob.execute called plus attempt \(context.attempt)")
+            attemptCounter.withLockedValue {
+                $0 = context.attempt
+            }
             throw FailedError()
         }
         try await testJobQueue(jobQueue) {
@@ -157,6 +162,7 @@ final class JobsTests: XCTestCase {
             await fulfillment(of: [expectation], timeout: 5)
         }
         XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
+        XCTAssertEqual(attemptCounter.withLockedValue { $0 }, 3)
     }
 
     /// Test retry policy that does different things based on the error passed to it

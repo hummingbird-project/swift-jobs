@@ -105,7 +105,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     jobID: jobID.description,
                     logger: logger,
                     queuedAt: job.queuedAt,
-                    nextScheduledAt: job.nextScheduledAt
+                    nextScheduledAt: job.nextScheduledAt,
+                    attempt: job.attempts ?? 1
                 )
                 try await handleJob(job: job, context: context)
             } catch let error as CancellationError {
