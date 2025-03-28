@@ -150,7 +150,6 @@ final class JobsTests: XCTestCase {
             retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.01)
         ) { _, context in
             expectation.fulfill()
-            context.logger.info("TestJob.execute called plus attempt \(context.attempt)")
             attemptCounter.withLockedValue {
                 $0 = context.attempt
             }
