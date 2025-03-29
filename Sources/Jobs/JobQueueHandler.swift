@@ -106,7 +106,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     logger: logger,
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt,
-                    attempt: job.attempts ?? 1
+                    attempt: job.attempts
                 )
                 try await handleJob(job: job, context: context)
             } catch let error as CancellationError {
@@ -126,9 +126,9 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     return
                 }
 
-                let attempts = (job.attempts ?? 0) + 1
-                let delay = job.retryStrategy.calculateBackoff(attempt: attempts)
+                let delay = job.retryStrategy.calculateBackoff(attempt: job.attempts)
                 let delayUntil = Date.now._advanced(by: delay)
+                let attempts = job.attempts + 1
 
                 /// retry the current job
                 try await self.queue.retry(

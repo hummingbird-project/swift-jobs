@@ -60,7 +60,7 @@ final class JobMiddlewareTests: XCTestCase {
             let parameters = TestParameters(value: "test")
             let retryStrategy: JobRetryStrategy = .exponentialJitter(maxAttempts: 1)
             let queuedAt = Date.now
-            let attempts: Int? = 0
+            let attempts: Int = 0
             let nextScheduledAt: Date? = nil
             let traceContext: [String: String]? = nil
             let timeout: Duration? = nil
@@ -88,7 +88,7 @@ final class JobMiddlewareTests: XCTestCase {
                 logger: .init(label: "Test"),
                 queuedAt: job.queuedAt,
                 nextScheduledAt: job.nextScheduledAt,
-                attempt: job.attempts ?? 0
+                attempt: job.attempts
             )
         ) { _, _ in }
         XCTAssertEqual(observer1.handled, true)
@@ -107,7 +107,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let parameters = TestParameters(value: "test")
                 let retryStrategy: JobRetryStrategy = .exponentialJitter(maxAttempts: 1)
                 let queuedAt = Date.now
-                let attempts: Int? = 0
+                let attempts: Int = 0
                 let traceContext: [String: String]? = nil
                 var nextScheduledAt: Date? = nil
                 let timeout: Duration? = nil
@@ -132,7 +132,7 @@ final class JobMiddlewareTests: XCTestCase {
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt,
-                    attempt: job.attempts ?? 0
+                    attempt: job.attempts
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
@@ -153,7 +153,7 @@ final class JobMiddlewareTests: XCTestCase {
                 let parameters = TestParameters(value: "test")
                 let retryStrategy: JobRetryStrategy = .exponentialJitter(maxAttempts: 1)
                 let queuedAt = Date.now
-                let attempts: Int? = 0
+                let attempts: Int = 0
                 let traceContext: [String: String]? = nil
                 let nextScheduledAt: Date? = Date.now
                 let timeout: Duration? = nil
@@ -183,7 +183,7 @@ final class JobMiddlewareTests: XCTestCase {
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt,
-                    attempt: job.attempts ?? 0
+                    attempt: job.attempts
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)

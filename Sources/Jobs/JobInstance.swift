@@ -29,7 +29,7 @@ public protocol JobInstanceProtocol: Sendable {
     /// Time job was queued
     var queuedAt: Date { get }
     /// Number of attempts so far
-    var attempts: Int? { get }
+    var attempts: Int { get }
     /// Job parameters
     var parameters: Parameters { get }
     /// Trace context
@@ -50,7 +50,7 @@ extension JobInstanceProtocol {
 
     /// Should we retry this job
     public func shouldRetry(error: Error) -> Bool {
-        self.retryStrategy.shouldRetry(attempt: self.attempts ?? 0, error: error)
+        self.retryStrategy.shouldRetry(attempt: self.attempts, error: error)
     }
 
     /// Extract trace context from job instance data
@@ -78,7 +78,7 @@ struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
     /// Time job was queued
     var queuedAt: Date { self.data.queuedAt }
     /// Number of attempts so far
-    var attempts: Int? { self.data.attempts ?? 0 }
+    var attempts: Int { self.data.attempts }
     /// Trace context
     var traceContext: [String: String]? { self.data.traceContext }
     /// Job parameters
@@ -105,7 +105,7 @@ public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
     /// Time job was queued
     let queuedAt: Date
     /// Number of attempts so far
-    let attempts: Int?
+    let attempts: Int
     /// trace context
     let traceContext: [String: String]?
     /// Next time job is scheduled to run
@@ -114,7 +114,7 @@ public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
     init(
         parameters: Parameters,
         queuedAt: Date,
-        attempts: Int?,
+        attempts: Int,
         nextScheduledAt: Date? = nil
     ) {
         self.parameters = parameters
