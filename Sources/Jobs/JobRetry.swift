@@ -77,7 +77,7 @@ public struct ExponentialJitterJobRetryStrategy: JobRetryStrategy {
     }
 
     public func shouldRetry(attempt: Int, error: any Error) -> Bool {
-        attempt < maxAttempts
+        attempt <= maxAttempts
     }
 
     public func calculateBackoff(attempt: Int) -> Duration {
