@@ -50,10 +50,7 @@ extension JobInstanceProtocol {
 
     /// Should we retry this job
     public func shouldRetry(error: Error) -> Bool {
-        // we plus one here because shouldRetry is called before attempts is updated
-        // this leaves the job.attempts with the wrong attempt count because the current
-        // value for job.attempts will always be maxAttempt - 1
-        self.retryStrategy.shouldRetry(attempt: self.attempts + 1, error: error)
+        self.retryStrategy.shouldRetry(attempt: self.attempts, error: error)
     }
 
     /// Extract trace context from job instance data
