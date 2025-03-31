@@ -391,7 +391,7 @@ final class MetricsTests: XCTestCase {
         struct TestParameter: JobParameters {
             static let jobName = "testFailedJobs"
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 4)
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 3)
         let failedJobCount = ManagedAtomic(0)
         struct FailedError: Error {}
         var logger = Logger(label: "JobsTests")

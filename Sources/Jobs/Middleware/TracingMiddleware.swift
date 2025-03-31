@@ -47,7 +47,7 @@ public struct TracingJobMiddleware: JobMiddleware {
             }
             span.updateAttributes { attributes in
                 attributes["job.id"] = context.jobID
-                attributes["job.attempt"] = (job.attempts ?? 0) + 1
+                attributes["job.attempt"] = job.attempt
                 attributes["job.queue"] = self.queueName
             }
             do {
