@@ -28,8 +28,8 @@ public protocol JobInstanceProtocol: Sendable {
     var retryStrategy: any JobRetryStrategy { get }
     /// Time job was queued
     var queuedAt: Date { get }
-    /// Number of attempts so far
-    var attempts: Int { get }
+    /// Current attempt
+    var attempt: Int { get }
     /// Job parameters
     var parameters: Parameters { get }
     /// Trace context
@@ -50,7 +50,7 @@ extension JobInstanceProtocol {
 
     /// Should we retry this job
     public func shouldRetry(error: Error) -> Bool {
-        self.retryStrategy.shouldRetry(attempt: self.attempts, error: error)
+        self.retryStrategy.shouldRetry(attempt: self.attempt, error: error)
     }
 
     /// Extract trace context from job instance data
@@ -77,8 +77,8 @@ struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
     var retryStrategy: any JobRetryStrategy { job.retryStrategy }
     /// Time job was queued
     var queuedAt: Date { self.data.queuedAt }
-    /// Number of attempts so far
-    var attempts: Int { self.data.attempts }
+    /// Current attempt
+    var attempt: Int { self.data.attempt }
     /// Trace context
     var traceContext: [String: String]? { self.data.traceContext }
     /// Job parameters
@@ -104,8 +104,8 @@ public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
     let parameters: Parameters
     /// Time job was queued
     let queuedAt: Date
-    /// Number of attempts so far
-    let attempts: Int
+    /// Current attempt
+    let attempt: Int
     /// trace context
     let traceContext: [String: String]?
     /// Next time job is scheduled to run
@@ -114,12 +114,12 @@ public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
     init(
         parameters: Parameters,
         queuedAt: Date,
-        attempts: Int,
+        attempt: Int,
         nextScheduledAt: Date? = nil
     ) {
         self.parameters = parameters
         self.queuedAt = queuedAt
-        self.attempts = attempts
+        self.attempt = attempt
         self.nextScheduledAt = nextScheduledAt
 
         var traceContext: [String: String]? = nil
@@ -137,7 +137,7 @@ public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case parameters = "p"
         case queuedAt = "q"
-        case attempts = "a"
+        case attempt = "a"
         case traceContext = "t"
         case nextScheduledAt = "n"
     }

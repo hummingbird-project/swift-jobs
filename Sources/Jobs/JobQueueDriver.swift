@@ -64,8 +64,8 @@ extension JobQueueDriver {
 }
 
 extension JobQueueDriver {
-    func retry(_ jobID: JobID, job: some JobInstanceProtocol, attempts: Int, options: JobRetryOptions) async throws {
-        let jobRequest = JobRequest(parameters: job.parameters, queuedAt: job.queuedAt, attempts: attempts)
+    func retry(_ jobID: JobID, job: some JobInstanceProtocol, attempt: Int, options: JobRetryOptions) async throws {
+        let jobRequest = JobRequest(parameters: job.parameters, queuedAt: job.queuedAt, attempt: attempt)
         return try await self.retry(jobID, jobRequest: jobRequest, options: options)
     }
 }
