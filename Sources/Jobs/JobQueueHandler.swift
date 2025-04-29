@@ -152,7 +152,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
             logger.debug("Finished Job")
             try await self.queue.finished(jobID: jobID)
         } catch {
-            logger.debug("Failed to set job status")
+            logger.debug("Failed to set job status: \(error)")
         }
     }
 
