@@ -33,7 +33,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     }
 
     func run() async throws {
-        try await withGracefulShutdownHandler {
+        try await withTaskCancellationOrGracefulShutdownHandler {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 var iterator = self.queue.makeAsyncIterator()
                 for _ in 0..<self.numWorkers {
@@ -52,7 +52,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                 }
             }
             await self.queue.shutdownGracefully()
-        } onGracefulShutdown: {
+        } onCancelOrGracefulShutdown: {
             Task {
                 await self.queue.stop()
             }
