@@ -542,7 +542,7 @@ final class JobsTests: XCTestCase {
             jobRunSequence.withLockedValue {
                 $0.append(parameters.value)
             }
-            try await Task.sleep(for: .seconds(1))
+            try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
             expectation.fulfill()
         }
 
