@@ -180,10 +180,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func next() async throws -> QueuedJob? {
             var maxTimesToLoop = self.queue.count
-            while true {
-                if self.isStopped {
-                    return nil
-                }
+            while !self.isStopped {
                 if let request = queue.popFirst() {
                     if request.options.delayUntil > Date.now {
                         self.queue.append(request)
@@ -198,6 +195,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                 }
                 try await Task.sleep(for: .milliseconds(100))
             }
+            return nil
         }
 
         func stop() {

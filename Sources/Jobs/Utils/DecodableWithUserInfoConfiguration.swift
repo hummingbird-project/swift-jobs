@@ -53,6 +53,7 @@ extension JSONDecoder {
         from buffer: ByteBuffer,
         userInfoConfiguration: T.DecodingConfiguration
     ) throws -> T where T: DecodableWithUserInfoConfiguration {
+        // MARK: T.DecodingConfiguration does not conform to sendable
         self.userInfo[._jobConfiguration] = userInfoConfiguration
         return try self.decode(type, from: buffer)
     }

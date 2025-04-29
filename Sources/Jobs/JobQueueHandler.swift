@@ -43,7 +43,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                         }
                     }
                 }
-                while true {
+                while !Task.isCancelled {
                     try await group.next()
                     guard let jobResult = try await iterator.next() else { break }
                     group.addTask {
@@ -51,10 +51,9 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     }
                 }
             }
-            await self.queue.shutdownGracefully()
         } onGracefulShutdown: {
             Task {
-                await self.queue.stop()
+                await self.queue.shutdownGracefully()
             }
         }
     }
