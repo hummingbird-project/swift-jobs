@@ -575,7 +575,8 @@ final class JobsTests: XCTestCase {
         struct TestParameters: JobParameters {
             static let jobName = "testJobTimeout"
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let expectationStarted = XCTestExpectation(description: "TestJob.execute started", expectedFulfillmentCount: 1)
+        let expectationEnded = XCTestExpectation(description: "TestJob.execute ended", expectedFulfillmentCount: 1)
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
@@ -587,13 +588,15 @@ final class JobsTests: XCTestCase {
             parameters: TestParameters.self,
             retryStrategy: .dontRetry
         ) { _, _ in
+            expectationStarted.fulfill()
             try await Task.sleep(for: .milliseconds(100))
-            expectation.fulfill()
+            expectationEnded.fulfill()
         }
         try await testJobQueue(jobQueue) {
             _ = try await jobQueue.push(TestParameters())
+            await fulfillment(of: [expectationStarted], timeout: 5)
         }
-        await fulfillment(of: [expectation], timeout: 5)
+        await fulfillment(of: [expectationEnded], timeout: 5)
     }
 
     func testJobQueueGracefulShutdownTimeout() async throws {
