@@ -33,30 +33,51 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     }
 
     func run() async throws {
+        let (stream, cont) = AsyncStream.makeStream(of: Void.self)
         try await withTaskCancellationOrGracefulShutdownHandler {
             try await withThrowingTaskGroup(of: Void.self) { group in
-                var iterator = self.queue.makeAsyncIterator()
-                for _ in 0..<self.numWorkers {
-                    if let jobResult = try await iterator.next() {
-                        group.addTask {
-                            try await self.processJobResult(jobResult)
+                group.addTask {
+                    try await withThrowingTaskGroup(of: Void.self) { group in
+                        var iterator = self.queue.makeAsyncIterator()
+                        for _ in 0..<self.numWorkers {
+                            if let jobResult = try await iterator.next() {
+                                group.addTask {
+                                    try await self.processJobResult(jobResult)
+                                }
+                            }
                         }
+                        while true {
+                            try await group.next()
+                            guard let jobResult = try await iterator.next() else { break }
+                            group.addTask {
+                                try await self.processJobResult(jobResult)
+                            }
+                        }
+
+                        try await group.waitForAll()
                     }
                 }
-                while true {
-                    try await group.next()
-                    guard let jobResult = try await iterator.next() else { break }
+
+                if let gracefulShutdownTimeout = self.options.gracefulShutdownTimeout {
                     group.addTask {
-                        try await self.processJobResult(jobResult)
+                        await stream.first { _ in true }
+                        try await Task.sleep(for: gracefulShutdownTimeout)
                     }
                 }
+                // wait on first child task to return. If the first task to return is the queue handler then
+                // cancel timeout task. If the first child task to return is the timeout task then cancel the
+                // job queue handler
+                try await group.next()
+                group.cancelAll()
             }
-            await self.queue.shutdownGracefully()
         } onCancelOrGracefulShutdown: {
+            // trigger timeout
+            cont.finish()
             Task {
                 await self.queue.stop()
             }
         }
+        await self.queue.shutdownGracefully()
     }
 
     /// Process job result from queue

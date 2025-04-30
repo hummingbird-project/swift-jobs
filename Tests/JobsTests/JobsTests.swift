@@ -570,4 +570,59 @@ final class JobsTests: XCTestCase {
         }
         XCTAssertEqual(jobRunSequence.withLockedValue { $0 }, [30, 15])
     }
+
+    func testJobQueueGracefulShutdownWaitsForJob() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testJobTimeout"
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            .memory,
+            logger: logger,
+            options: .init(gracefulShutdownTimeout: nil)
+        )
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: .dontRetry
+        ) { _, _ in
+            try await Task.sleep(for: .milliseconds(100))
+            expectation.fulfill()
+        }
+        try await testJobQueue(jobQueue) {
+            _ = try await jobQueue.push(TestParameters())
+        }
+        await fulfillment(of: [expectation], timeout: 5)
+    }
+
+    func testJobQueueGracefulShutdownTimeout() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testJobTimeout"
+        }
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let failedJobCount = ManagedAtomic(0)
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            MemoryQueue { _, error in
+                XCTAssert(error is CancellationError)
+                failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed)
+            },
+            logger: logger,
+            options: .init(gracefulShutdownTimeout: .milliseconds(50))
+        )
+        jobQueue.registerJob(
+            parameters: TestParameters.self,
+            retryStrategy: .dontRetry
+        ) { _, _ in
+            expectation.fulfill()
+            try await Task.sleep(for: .seconds(10))
+        }
+        try await testJobQueue(jobQueue) {
+            try await jobQueue.push(TestParameters())
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+        XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
+    }
 }
