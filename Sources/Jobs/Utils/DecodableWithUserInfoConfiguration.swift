@@ -52,7 +52,7 @@ extension JSONDecoder {
         _ type: T.Type,
         from buffer: ByteBuffer,
         userInfoConfiguration: T.DecodingConfiguration
-    ) throws -> T where T: DecodableWithUserInfoConfiguration {
+    ) throws -> T where T: DecodableWithUserInfoConfiguration, T.DecodingConfiguration: Sendable {
         self.userInfo[._jobConfiguration] = userInfoConfiguration
         return try self.decode(type, from: buffer)
     }
