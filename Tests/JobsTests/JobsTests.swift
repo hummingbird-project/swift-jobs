@@ -582,7 +582,7 @@ final class JobsTests: XCTestCase {
         let jobQueue = JobQueue(
             .memory,
             logger: logger,
-            options: .init(gracefulShutdownTimeout: nil)
+            options: .init(gracefulShutdownTimeout: .seconds(10000))
         )
         jobQueue.registerJob(
             parameters: TestParameters.self,
