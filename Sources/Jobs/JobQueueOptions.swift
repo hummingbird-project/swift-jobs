@@ -23,7 +23,7 @@ public struct JobQueueOptions: Sendable {
     /// Default job retry strategy for the job queue
     let retryStrategy: JobRetryStrategy
     /// Timeout after graceful shutdown has been triggered, before jobs are cancelled
-    let gracefulShutdownTimeout: Duration?
+    let gracefulShutdownTimeout: Duration
 
     /// Initialize a JobQueueOptions
     ///
@@ -32,7 +32,7 @@ public struct JobQueueOptions: Sendable {
     ///   - gracefulShutdownTimeout: Timeout after graceful shutdown has been triggered, before jobs are cancelled
     public init(
         defaultRetryStrategy: any JobRetryStrategy = .exponentialJitter(),
-        gracefulShutdownTimeout: Duration? = nil
+        gracefulShutdownTimeout: Duration = .seconds(30)
     ) {
         self.retryStrategy = defaultRetryStrategy
         self.gracefulShutdownTimeout = gracefulShutdownTimeout

@@ -58,11 +58,10 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
                     }
                 }
 
-                if let gracefulShutdownTimeout = self.options.gracefulShutdownTimeout {
-                    group.addTask {
-                        await stream.first { _ in true }
-                        try await Task.sleep(for: gracefulShutdownTimeout)
-                    }
+                group.addTask {
+                    // wait until graceful shutdown or cancellation has been triggered
+                    await stream.first { _ in true }
+                    try await Task.sleep(for: self.options.gracefulShutdownTimeout)
                 }
                 // wait on first child task to return. If the first task to return is the queue handler then
                 // cancel timeout task. If the first child task to return is the timeout task then cancel the
