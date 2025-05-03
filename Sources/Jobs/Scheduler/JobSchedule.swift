@@ -252,18 +252,21 @@ public struct JobSchedule: MutableCollection, Sendable {
             )
             for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
                 do {
-                    
+
                     let willSchedule = try await jobQueue.queue.isLeader()
 
                     guard willSchedule else {
-                        jobQueue.logger.debug("Not the leader, skipping job scheduling.", metadata: [
-                            "job": "\(type(of: job.job).jobName)",
-                            "currentScheduledAt": "\(String(describing: job.date))",
-                            "nextScheduledAt": "\(String(describing: job.nextScheduledAt))"
-                        ])
+                        jobQueue.logger.debug(
+                            "Not the leader, skipping job scheduling.",
+                            metadata: [
+                                "job": "\(type(of: job.job).jobName)",
+                                "currentScheduledAt": "\(String(describing: job.date))",
+                                "nextScheduledAt": "\(String(describing: job.nextScheduledAt))",
+                            ]
+                        )
                         continue
                     }
-            
+
                     _ = try await job.job.push(
                         to: self.jobQueue,
                         currentSchedule: job.date,

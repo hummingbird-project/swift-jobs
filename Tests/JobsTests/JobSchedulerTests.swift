@@ -485,10 +485,10 @@ final class JobSchedulerTests: XCTestCase {
 
         var logger = Logger(label: "jobs")
         logger.logLevel = .debug
-        
+
         let memoryStorage = MemoryQueue()
         await memoryStorage.electeAsLeader()
-        
+
         let jobQueue = JobQueue(memoryStorage, logger: logger)
         jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, context in
             source.yield()
@@ -568,7 +568,7 @@ final class JobSchedulerTests: XCTestCase {
 
     func testMultipleSchedulerServicesWithJustOneAbleToScheduled() async throws {
         let (stream, source) = AsyncStream.makeStream(of: Int.self)
-        
+
         struct LeadershipParameters: JobParameters {
             static let jobName = "LeadershipJob"
         }
