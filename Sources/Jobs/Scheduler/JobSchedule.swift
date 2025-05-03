@@ -253,7 +253,7 @@ public struct JobSchedule: MutableCollection, Sendable {
             for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
                 do {
 
-                    let willSchedule = try await jobQueue.queue.isLeader()
+                    let willSchedule = await jobQueue.queue.isLeader()
 
                     guard willSchedule else {
                         jobQueue.logger.debug(

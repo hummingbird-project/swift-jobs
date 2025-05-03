@@ -120,16 +120,12 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.setMetadata(key: key, value: value)
     }
 
-    public func isLeader() async throws -> Bool {
+    public func isLeader() async -> Bool {
         await self.queue.isLeader
     }
 
     public func electeAsLeader() async {
         await self.queue.setLeadership()
-    }
-
-    public func resetLeadership() async {
-        await self.queue.resetLeadership()
     }
 
     /// Internal actor managing the job queue
