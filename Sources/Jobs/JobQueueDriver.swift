@@ -56,6 +56,8 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     func getMetadata(_ key: String) async throws -> ByteBuffer?
     /// set job queue metadata
     func setMetadata(key: String, value: ByteBuffer) async throws
+    /// check if driver an instace is the leader
+    func isLeader() async throws -> Bool
 }
 
 extension JobQueueDriver {

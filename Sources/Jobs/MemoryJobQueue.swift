@@ -120,6 +120,18 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.setMetadata(key: key, value: value)
     }
 
+    public func isLeader() async throws -> Bool {
+        await self.queue.isLeader
+    }
+
+    public func electeAsLeader() async {
+        await self.queue.setLeadership()
+    }
+
+    public func resetLeadership() async {
+        await self.queue.resetLeadership()
+    }
+
     /// Internal actor managing the job queue
     fileprivate actor Internal {
         struct QueuedJob: Sendable {
@@ -130,6 +142,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         var pendingJobs: [JobID: ByteBuffer]
         var metadata: [String: ByteBuffer]
         var isStopped: Bool
+        var isLeader: Bool = false
 
         init() {
             self.queue = .init()
@@ -215,6 +228,14 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func setMetadata(key: String, value: NIOCore.ByteBuffer) {
             self.metadata[key] = value
+        }
+
+        func setLeadership() {
+            self.isLeader = true
+        }
+
+        func resetLeadership() {
+            self.isLeader = false
         }
     }
 }
