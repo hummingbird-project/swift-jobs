@@ -124,7 +124,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.isLeader
     }
 
-    public func electeAsLeader() async {
+    public func electLeaderShip() async {
         await self.queue.setLeadership()
     }
 
@@ -228,10 +228,6 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func setLeadership() {
             self.isLeader = true
-        }
-
-        func resetLeadership() {
-            self.isLeader = false
         }
     }
 }
