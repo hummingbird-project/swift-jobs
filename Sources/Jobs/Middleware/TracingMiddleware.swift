@@ -30,7 +30,7 @@ public struct TracingJobMiddleware: JobMiddleware {
     }
 
     @inlinable
-    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, context: JobQueueContext) async {}
+    public func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobQueueContext) async {}
     @inlinable
     public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {}
 

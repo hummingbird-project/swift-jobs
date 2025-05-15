@@ -2,7 +2,7 @@
 //
 // This source file is part of the Hummingbird server framework project
 //
-// Copyright (c) 2021-2024 the Hummingbird authors
+// Copyright (c) 2021-2025 the Hummingbird authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -22,6 +22,13 @@ import Foundation
 public protocol JobParameters: Codable, Sendable {
     /// Job type name
     static var jobName: String { get }
+}
+
+extension JobParameters {
+    // Job name identifier
+    public static var jobNameIdentifier: JobName<Self> {
+        .init(jobName)
+    }
 }
 
 extension JobParameters {
