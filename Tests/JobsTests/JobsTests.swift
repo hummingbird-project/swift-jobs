@@ -58,10 +58,6 @@ final class JobsTests: XCTestCase {
     }
 
     func testJobNameBasic() async throws {
-        struct TestParameters: JobParameters {
-            static let jobName = "testBasic"
-            let value: Int
-        }
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 6)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
         let jobName = JobName<Int>("testJobNameBasic")
