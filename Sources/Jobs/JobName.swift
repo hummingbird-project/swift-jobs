@@ -27,18 +27,3 @@ public struct JobName<Parameters: Codable>: CustomStringConvertible, Expressible
         self.name
     }
 }
-
-public struct Job<Parameters: Codable> {
-    let name: JobName<Parameters>
-    let parameters: Parameters
-
-    public init(name: JobName<Parameters>, parameters: Parameters) {
-        self.name = name
-        self.parameters = parameters
-    }
-
-    public init(parameters: Parameters) where Parameters: JobParameters {
-        self.name = Parameters.jobNameIdentifier
-        self.parameters = parameters
-    }
-}
