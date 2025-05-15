@@ -25,13 +25,6 @@ public protocol JobParameters: Codable, Sendable {
 }
 
 extension JobParameters {
-    // Job name identifier
-    public static var jobNameIdentifier: JobName<Self> {
-        .init(jobName)
-    }
-}
-
-extension JobParameters {
     /// Added so it's possible for the scheduler to add date partitions
     internal func push<Queue: JobQueueDriver>(
         to jobQueue: JobQueue<Queue>,
