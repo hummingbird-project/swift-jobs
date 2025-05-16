@@ -182,7 +182,7 @@ final class JobSchedulerTests: XCTestCase {
             static var jobName = "Job1"
         }
         struct Job2: JobParameters {
-            static var jobName = "Job1"
+            static var jobName = "Job2"
         }
         var schedule = JobSchedule()
         schedule.addJob(Job1(), schedule: .hourly(minute: 30), accuracy: .all)
@@ -198,22 +198,22 @@ final class JobSchedulerTests: XCTestCase {
         var job = try XCTUnwrap(schedule.nextJob())
         for _ in 0..<2 {
             schedule.updateNextScheduledDate(jobIndex: job.offset)
-            XCTAssert(job.element.jobParameters is Job1)
+            XCTAssertEqual(job.element.jobName, "Job1")
             job = try XCTUnwrap(schedule.nextJob())
         }
         // next job should be Job2
         schedule.updateNextScheduledDate(jobIndex: job.offset)
-        XCTAssert(job.element.jobParameters is Job2)
+        XCTAssertEqual(job.element.jobName, "Job2")
         // next 24 jobs should be Job1
         for _ in 0..<24 {
             job = try XCTUnwrap(schedule.nextJob())
             schedule.updateNextScheduledDate(jobIndex: job.offset)
-            XCTAssert(job.element.jobParameters is Job1)
+            XCTAssertEqual(job.element.jobName, "Job1")
         }
         // next job should be Job2
         job = try XCTUnwrap(schedule.nextJob())
         schedule.updateNextScheduledDate(jobIndex: job.offset)
-        XCTAssert(job.element.jobParameters is Job2)
+        XCTAssertEqual(job.element.jobName, "Job2")
     }
 
     func testJobScheduledAtSameTimeSequence() async throws {
@@ -231,10 +231,10 @@ final class JobSchedulerTests: XCTestCase {
 
         let job = try XCTUnwrap(jobSchedule.nextJob())
         jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
-        XCTAssert(job.element.jobParameters is Job1)
+        XCTAssertEqual(job.element.jobName, "Job1")
         let job2 = try XCTUnwrap(jobSchedule.nextJob())
         jobSchedule.updateNextScheduledDate(jobIndex: job2.offset)
-        XCTAssert(job2.element.jobParameters is Job2)
+        XCTAssertEqual(job2.element.jobName, "Job2")
 
     }
 
@@ -256,9 +256,9 @@ final class JobSchedulerTests: XCTestCase {
         let sequence = JobSchedule.JobSequence(jobSchedule: jobSchedule, logger: logger)
         var jobIterator = sequence.makeAsyncIterator()
         let job = await jobIterator.next()
-        XCTAssertEqual(job?.element.name == "Job1")
+        XCTAssertEqual(job?.element.jobName, "Job1")
         let job2 = await jobIterator.next()
-        XCTAssertTrue(job2?.job is Job2)
+        XCTAssertEqual(job2?.element.jobName, "Job2")
     }
 
     func testScheduleAfterReadingLastData(
