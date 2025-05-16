@@ -21,6 +21,13 @@ import FoundationEssentials
 import Foundation
 #endif
 
+protocol SchedulableJobRequest: Sendable & Codable {
+    func push<Queue: JobQueueDriver>(
+        to jobQueue: JobQueue<Queue>,
+        options: Queue.JobOptions
+    ) async throws -> Queue.JobID
+}
+
 /// An array of Jobs with schedules detailing when they should be run
 ///
 /// Create your own Job Schedule and then create a scheduler Service to
@@ -57,16 +64,47 @@ public struct JobSchedule: MutableCollection, Sendable {
 
     /// A single scheduled Job
     public struct Element: Sendable {
+        var jobName: String
         var nextScheduledDate: Date
         var schedule: Schedule
-        let jobParameters: any JobParameters
         let accuracy: ScheduleAccuracy
+        let createJobRequest: @Sendable (Date, Date?) -> any SchedulableJobRequest
 
-        public init(job: JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
+        public init<Parameters: JobParameters>(job: Parameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
             self.nextScheduledDate = .now
             self.schedule = schedule
-            self.jobParameters = job
             self.accuracy = accuracy
+            self.jobName = Parameters.jobName
+            self.createJobRequest = { queuedAt, nextScheduledAt in
+                JobRequest(
+                    name: Parameters.jobName,
+                    parameters: job,
+                    queuedAt: queuedAt,
+                    attempt: 1,
+                    nextScheduledAt: nextScheduledAt
+                )
+            }
+        }
+
+        public init<Parameters: Sendable & Codable>(
+            _ jobName: JobName<Parameters>,
+            parameters: Parameters,
+            schedule: Schedule,
+            accuracy: ScheduleAccuracy = .latest
+        ) {
+            self.nextScheduledDate = .now
+            self.schedule = schedule
+            self.accuracy = accuracy
+            self.jobName = jobName.name
+            self.createJobRequest = { queuedAt, nextScheduledAt in
+                JobRequest(
+                    name: jobName.name,
+                    parameters: parameters,
+                    queuedAt: queuedAt,
+                    attempt: 1,
+                    nextScheduledAt: nextScheduledAt
+                )
+            }
         }
 
         mutating func setInitialNextDate(after date: Date, now: Date = .now, logger: Logger) {
@@ -91,7 +129,7 @@ public struct JobSchedule: MutableCollection, Sendable {
             logger.debug(
                 "First scheduled date for job",
                 metadata: [
-                    "JobName": .stringConvertible(type(of: self.jobParameters).jobName),
+                    "JobName": .stringConvertible(self.jobName),
                     "JobTime": .stringConvertible(self.nextScheduledDate),
                 ]
             )
@@ -151,7 +189,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     ) async throws {
         for index in 0..<self.count {
             let date: Date
-            if let lastDate = try await getLastScheduledDate(type(of: self.elements[index].jobParameters).jobName) {
+            if let lastDate = try await getLastScheduledDate(self.elements[index].jobName) {
                 date = lastDate
                 logger.info("Last scheduled date \(date).")
             } else {
@@ -165,7 +203,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     /// AsyncSequence of Jobs based on a JobSchedule
     struct JobSequence: AsyncSequence {
         struct Element {
-            let job: JobParameters
+            let element: JobSchedule.Element  //createJobRequest: @Sendable (Date, Date?) -> any SchedulableJobRequest
             let date: Date
             let nextScheduledAt: Date?
         }
@@ -188,7 +226,7 @@ public struct JobSchedule: MutableCollection, Sendable {
                 self.logger.debug(
                     "Next Scheduled Job",
                     metadata: [
-                        "JobName": .stringConvertible(type(of: job.element.jobParameters).jobName),
+                        "JobName": .stringConvertible(job.element.jobName),
                         "JobTime": .stringConvertible(job.element.nextScheduledDate),
                     ]
                 )
@@ -200,7 +238,7 @@ public struct JobSchedule: MutableCollection, Sendable {
                     }
                     self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
                     return Element(
-                        job: job.element.jobParameters,
+                        element: job.element,
                         date: scheduledDate,
                         nextScheduledAt: self.jobSchedule[job.offset].nextScheduledDate
                     )
@@ -252,14 +290,10 @@ public struct JobSchedule: MutableCollection, Sendable {
             )
             for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
                 do {
-                    _ = try await job.job.push(
-                        to: self.jobQueue,
-                        currentSchedule: job.date,
-                        nextScheduledAt: job.nextScheduledAt,
-                        options: self.jobOptions
-                    )
+                    let request = job.element.createJobRequest(job.date, job.nextScheduledAt)
+                    _ = try await request.push(to: self.jobQueue, options: self.jobOptions)
                     try await self.jobQueue.setMetadata(
-                        key: .jobScheduleLastDate(schedulerName: self.name, jobName: type(of: job.job).jobName),
+                        key: .jobScheduleLastDate(schedulerName: self.name, jobName: job.element.jobName),
                         value: job.date
                     )
                 } catch {

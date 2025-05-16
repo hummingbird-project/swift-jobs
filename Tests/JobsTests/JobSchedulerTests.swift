@@ -256,7 +256,7 @@ final class JobSchedulerTests: XCTestCase {
         let sequence = JobSchedule.JobSequence(jobSchedule: jobSchedule, logger: logger)
         var jobIterator = sequence.makeAsyncIterator()
         let job = await jobIterator.next()
-        XCTAssert(job?.job is Job1)
+        XCTAssertEqual(job?.element.name == "Job1")
         let job2 = await jobIterator.next()
         XCTAssertTrue(job2?.job is Job2)
     }

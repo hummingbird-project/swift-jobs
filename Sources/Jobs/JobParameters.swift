@@ -24,7 +24,7 @@ public protocol JobParameters: Codable, Sendable {
     static var jobName: String { get }
 }
 
-extension JobParameters {
+/*extension JobParameters {
     /// Added so it's possible for the scheduler to add date partitions
     internal func push<Queue: JobQueueDriver>(
         to jobQueue: JobQueue<Queue>,
@@ -33,10 +33,11 @@ extension JobParameters {
         options: Queue.JobOptions = .init()
     ) async throws -> Queue.JobID {
         try await jobQueue.schedule(
-            self,
+            Self.jobName,
+            parameters: self,
             currentSchedule: currentSchedule,
             nextScheduledAt: nextScheduledAt,
             options: options
         )
     }
-}
+}*/
