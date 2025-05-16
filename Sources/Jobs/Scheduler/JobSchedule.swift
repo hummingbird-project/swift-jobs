@@ -21,6 +21,7 @@ import FoundationEssentials
 import Foundation
 #endif
 
+/// Protocol used to push an existential job
 protocol SchedulableJobRequest: Sendable & Codable {
     func push<Queue: JobQueueDriver>(
         to jobQueue: JobQueue<Queue>,
