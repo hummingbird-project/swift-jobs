@@ -42,7 +42,7 @@ public protocol JobQueueProtocol: Service {
     ///  Register job type
     /// - Parameters:
     ///   - job: Job definition
-    func registerJob(_ job: JobDefinition<some JobParameters>)
+    func registerJob(_ job: JobDefinition<some Sendable & Codable>)
 
     /// Job queue options
     var options: JobQueueOptions { get }
@@ -118,18 +118,22 @@ extension JobQueueProtocol {
 
     ///  Initialize JobDefinition
     /// - Parameters:
-    ///   - jobName: Job name
+    ///   - name: Job name
+    ///   - parameters: Job parameter type
     ///   - retryStrategy: Retry strategy for failed jobs
     ///   - timeout: Timeout for long running jobs
     ///   - execute: Closure that executes job
     public func registerJob<Parameters: Sendable & Codable>(
-        jobName: JobName<Parameters>,
+        name: JobName<Parameters>,
+        parameters: Parameters.Type = Parameters.self,
         retryStrategy: (any JobRetryStrategy)? = nil,
         timeout: Duration? = nil,
         execute: @escaping @Sendable (Parameters, JobExecutionContext) async throws -> Void
-    ) where Parameters: JobParameters {
-        self.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
-        let job = JobDefinition<Parameters>(
+    ) {
+        self.logger.info("Registered Job", metadata: ["JobName": .string(name.name)])
+        let job = JobDefinition(
+            name: name,
+            parameters: parameters,
             retryStrategy: retryStrategy ?? self.options.retryStrategy,
             timeout: timeout,
             execute: execute

@@ -61,12 +61,11 @@ final class JobsTests: XCTestCase {
         let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 6)
         let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
         let jobName = JobName<Int>("testJobNameBasic")
-        let job = JobDefinition(name: jobName) { parameters, context in
+        jobQueue.registerJob(name: "testJobNameBasic", parameters: Int.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
             expectation.fulfill()
         }
-        jobQueue.registerJob(job)
         try await testJobQueue(jobQueue) {
             try await jobQueue.push(jobName, parameters: 1)
             try await jobQueue.push(jobName, parameters: 2)
