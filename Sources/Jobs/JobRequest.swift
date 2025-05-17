@@ -19,16 +19,20 @@ import Foundation
 #endif
 
 /// Request to run job, pushed to job queue
-public struct JobRequest<Parameters: JobParameters>: Encodable {
+public struct JobRequest<Parameters: Sendable & Codable>: Encodable {
+    /// Job name
+    public let name: String
     /// Job details
     public let data: JobInstanceData<Parameters>
 
     init(
+        name: String,
         parameters: Parameters,
         queuedAt: Date,
         attempt: Int,
         nextScheduledAt: Date? = nil
     ) {
+        self.name = name
         self.data = .init(
             parameters: parameters,
             queuedAt: queuedAt,
@@ -38,6 +42,7 @@ public struct JobRequest<Parameters: JobParameters>: Encodable {
     }
 
     init(jobInstance: JobInstance<Parameters>, attempt: Int) {
+        self.name = .init(jobInstance.name)
         self.data = .init(
             parameters: jobInstance.parameters,
             queuedAt: jobInstance.queuedAt,
@@ -48,8 +53,18 @@ public struct JobRequest<Parameters: JobParameters>: Encodable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: _JobCodingKey.self)
         let childEncoder = container.superEncoder(
-            forKey: .init(stringValue: Parameters.jobName, intValue: nil)
+            forKey: .init(stringValue: name, intValue: nil)
         )
         try self.data.encode(to: childEncoder)
+    }
+}
+
+extension JobRequest: SchedulableJobRequest {
+    /// Added so it's possible for the scheduler to add date partitions
+    internal func push<Queue: JobQueueDriver>(
+        to jobQueue: JobQueue<Queue>,
+        options: Queue.JobOptions = .init()
+    ) async throws -> Queue.JobID {
+        try await jobQueue.push(jobRequest: self, options: options)
     }
 }

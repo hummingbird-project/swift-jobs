@@ -65,7 +65,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     ///  Register job
     /// - Parameters:
     ///   - job: Job Definition
-    public func registerJob<Parameters: JobParameters>(_ job: JobDefinition<Parameters>) {
+    public func registerJob<Parameters>(_ job: JobDefinition<Parameters>) {
         self.jobRegistry.registerJob(job)
     }
 
@@ -74,7 +74,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     ///   - jobRequest: Job Request
     ///   - options: Job options
     /// - Returns: Job ID
-    @discardableResult public func push<Parameters: JobParameters>(_ jobRequest: JobRequest<Parameters>, options: JobOptions) async throws -> JobID {
+    @discardableResult public func push<Parameters>(_ jobRequest: JobRequest<Parameters>, options: JobOptions) async throws -> JobID {
         let buffer = try self.jobRegistry.encode(jobRequest: jobRequest)
         return try await self.queue.push(buffer, options: options)
     }
@@ -84,7 +84,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     ///   - id: Job ID
     ///   - jobRequest: Job Request
     ///   - options: Job options
-    public func retry<Parameters: JobParameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobRetryOptions) async throws {
+    public func retry<Parameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobRetryOptions) async throws {
         let buffer = try self.jobRegistry.encode(jobRequest: jobRequest)
         let options = JobOptions(delayUntil: options.delayUntil)
         try await self.queue.retry(id, buffer: buffer, options: options)

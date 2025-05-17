@@ -23,7 +23,7 @@ import Foundation
 /// Protocol for a Job
 public protocol JobInstanceProtocol: Sendable {
     /// Parameters job requries
-    associatedtype Parameters: JobParameters
+    associatedtype Parameters: Sendable & Codable
     /// Retry strategy
     var retryStrategy: any JobRetryStrategy { get }
     /// Time job was queued
@@ -32,6 +32,8 @@ public protocol JobInstanceProtocol: Sendable {
     var attempt: Int { get }
     /// Job parameters
     var parameters: Parameters { get }
+    /// Job name
+    var name: String { get }
     /// Trace context
     var traceContext: [String: String]? { get }
     /// Next time job is scheduled to run
@@ -43,11 +45,6 @@ public protocol JobInstanceProtocol: Sendable {
 }
 
 extension JobInstanceProtocol {
-    /// Name of job type
-    public var name: String {
-        Parameters.jobName
-    }
-
     /// Should we retry this job
     public func shouldRetry(error: Error) -> Bool {
         self.retryStrategy.shouldRetry(attempt: self.attempt, error: error)
@@ -64,11 +61,15 @@ extension JobInstanceProtocol {
     }
 }
 
+extension JobInstanceProtocol where Parameters: JobParameters {
+    var name: String { Parameters.jobName }
+}
+
 /// Job decoded from Queue
 ///
 /// Includes everything needed to run the job plus any other data that was encoded
 /// with the job
-struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
+struct JobInstance<Parameters: Sendable & Codable>: JobInstanceProtocol {
     /// job definition
     let job: JobDefinition<Parameters>
     /// job parameters
@@ -81,6 +82,8 @@ struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
     var attempt: Int { self.data.attempt }
     /// Trace context
     var traceContext: [String: String]? { self.data.traceContext }
+    /// Job name
+    var name: String { self.job.name }
     /// Job parameters
     var parameters: Parameters { self.data.parameters }
     /// Next time job is scheduled to run
@@ -99,7 +102,7 @@ struct JobInstance<Parameters: JobParameters>: JobInstanceProtocol {
 }
 
 /// Data attach to a job
-public struct JobInstanceData<Parameters: JobParameters>: Codable, Sendable {
+public struct JobInstanceData<Parameters: Sendable & Codable>: Codable, Sendable {
     /// Job parameters
     let parameters: Parameters
     /// Time job was queued

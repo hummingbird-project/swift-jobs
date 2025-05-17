@@ -63,12 +63,12 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///   - parameters: Job parameters
     ///   - context: Job queue context
     @inlinable
-    public func onPushJob<Parameters: JobParameters>(parameters: Parameters, context: JobQueueContext) async {
+    public func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobQueueContext) async {
         Meter(
             label: Self.meterLabel,
             dimensions: [
                 ("status", JobStatus.queued.rawValue),
-                ("name", Parameters.jobName),
+                ("name", name),
                 ("queue", self.queueName),
             ]
         ).increment()

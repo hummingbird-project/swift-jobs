@@ -34,8 +34,8 @@ public protocol JobQueueProtocol: Service {
     ///   - parameters: Job parameters
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
-    @discardableResult func push<Parameters: JobParameters>(
-        _ parameters: Parameters,
+    @discardableResult func push<Parameters: Sendable>(
+        jobRequest: JobRequest<Parameters>,
         options: Queue.JobOptions
     ) async throws -> Queue.JobID
 
@@ -51,12 +51,48 @@ public protocol JobQueueProtocol: Service {
 extension JobQueueProtocol {
     ///  Push Job onto queue
     /// - Parameters:
+    ///   - parameters: parameters for the job
+    /// - Returns: Identifier of queued job
+    @discardableResult public func push<Parameters: Sendable & Codable>(
+        _ jobName: JobName<Parameters>,
+        parameters: Parameters
+    ) async throws -> Queue.JobID {
+        let request = JobRequest(name: jobName.name, parameters: parameters, queuedAt: .now, attempt: 1)
+        return try await self.push(jobRequest: request, options: .init())
+    }
+
+    ///  Push Job onto queue
+    /// - Parameters:
     ///   - parameters: Job parameters
     /// - Returns: Identifier of queued job
     @discardableResult public func push<Parameters: JobParameters>(
         _ parameters: Parameters
     ) async throws -> Queue.JobID {
-        try await self.push(parameters, options: .init())
+        try await self.push(.init(Parameters.jobName), parameters: parameters, options: .init())
+    }
+
+    ///  Push Job onto queue
+    /// - Parameters:
+    ///   - parameters: parameters for the job
+    /// - Returns: Identifier of queued job
+    @discardableResult public func push<Parameters: Sendable & Codable>(
+        _ jobName: JobName<Parameters>,
+        parameters: Parameters,
+        options: Queue.JobOptions
+    ) async throws -> Queue.JobID {
+        let request = JobRequest(name: jobName.name, parameters: parameters, queuedAt: .now, attempt: 1)
+        return try await self.push(jobRequest: request, options: options)
+    }
+
+    ///  Push Job onto queue
+    /// - Parameters:
+    ///   - parameters: Job parameters
+    /// - Returns: Identifier of queued job
+    @discardableResult public func push<Parameters: JobParameters>(
+        _ parameters: Parameters,
+        options: Queue.JobOptions
+    ) async throws -> Queue.JobID {
+        try await self.push(.init(Parameters.jobName), parameters: parameters, options: options)
     }
 
     ///  Initialize JobDefinition
@@ -67,6 +103,27 @@ extension JobQueueProtocol {
     ///   - execute: Closure that executes job
     public func registerJob<Parameters: JobParameters>(
         parameters: Parameters.Type = Parameters.self,
+        retryStrategy: (any JobRetryStrategy)? = nil,
+        timeout: Duration? = nil,
+        execute: @escaping @Sendable (Parameters, JobExecutionContext) async throws -> Void
+    ) where Parameters: JobParameters {
+        self.logger.info("Registered Job", metadata: ["JobName": .string(Parameters.jobName)])
+        let job = JobDefinition<Parameters>(
+            retryStrategy: retryStrategy ?? self.options.retryStrategy,
+            timeout: timeout,
+            execute: execute
+        )
+        self.registerJob(job)
+    }
+
+    ///  Initialize JobDefinition
+    /// - Parameters:
+    ///   - jobName: Job name
+    ///   - retryStrategy: Retry strategy for failed jobs
+    ///   - timeout: Timeout for long running jobs
+    ///   - execute: Closure that executes job
+    public func registerJob<Parameters: Sendable & Codable>(
+        jobName: JobName<Parameters>,
         retryStrategy: (any JobRetryStrategy)? = nil,
         timeout: Duration? = nil,
         execute: @escaping @Sendable (Parameters, JobExecutionContext) async throws -> Void
@@ -123,50 +180,19 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// - Parameters:
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
-    @discardableResult public func push<Parameters: JobParameters>(
-        _ parameters: Parameters,
-        options: Queue.JobOptions = .init()
-    ) async throws -> Queue.JobID {
-        let request = JobRequest(parameters: parameters, queuedAt: .now, attempt: 1)
-        let instanceID = try await self.queue.push(request, options: options)
-        await self.handler.middleware.onPushJob(
-            parameters: parameters,
-            context: .init(jobID: instanceID.description)
-        )
-        self.logger.debug(
-            "Pushed Job",
-            metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(Parameters.jobName)]
-        )
-        return instanceID
-    }
-
-    ///  Push Job onto queue
-    /// - Parameters:
-    ///   - parameters: parameters for the job
-    ///   - currentSchedule: current job schedule
-    ///   - nextScheduledAt: next schedule for the job
-    ///   - options: job options
-    /// - Returns: Identifier of queued job
-    @discardableResult internal func schedule<Parameters: JobParameters>(
-        _ parameters: Parameters,
-        currentSchedule: Date,
-        nextScheduledAt: Date?,
+    @discardableResult public func push<Parameters: Sendable>(
+        jobRequest: JobRequest<Parameters>,
         options: Queue.JobOptions
     ) async throws -> Queue.JobID {
-        let request = JobRequest(
-            parameters: parameters,
-            queuedAt: currentSchedule,
-            attempt: 1,
-            nextScheduledAt: nextScheduledAt
-        )
-        let instanceID = try await self.queue.push(request, options: options)
+        let instanceID = try await self.queue.push(jobRequest, options: options)
         await self.handler.middleware.onPushJob(
-            parameters: parameters,
+            name: jobRequest.name,
+            parameters: jobRequest.data.parameters,
             context: .init(jobID: instanceID.description)
         )
         self.logger.debug(
             "Pushed Job",
-            metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(Parameters.jobName)]
+            metadata: ["JobID": .stringConvertible(instanceID), "JobName": .string(jobRequest.name)]
         )
         return instanceID
     }
@@ -174,7 +200,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     ///  Register job type
     /// - Parameters:
     ///   - job: Job definition
-    public func registerJob(_ job: JobDefinition<some JobParameters>) {
+    public func registerJob(_ job: JobDefinition<some Sendable & Codable>) {
         self.handler.queue.registerJob(job)
     }
 

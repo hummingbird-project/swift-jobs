@@ -57,6 +57,28 @@ final class JobsTests: XCTestCase {
         }
     }
 
+    func testJobNameBasic() async throws {
+        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 6)
+        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests"))
+        let jobName = JobName<Int>("testJobNameBasic")
+        let job = JobDefinition(name: jobName) { parameters, context in
+            context.logger.info("Parameters=\(parameters)")
+            try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
+            expectation.fulfill()
+        }
+        jobQueue.registerJob(job)
+        try await testJobQueue(jobQueue) {
+            try await jobQueue.push(jobName, parameters: 1)
+            try await jobQueue.push(jobName, parameters: 2)
+            try await jobQueue.push(jobName, parameters: 3)
+            try await jobQueue.push(jobName, parameters: 4)
+            try await jobQueue.push(jobName, parameters: 5)
+            try await jobQueue.push(jobName, parameters: 6)
+
+            await fulfillment(of: [expectation], timeout: 5)
+        }
+    }
+
     func testMultipleWorkers() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testMultipleWorkers"
