@@ -18,26 +18,8 @@ import FoundationEssentials
 import Foundation
 #endif
 
-/// Defines job parameters and identifier
+/// Defines job parameters and name
 public protocol JobParameters: Codable, Sendable {
     /// Job type name
     static var jobName: String { get }
 }
-
-/*extension JobParameters {
-    /// Added so it's possible for the scheduler to add date partitions
-    internal func push<Queue: JobQueueDriver>(
-        to jobQueue: JobQueue<Queue>,
-        currentSchedule: Date,
-        nextScheduledAt: Date?,
-        options: Queue.JobOptions = .init()
-    ) async throws -> Queue.JobID {
-        try await jobQueue.schedule(
-            Self.jobName,
-            parameters: self,
-            currentSchedule: currentSchedule,
-            nextScheduledAt: nextScheduledAt,
-            options: options
-        )
-    }
-}*/

@@ -204,7 +204,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     /// AsyncSequence of Jobs based on a JobSchedule
     struct JobSequence: AsyncSequence {
         struct Element {
-            let element: JobSchedule.Element  //createJobRequest: @Sendable (Date, Date?) -> any SchedulableJobRequest
+            let element: JobSchedule.Element
             let date: Date
             let nextScheduledAt: Date?
         }
