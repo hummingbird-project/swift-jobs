@@ -153,7 +153,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     /// - Parameters:
     ///   - job: Job parameters
     ///   - schedule: Schedule for job
-    public mutating func addJob(_ job: JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
+    public mutating func addJob(_ job: some JobParameters, schedule: Schedule, accuracy: ScheduleAccuracy = .latest) {
         self.elements.append(.init(job: job, schedule: schedule, accuracy: accuracy))
     }
 
