@@ -178,6 +178,27 @@ final class JobSchedulerTests: XCTestCase {
     }
 
     func testJobSchedule() throws {
+        let jobName = JobName<String>("Job1")
+        var schedule = JobSchedule()
+        schedule.addJob(jobName, parameters: "Test job", schedule: .hourly(minute: 30), accuracy: .all)
+
+        schedule.setInitialNextDate(after: .now, logger: Logger(label: "test"))
+
+        let date = schedule[0].nextScheduledDate
+        let minutes = Calendar.current.component(.minute, from: date)
+        XCTAssertEqual(minutes, 30)
+        let job = try XCTUnwrap(schedule.nextJob())
+        XCTAssertEqual(job.element.jobName, "Job1")
+
+        schedule.updateNextScheduledDate(jobIndex: 0)
+        let date2 = schedule[0].nextScheduledDate
+        let minutes2 = Calendar.current.component(.minute, from: date2)
+        XCTAssertEqual(minutes2, 30)
+        let job2 = try XCTUnwrap(schedule.nextJob())
+        XCTAssertEqual(job2.element.jobName, "Job1")
+    }
+
+    func testJobScheduleWithTwoJobs() throws {
         struct Job1: JobParameters {
             static var jobName = "Job1"
         }

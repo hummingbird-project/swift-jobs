@@ -157,6 +157,19 @@ public struct JobSchedule: MutableCollection, Sendable {
         self.elements.append(.init(job: job, schedule: schedule, accuracy: accuracy))
     }
 
+    ///  Add Job to Schedule
+    /// - Parameters:
+    ///   - job: Job parameters
+    ///   - schedule: Schedule for job
+    public mutating func addJob<Parameters: Sendable & Codable>(
+        _ jobName: JobName<Parameters>,
+        parameters: Parameters,
+        schedule: Schedule,
+        accuracy: ScheduleAccuracy = .latest
+    ) {
+        self.elements.append(.init(jobName, parameters: parameters, schedule: schedule, accuracy: accuracy))
+    }
+
     ///  Create Job scheduler Service
     /// - Parameters
     ///   - jobQueue: Job queue to place jobs
