@@ -60,6 +60,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
     /// Job has been pushed onto the queue
     ///
     /// - Parameters:
+    ///   - name: Job name
     ///   - parameters: Job parameters
     ///   - context: Job queue context
     @inlinable
