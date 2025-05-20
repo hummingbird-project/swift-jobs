@@ -53,6 +53,7 @@ extension JobQueueProtocol {
     /// - Parameters:
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
+    @inlinable
     @discardableResult public func push<Parameters: Sendable & Codable>(
         _ jobName: JobName<Parameters>,
         parameters: Parameters
@@ -65,6 +66,7 @@ extension JobQueueProtocol {
     /// - Parameters:
     ///   - parameters: Job parameters
     /// - Returns: Identifier of queued job
+    @inlinable
     @discardableResult public func push<Parameters: JobParameters>(
         _ parameters: Parameters
     ) async throws -> Queue.JobID {
@@ -75,6 +77,7 @@ extension JobQueueProtocol {
     /// - Parameters:
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
+    @inlinable
     @discardableResult public func push<Parameters: Sendable & Codable>(
         _ jobName: JobName<Parameters>,
         parameters: Parameters,
@@ -88,6 +91,7 @@ extension JobQueueProtocol {
     /// - Parameters:
     ///   - parameters: Job parameters
     /// - Returns: Identifier of queued job
+    @inlinable
     @discardableResult public func push<Parameters: JobParameters>(
         _ parameters: Parameters,
         options: Queue.JobOptions
@@ -165,6 +169,7 @@ extension JobQueueProtocol {
 public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// underlying driver for queue
     public let queue: Queue
+    @usableFromInline
     let handler: JobQueueHandler<Queue>
     let initializationComplete: Trigger
 
@@ -184,7 +189,9 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// - Parameters:
     ///   - parameters: parameters for the job
     /// - Returns: Identifier of queued job
-    @discardableResult public func push<Parameters: Sendable>(
+    @discardableResult
+    @inlinable
+    public func push<Parameters: Sendable>(
         jobRequest: JobRequest<Parameters>,
         options: Queue.JobOptions
     ) async throws -> Queue.JobID {
@@ -211,6 +218,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// Attempt to cancel a job
     /// - Parameters:
     ///   - jobID: an existing job id
+    @inlinable
     public func cancelJob(
         jobID: Queue.JobID
     ) async throws where Queue: CancellableJobQueue {
@@ -220,6 +228,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// Attempt to pause a job
     /// - Parameters:
     ///   - jobID: an existing job id
+    @inlinable
     public func pauseJob(
         jobID: Queue.JobID
     ) async throws where Queue: ResumableJobQueue {
@@ -229,6 +238,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// Resumes a job that was paused
     /// - Parameters:
     ///   - jobID: an existing job id
+    @inlinable
     public func resumeJob(
         jobID: Queue.JobID
     ) async throws where Queue: ResumableJobQueue {

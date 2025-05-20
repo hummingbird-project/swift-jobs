@@ -40,4 +40,9 @@ public struct JobExecutionContext: Sendable {
 public struct JobQueueContext {
     /// Job instance identifier
     public let jobID: String
+
+    @usableFromInline
+    internal init(jobID: String) {
+        self.jobID = jobID
+    }
 }
