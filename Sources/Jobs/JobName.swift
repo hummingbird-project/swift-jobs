@@ -27,3 +27,15 @@ public struct JobName<Parameters: Codable>: CustomStringConvertible, Expressible
         self.name
     }
 }
+
+extension JobName: Codable {
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.name = try container.decode(String.self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(self.name)
+    }
+}

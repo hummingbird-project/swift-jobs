@@ -649,4 +649,46 @@ final class JobsTests: XCTestCase {
         }
         XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
     }
+
+    func testParentJob() async throws {
+        struct TestParentParameters: JobParameters {
+            static let jobName = "testParentJob"
+            let output: String
+        }
+        let childJob1 = JobName<String>("Child1")
+        let childJob2 = JobName<String>("Child2")
+
+        let (stream, cont) = AsyncStream.makeStream(of: String.self)
+        var logger = Logger(label: "ParentJobTest")
+        logger.logLevel = .debug
+
+        let jobQueue = JobQueue(.memory, numWorkers: 4, logger: logger)
+        jobQueue.registerJob(name: childJob1) { parameters, context in
+            cont.yield("Child1+\(parameters)")
+        }
+        jobQueue.registerJob(name: childJob2) { parameters, context in
+            cont.yield("Child2+\(parameters)")
+        }
+        jobQueue.registerParentJob(
+            parameters: TestParentParameters.self,
+            children: [childJob1, childJob2]
+        ) { parameters, context in
+            parameters.output
+        }
+
+        try await testJobQueue(jobQueue) {
+            try await jobQueue.push(TestParentParameters(output: "Test"))
+
+            var iterator = stream.makeAsyncIterator()
+            var value = await iterator.next()
+            if value == "Child1+Test" {
+                value = await iterator.next()
+                XCTAssertEqual(value, "Child2+Test")
+            } else {
+                XCTAssertEqual(value, "Child2+Test")
+                value = await iterator.next()
+                XCTAssertEqual(value, "Child1+Test")
+            }
+        }
+    }
 }
