@@ -25,6 +25,7 @@ public struct JobRequest<Parameters: Sendable & Codable>: Encodable {
     /// Job details
     public let data: JobInstanceData<Parameters>
 
+    @usableFromInline
     init(
         name: String,
         parameters: Parameters,
