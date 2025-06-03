@@ -24,7 +24,7 @@ import Foundation
 #endif
 
 /// Protocol for Job queue. Allows us to pass job queues around as existentials
-public protocol JobQueueProtocol: Service {
+public protocol JobQueueProtocol {
     associatedtype Queue: JobQueueDriver
 
     var logger: Logger { get }
@@ -43,6 +43,8 @@ public protocol JobQueueProtocol: Service {
     /// - Parameters:
     ///   - job: Job definition
     func registerJob(_ job: JobDefinition<some Sendable & Codable>)
+
+    func handler(numWorkers: Int) -> any Service
 
     /// Job queue options
     var options: JobQueueOptions { get }
@@ -166,23 +168,30 @@ extension JobQueueProtocol {
 /// handler. Before you can push jobs onto a queue you should register it
 /// with the queue via either ``registerJob(parameters:maxRetryCount:execute:)`` or
 /// ``registerJob(_:)``.
-public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
+public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
     /// underlying driver for queue
     public let queue: Queue
     @usableFromInline
-    let handler: JobQueueHandler<Queue>
-    let initializationComplete: Trigger
+    let middleware: any JobMiddleware
+    public let logger: Logger
+    public let options: JobQueueOptions
 
     public init(
         _ queue: Queue,
-        numWorkers: Int = 1,
         logger: Logger,
         options: JobQueueOptions = .init(),
         @JobMiddlewareBuilder middleware: () -> some JobMiddleware = { NullJobMiddleware() }
     ) {
         self.queue = queue
-        self.handler = .init(queue: queue, numWorkers: numWorkers, logger: logger, options: options, middleware: middleware())
-        self.initializationComplete = .init()
+        self.middleware = middleware()
+        self.logger = logger
+        self.options = options
+    }
+
+    public func handler(
+        numWorkers: Int
+    ) -> any Service {
+        JobQueueHandler(queue: queue, numWorkers: numWorkers, logger: logger, options: options, middleware: self.middleware)
     }
 
     ///  Push Job onto queue
@@ -196,7 +205,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
         options: Queue.JobOptions
     ) async throws -> Queue.JobID {
         let instanceID = try await self.queue.push(jobRequest, options: options)
-        await self.handler.middleware.onPushJob(
+        await self.middleware.onPushJob(
             name: jobRequest.name,
             parameters: jobRequest.data.parameters,
             context: .init(jobID: instanceID.description)
@@ -212,7 +221,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     /// - Parameters:
     ///   - job: Job definition
     public func registerJob(_ job: JobDefinition<some Sendable & Codable>) {
-        self.handler.queue.registerJob(job)
+        self.queue.registerJob(job)
     }
 
     /// Attempt to cancel a job
@@ -244,22 +253,6 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol {
     ) async throws where Queue: ResumableJobQueue {
         try await self.queue.resume(jobID: jobID)
     }
-
-    ///  Run queue handler
-    public func run() async throws {
-        do {
-            try await self.queue.onInit()
-            self.initializationComplete.trigger()
-        } catch {
-            self.initializationComplete.failed(error)
-        }
-        try await self.handler.run()
-    }
-
-    /// Logger used by Job queue and its handler
-    public var logger: Logger { self.handler.logger }
-    /// Job queue options
-    public var options: JobQueueOptions { self.handler.options }
 }
 
 extension JobQueue {

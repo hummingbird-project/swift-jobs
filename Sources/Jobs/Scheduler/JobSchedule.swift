@@ -283,7 +283,7 @@ public struct JobSchedule: MutableCollection, Sendable {
 
         /// Run Job scheduler
         public func run() async throws {
-            try await self.jobQueue.initializationComplete.waitUntilTriggered()
+            try await self.jobQueue.queue.waitUntilReady()
             var jobSchedule = self.jobSchedule
             // Update next scheduled date for each job schedule based off the last scheduled date stored
             do {

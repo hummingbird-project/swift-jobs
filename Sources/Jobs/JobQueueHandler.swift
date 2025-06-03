@@ -23,8 +23,7 @@ import Foundation
 #endif
 
 /// Object handling a single job queue
-@usableFromInline
-final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
+final class JobQueueHandler<Queue: JobQueueDriver>: Service {
     init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueOptions, middleware: any JobMiddleware) {
         self.queue = queue
         self.numWorkers = numWorkers
@@ -208,7 +207,6 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     let queue: Queue
     let options: JobQueueOptions
     private let numWorkers: Int
-    @usableFromInline
     let middleware: any JobMiddleware
     let logger: Logger
 }

@@ -484,7 +484,7 @@ final class JobSchedulerTests: XCTestCase {
         await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = await ServiceGroup(
                 configuration: .init(
-                    services: [jobQueue, jobSchedule.scheduler(on: jobQueue)],
+                    services: [jobQueue.handler(numWorkers: 1), jobSchedule.scheduler(on: jobQueue)],
                     logger: logger
                 )
             )
@@ -520,7 +520,7 @@ final class JobSchedulerTests: XCTestCase {
         await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = await ServiceGroup(
                 configuration: .init(
-                    services: [jobQueue, jobSchedule.scheduler(on: jobQueue, named: "test")],
+                    services: [jobQueue.handler(numWorkers: 1), jobSchedule.scheduler(on: jobQueue, named: "test")],
                     logger: logger
                 )
             )
@@ -563,7 +563,7 @@ final class JobSchedulerTests: XCTestCase {
         await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = await ServiceGroup(
                 configuration: .init(
-                    services: [jobQueue, jobSchedule.scheduler(on: jobQueue, named: "testLastDateAccuracy")],
+                    services: [jobQueue.handler(numWorkers: 1), jobSchedule.scheduler(on: jobQueue, named: "testLastDateAccuracy")],
                     logger: logger
                 )
             )

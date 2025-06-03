@@ -39,14 +39,14 @@ final class TracingTests: XCTestCase {
         }
         InstrumentationSystem.bootstrapInternal(tracer)
 
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) {
+        let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests")) {
             TracingJobMiddleware()
         }
         jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(parameters.sleep))
         }
-        let jobID = try await testJobQueue(jobQueue) {
+        let jobID = try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
             let jobID = try await jobQueue.push(TestParameters(sleep: 10))
             await fulfillment(of: [expectation], timeout: 1)
             return jobID
@@ -83,7 +83,7 @@ final class TracingTests: XCTestCase {
         let failJob = NIOLockedValueBox(true)
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: logger) {
+        let jobQueue = JobQueue(.memory, logger: logger) {
             TracingJobMiddleware()
         }
         jobQueue.registerJob(
@@ -98,7 +98,7 @@ final class TracingTests: XCTestCase {
                 throw FailedError()
             }
         }
-        let jobID = try await testJobQueue(jobQueue) {
+        let jobID = try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
             let jobID = try await jobQueue.push(TestParameters())
             await fulfillment(of: [expectation], timeout: 5)
             return jobID
@@ -146,7 +146,7 @@ final class TracingTests: XCTestCase {
         tracer.onEndSpan = { _ in tracerExpectation.fulfill() }
         InstrumentationSystem.bootstrapInternal(tracer)
 
-        let jobQueue = JobQueue(.memory, numWorkers: 1, logger: Logger(label: "JobsTests")) {
+        let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests")) {
             TracingJobMiddleware(queueName: "tracing")
         }
         jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
@@ -158,7 +158,7 @@ final class TracingTests: XCTestCase {
         var serviceContext = ServiceContext.current ?? ServiceContext.topLevel
         serviceContext.traceID = UUID().uuidString
         let jobID = try await withSpan("ParentSpan", context: serviceContext, ofKind: .server) { _ in
-            let jobID = try await testJobQueue(jobQueue) {
+            let jobID = try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
                 let jobID = try await jobQueue.push(TestParameters(sleep: 1))
                 await fulfillment(of: [jobExpectation], timeout: 5)
                 return jobID
