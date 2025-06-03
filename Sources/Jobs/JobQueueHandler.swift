@@ -33,6 +33,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
     }
 
     func run() async throws {
+        try await queue.waitUntilReady()
         let (stream, cont) = AsyncStream.makeStream(of: Void.self)
         try await withTaskCancellationOrGracefulShutdownHandler {
             try await withThrowingTaskGroup(of: Void.self) { group in
