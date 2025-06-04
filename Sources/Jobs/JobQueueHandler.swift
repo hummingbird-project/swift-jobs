@@ -23,9 +23,8 @@ import Foundation
 #endif
 
 /// Object handling a single job queue
-@usableFromInline
-final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
-    init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueOptions, middleware: any JobMiddleware) {
+final class JobQueueHandler<Queue: JobQueueDriver>: Service {
+    init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueHandlerOptions, middleware: any JobMiddleware) {
         self.queue = queue
         self.numWorkers = numWorkers
         self.logger = logger
@@ -34,6 +33,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     }
 
     func run() async throws {
+        try await queue.waitUntilReady()
         let (stream, cont) = AsyncStream.makeStream(of: Void.self)
         try await withTaskCancellationOrGracefulShutdownHandler {
             try await withThrowingTaskGroup(of: Void.self) { group in
@@ -206,9 +206,8 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Sendable {
     }
 
     let queue: Queue
-    let options: JobQueueOptions
+    let options: JobQueueHandlerOptions
     private let numWorkers: Int
-    @usableFromInline
     let middleware: any JobMiddleware
     let logger: Logger
 }
