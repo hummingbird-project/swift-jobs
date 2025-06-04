@@ -22,7 +22,7 @@ public struct JobQueueOptions: Sendable {
     /// - Parameters:
     ///   - defaultRetryStrategy: Default job retry strategy for the job queue
     public init(
-        defaultRetryStrategy: any JobRetryStrategy = .exponentialJitter(),
+        defaultRetryStrategy: any JobRetryStrategy = .exponentialJitter()
     ) {
         self.retryStrategy = defaultRetryStrategy
     }
