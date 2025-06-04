@@ -268,7 +268,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     }
 
     /// Job Scheduler Service
-    public struct Scheduler<Driver: JobQueueDriver>: Service, CustomStringConvertible {
+    public struct Scheduler<Driver: JobQueueDriver & JobMetadataDriver>: Service, CustomStringConvertible {
         let name: String
         let jobQueue: JobQueue<Driver>
         let jobSchedule: JobSchedule
@@ -288,7 +288,7 @@ public struct JobSchedule: MutableCollection, Sendable {
             // Update next scheduled date for each job schedule based off the last scheduled date stored
             do {
                 try await jobSchedule.setInitialNextDate(logger: self.jobQueue.logger) { jobName in
-                    try await self.jobQueue.getMetadata(.jobScheduleLastDate(schedulerName: self.name, jobName: jobName))
+                    try await self.jobQueue.queue.getMetadata(.jobScheduleLastDate(schedulerName: self.name, jobName: jobName))
                 }
             } catch {
                 self.jobQueue.logger.error(
@@ -306,7 +306,7 @@ public struct JobSchedule: MutableCollection, Sendable {
                 do {
                     let request = job.element.createJobRequest(job.date, job.nextScheduledAt)
                     _ = try await request.push(to: self.jobQueue, options: self.jobOptions)
-                    try await self.jobQueue.setMetadata(
+                    try await self.jobQueue.queue.setMetadata(
                         key: .jobScheduleLastDate(schedulerName: self.name, jobName: job.element.jobName),
                         value: job.date
                     )
