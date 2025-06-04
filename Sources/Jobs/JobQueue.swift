@@ -260,20 +260,6 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
     }
 }
 
-extension JobQueue {
-    /// Get JobQueue metadata
-    func getMetadata<Value: Codable>(_ key: JobMetadataKey<Value>) async throws -> Value? {
-        guard let buffer = try await self.queue.getMetadata(key.name) else { return nil }
-        return try JSONDecoder().decode(Value.self, from: buffer)
-    }
-
-    /// Set JobQueue metadata
-    func setMetadata<Value: Codable>(key: JobMetadataKey<Value>, value: Value) async throws {
-        let buffer = try JSONEncoder().encodeAsByteBuffer(value, allocator: ByteBufferAllocator())
-        try await self.queue.setMetadata(key: key.name, value: buffer)
-    }
-}
-
 extension JobQueue: CustomStringConvertible {
     public var description: String { "JobQueue<\(String(describing: Queue.self))>" }
 }
