@@ -516,7 +516,7 @@ final class JobSchedulerTests: XCTestCase {
         jobSchedule.addJob(TriggerShutdownParameters(), schedule: .everyMinute(second: dateComponents.second!))
 
         // Set last date scheduled task ran as 2 seconds before scheduled job triggered
-        try await jobQueue.setMetadata(key: .jobScheduleLastDate(schedulerName: "test", jobName: "TriggerShutdown"), value: dateTriggered - 2)
+        try await jobQueue.queue.setMetadata(key: .jobScheduleLastDate(schedulerName: "test", jobName: "TriggerShutdown"), value: dateTriggered - 2)
         await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = await ServiceGroup(
                 configuration: .init(
@@ -530,7 +530,7 @@ final class JobSchedulerTests: XCTestCase {
             await stream.first { _ in true }
             await serviceGroup.triggerGracefulShutdown()
         }
-        let lastDate = try await jobQueue.getMetadata(.jobScheduleLastDate(schedulerName: "test", jobName: "TriggerShutdown"))
+        let lastDate = try await jobQueue.queue.getMetadata(.jobScheduleLastDate(schedulerName: "test", jobName: "TriggerShutdown"))
         let lastDate2 = try XCTUnwrap(lastDate)
         XCTAssertEqual(lastDate2.timeIntervalSince1970, Date.now.timeIntervalSince1970, accuracy: 1.0)
     }
@@ -556,7 +556,7 @@ final class JobSchedulerTests: XCTestCase {
 
         // Set last date scheduled task ran as 1 minute and 1 second before scheduled job triggered
         // so job triggers twice
-        try await jobQueue.setMetadata(
+        try await jobQueue.queue.setMetadata(
             key: .jobScheduleLastDate(schedulerName: "testLastDateAccuracy", jobName: "TriggerShutdown"),
             value: dateTriggered - 61
         )
@@ -574,7 +574,7 @@ final class JobSchedulerTests: XCTestCase {
             await stream.first { _ in true }
             await serviceGroup.triggerGracefulShutdown()
         }
-        let lastDate = try await jobQueue.getMetadata(.jobScheduleLastDate(schedulerName: "testLastDateAccuracy", jobName: "TriggerShutdown"))
+        let lastDate = try await jobQueue.queue.getMetadata(.jobScheduleLastDate(schedulerName: "testLastDateAccuracy", jobName: "TriggerShutdown"))
         let lastDate2 = try XCTUnwrap(lastDate)
         XCTAssertEqual(lastDate2.timeIntervalSince1970, dateTriggered.timeIntervalSince1970, accuracy: 1.0)
     }
