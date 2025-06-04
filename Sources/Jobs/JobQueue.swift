@@ -46,7 +46,7 @@ public protocol JobQueueProtocol {
 
     ///  Create JobQueue handler that will process jobs pushed to the queue
     /// - Parameter numWorkers: Number of workers to process jobs
-    func handler(numWorkers: Int) -> any Service
+    func handler(numWorkers: Int, options: JobQueueHandlerOptions) -> any Service
 
     /// Job queue options
     var options: JobQueueOptions { get }
@@ -193,7 +193,8 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
     ///  Create JobQueue handler that will process jobs pushed to the queue
     /// - Parameter numWorkers: Number of workers to process jobs
     public func handler(
-        numWorkers: Int
+        numWorkers: Int,
+        options: JobQueueHandlerOptions = .init()
     ) -> any Service {
         JobQueueHandler(queue: queue, numWorkers: numWorkers, logger: logger, options: options, middleware: self.middleware)
     }

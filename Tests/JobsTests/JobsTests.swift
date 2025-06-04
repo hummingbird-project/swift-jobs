@@ -422,7 +422,7 @@ final class JobsTests: XCTestCase {
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
-        try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        try await testJobQueue(jobQueue.handler(numWorkers: 1, options: .init())) {
             try await jobQueue.push(TestParameters(value: 1))
 
             await fulfillment(of: [expectation], timeout: 5)
@@ -600,8 +600,7 @@ final class JobsTests: XCTestCase {
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             .memory,
-            logger: logger,
-            options: .init(gracefulShutdownTimeout: .seconds(10000))
+            logger: logger
         )
         jobQueue.registerJob(
             parameters: TestParameters.self,
@@ -611,7 +610,7 @@ final class JobsTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(100))
             expectationEnded.fulfill()
         }
-        try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        try await testJobQueue(jobQueue.handler(numWorkers: 1, options: .init(gracefulShutdownTimeout: .seconds(10000)))) {
             _ = try await jobQueue.push(TestParameters())
             await fulfillment(of: [expectationStarted], timeout: 5)
         }
@@ -631,8 +630,7 @@ final class JobsTests: XCTestCase {
                 XCTAssert(error is CancellationError)
                 failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed)
             },
-            logger: logger,
-            options: .init(gracefulShutdownTimeout: .milliseconds(50))
+            logger: logger
         )
         jobQueue.registerJob(
             parameters: TestParameters.self,
@@ -641,7 +639,7 @@ final class JobsTests: XCTestCase {
             expectation.fulfill()
             try await Task.sleep(for: .seconds(10))
         }
-        try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        try await testJobQueue(jobQueue.handler(numWorkers: 1, options: .init(gracefulShutdownTimeout: .milliseconds(50)))) {
             try await jobQueue.push(TestParameters())
             await fulfillment(of: [expectation], timeout: 5)
         }

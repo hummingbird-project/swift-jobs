@@ -24,7 +24,7 @@ import Foundation
 
 /// Object handling a single job queue
 final class JobQueueHandler<Queue: JobQueueDriver>: Service {
-    init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueOptions, middleware: any JobMiddleware) {
+    init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueHandlerOptions, middleware: any JobMiddleware) {
         self.queue = queue
         self.numWorkers = numWorkers
         self.logger = logger
@@ -206,7 +206,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
     }
 
     let queue: Queue
-    let options: JobQueueOptions
+    let options: JobQueueHandlerOptions
     private let numWorkers: Int
     let middleware: any JobMiddleware
     let logger: Logger
