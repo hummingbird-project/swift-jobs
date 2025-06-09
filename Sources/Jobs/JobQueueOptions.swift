@@ -12,29 +12,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if canImport(FoundationEssentials)
-import FoundationEssentials
-#else
-import Foundation
-#endif
-
 /// JobQueueOptions
 public struct JobQueueOptions: Sendable {
     /// Default job retry strategy for the job queue
     let retryStrategy: JobRetryStrategy
-    /// Timeout after graceful shutdown has been triggered, before jobs are cancelled
-    let gracefulShutdownTimeout: Duration
 
     /// Initialize a JobQueueOptions
     ///
     /// - Parameters:
     ///   - defaultRetryStrategy: Default job retry strategy for the job queue
-    ///   - gracefulShutdownTimeout: Timeout after graceful shutdown has been triggered, before jobs are cancelled
     public init(
-        defaultRetryStrategy: any JobRetryStrategy = .exponentialJitter(),
-        gracefulShutdownTimeout: Duration = .seconds(30)
+        defaultRetryStrategy: any JobRetryStrategy = .exponentialJitter()
     ) {
         self.retryStrategy = defaultRetryStrategy
-        self.gracefulShutdownTimeout = gracefulShutdownTimeout
     }
 }

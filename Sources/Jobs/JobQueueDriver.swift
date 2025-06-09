@@ -28,8 +28,8 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     associatedtype JobID: CustomStringConvertible & Sendable
     associatedtype JobOptions: JobOptionsProtocol
 
-    /// Called when JobQueueHandler is initialised with this queue
-    func onInit() async throws
+    /// Wait until job queue is ready
+    func waitUntilReady() async throws
     /// Register job definition with driver
     func registerJob<Parameters: Sendable & Codable>(_ job: JobDefinition<Parameters>)
     /// Push Job onto queue
@@ -55,8 +55,8 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
 }
 
 extension JobQueueDriver {
-    // default version of onInit doing nothing
-    public func onInit() async throws {}
+    // default version of waitUntilReady doing nothing
+    public func waitUntilReady() async throws {}
 }
 
 extension JobQueueDriver {
