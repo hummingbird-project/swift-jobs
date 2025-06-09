@@ -268,7 +268,7 @@ final class MetricsTests: XCTestCase {
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
-        try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestParameters(value: 1))
             try await jobQueue.push(TestParameters(value: 2))
             try await jobQueue.push(TestParameters(value: 3))
@@ -320,7 +320,7 @@ final class MetricsTests: XCTestCase {
             string.withLockedValue { $0 = parameters.value }
             expectation.fulfill()
         }
-        try await testJobQueue(jobQueue.handler(numWorkers: 2)) {
+        try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 2))) {
             try await jobQueue.push(TestIntParameter(value: 2))
             try await jobQueue.push(TestStringParameter(value: "test"))
             await fulfillment(of: [expectation], timeout: 5)
@@ -369,7 +369,7 @@ final class MetricsTests: XCTestCase {
                 throw FailedError()
             }
         }
-        try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestParameter())
             let meter = try XCTUnwrap(Self.testMetrics.meters.withLockedValue { $0 }["swift.jobs.meter"] as? TestMeter)
             XCTAssertEqual(meter.values.withLockedValue { $0 }.count, 1)
@@ -407,7 +407,7 @@ final class MetricsTests: XCTestCase {
             expectation.fulfill()
             throw FailedError()
         }
-        try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestParameter())
 
             await fulfillment(of: [expectation], timeout: 5)
@@ -442,7 +442,7 @@ final class MetricsTests: XCTestCase {
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
-        try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestParameter())
             await fulfillment(of: [expectation], timeout: 5)
         }
@@ -471,7 +471,7 @@ final class MetricsTests: XCTestCase {
             expectation.fulfill()
         }
         jobQueue.registerJob(job)
-        try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        try await testJobQueue(jobQueue.processor()) {
             // add two jobs. First job ensures the second job is queued for more than 50ms
             try await jobQueue.push(SleepJobParameters(wait: 50))
             try await jobQueue.push(SleepJobParameters(wait: 5))

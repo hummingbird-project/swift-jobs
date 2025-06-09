@@ -23,16 +23,37 @@ import Foundation
 #endif
 
 /// Object handling a single job queue
-final class JobQueueHandler<Queue: JobQueueDriver>: Service {
-    init(queue: Queue, numWorkers: Int, logger: Logger, options: JobQueueHandlerOptions, middleware: any JobMiddleware) {
+public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
+    let queue: Queue
+    let options: JobQueueProcessorOptions
+    let middleware: any JobMiddleware
+    let logger: Logger
+
+    public init(
+        queue: JobQueue<Queue>,
+        logger: Logger,
+        options: JobQueueProcessorOptions = .init(),
+        @JobMiddlewareBuilder middleware: () -> some JobMiddleware = { NullJobMiddleware() }
+    ) {
+        self.queue = queue.queue
+        self.logger = logger
+        self.options = options
+        self.middleware = middleware()
+    }
+
+    init(
+        queue: Queue,
+        logger: Logger,
+        options: JobQueueProcessorOptions = .init(),
+        middleware: some JobMiddleware
+    ) {
         self.queue = queue
-        self.numWorkers = numWorkers
         self.logger = logger
         self.options = options
         self.middleware = middleware
     }
 
-    func run() async throws {
+    public func run() async throws {
         try await queue.waitUntilReady()
         let (stream, cont) = AsyncStream.makeStream(of: Void.self)
         try await withTaskCancellationOrGracefulShutdownHandler {
@@ -40,7 +61,7 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
                 group.addTask {
                     try await withThrowingTaskGroup(of: Void.self) { group in
                         var iterator = self.queue.makeAsyncIterator()
-                        for _ in 0..<self.numWorkers {
+                        for _ in 0..<self.options.numWorkers {
                             if let jobResult = try await iterator.next() {
                                 group.addTask {
                                     try await self.processJobResult(jobResult)
@@ -204,15 +225,9 @@ final class JobQueueHandler<Queue: JobQueueDriver>: Service {
             }
         }
     }
-
-    let queue: Queue
-    let options: JobQueueHandlerOptions
-    private let numWorkers: Int
-    let middleware: any JobMiddleware
-    let logger: Logger
 }
 
-extension JobQueueHandler: CustomStringConvertible {
+extension JobQueueProcessor: CustomStringConvertible {
     public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
 }
 

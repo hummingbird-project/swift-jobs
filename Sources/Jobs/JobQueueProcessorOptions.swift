@@ -13,17 +13,22 @@
 //===----------------------------------------------------------------------===//
 
 /// JobQueueHandler Options
-public struct JobQueueHandlerOptions: Sendable {
+public struct JobQueueProcessorOptions: Sendable {
+    /// Number of concurrent jobs being processed at one time
+    let numWorkers: Int
     /// Timeout after graceful shutdown has been triggered, before jobs are cancelled
     let gracefulShutdownTimeout: Duration
 
     /// Initialize a JobQueueHandlerOptions
     ///
     /// - Parameters:
+    ///   - numWorkers: Number of concurrent jobs being processed at one time
     ///   - gracefulShutdownTimeout: Timeout after graceful shutdown has been triggered, before jobs are cancelled
     public init(
+        numWorkers: Int = 1,
         gracefulShutdownTimeout: Duration = .seconds(30)
     ) {
+        self.numWorkers = numWorkers
         self.gracefulShutdownTimeout = gracefulShutdownTimeout
     }
 }

@@ -46,7 +46,7 @@ final class TracingTests: XCTestCase {
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(parameters.sleep))
         }
-        let jobID = try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        let jobID = try await testJobQueue(jobQueue.processor()) {
             let jobID = try await jobQueue.push(TestParameters(sleep: 10))
             await fulfillment(of: [expectation], timeout: 1)
             return jobID
@@ -98,7 +98,7 @@ final class TracingTests: XCTestCase {
                 throw FailedError()
             }
         }
-        let jobID = try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+        let jobID = try await testJobQueue(jobQueue.processor()) {
             let jobID = try await jobQueue.push(TestParameters())
             await fulfillment(of: [expectation], timeout: 5)
             return jobID
@@ -158,7 +158,7 @@ final class TracingTests: XCTestCase {
         var serviceContext = ServiceContext.current ?? ServiceContext.topLevel
         serviceContext.traceID = UUID().uuidString
         let jobID = try await withSpan("ParentSpan", context: serviceContext, ofKind: .server) { _ in
-            let jobID = try await testJobQueue(jobQueue.handler(numWorkers: 1)) {
+            let jobID = try await testJobQueue(jobQueue.processor()) {
                 let jobID = try await jobQueue.push(TestParameters(sleep: 1))
                 await fulfillment(of: [jobExpectation], timeout: 5)
                 return jobID
