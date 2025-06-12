@@ -578,6 +578,36 @@ final class JobSchedulerTests: XCTestCase {
         let lastDate2 = try XCTUnwrap(lastDate)
         XCTAssertEqual(lastDate2.timeIntervalSince1970, dateTriggered.timeIntervalSince1970, accuracy: 1.0)
     }
+
+    func testMultipleSchedulers() async throws {
+        let (stream, source) = AsyncStream.makeStream(of: Void.self)
+        var logger = Logger(label: "jobs")
+        logger.logLevel = .debug
+
+        let jobQueue = JobQueue(MemoryQueue(), logger: logger)
+        jobQueue.registerJob(name: "testMultipleSchedulers", parameters: String.self) { _, _ in
+            source.yield()
+        }
+        // create schedule that ensures a job will be run in the next second
+        let dateComponents = Calendar.current.dateComponents([.hour, .minute, .second], from: Date.now + 1)
+        var jobSchedule = JobSchedule()
+        jobSchedule.addJob("testMultipleSchedulers", parameters: "Hello", schedule: .everyMinute(second: dateComponents.second!))
+
+        await withThrowingTaskGroup(of: Void.self) { group in
+            let serviceGroup = await ServiceGroup(
+                configuration: .init(
+                    services: [jobQueue.processor(), jobSchedule.scheduler(on: jobQueue), jobSchedule.scheduler(on: jobQueue)],
+                    logger: logger
+                )
+            )
+            group.addTask {
+                try await serviceGroup.run()
+            }
+            await stream.first { _ in true }
+            await serviceGroup.triggerGracefulShutdown()
+        }
+
+    }
 }
 
 extension JobSchedule {

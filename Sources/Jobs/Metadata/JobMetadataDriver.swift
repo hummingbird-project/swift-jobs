@@ -25,6 +25,10 @@ public protocol JobMetadataDriver {
     func getMetadata(_ key: String) async throws -> ByteBuffer?
     /// set job queue metadata
     func setMetadata(key: String, value: ByteBuffer) async throws
+    /// Acquire metadata lock
+    func acquireMetadataLock(key: String, id: ByteBuffer, expiresIn: Duration) async throws -> Bool
+    /// Release metadata lock
+    func releaseMetadataLock(key: String, id: ByteBuffer) async throws
 }
 
 extension JobMetadataDriver {
@@ -39,4 +43,38 @@ extension JobMetadataDriver {
         let buffer = try JSONEncoder().encodeAsByteBuffer(value, allocator: ByteBufferAllocator())
         try await self.setMetadata(key: key.name, value: buffer)
     }
+
+    /// Acquire lock
+    func acquireMetadataLock<ID: Codable>(key: JobMetadataKey<ID>, id: ID, expiresIn: Duration) async throws -> Bool {
+        let buffer = try JSONEncoder().encodeAsByteBuffer(id, allocator: ByteBufferAllocator())
+        return try await self.acquireMetadataLock(key: key.name, id: buffer, expiresIn: expiresIn)
+    }
+
+    /// Release lock
+    func releaseMetadataLock<ID: Codable>(key: JobMetadataKey<ID>, id: ID) async throws {
+        let buffer = try JSONEncoder().encodeAsByteBuffer(id, allocator: ByteBufferAllocator())
+        try await self.releaseMetadataLock(key: key.name, id: buffer)
+    }
+
+    /// Get JobQueue metadata
+    func getMetadata(_ key: JobMetadataKey<ByteBuffer>) async throws -> ByteBuffer? {
+        try await self.getMetadata(key.name)
+    }
+
+    /// Set JobQueue metadata
+    func setMetadata(key: JobMetadataKey<ByteBuffer>, value: ByteBuffer) async throws {
+        try await self.setMetadata(key: key.name, value: value)
+    }
+
+    /// Acquire lock
+    func acquireMetadataLock(key: JobMetadataKey<ByteBuffer>, id: ByteBuffer, expiresIn: Duration) async throws -> Bool {
+        try await self.acquireMetadataLock(key: key.name, id: id, expiresIn: expiresIn)
+    }
+
+    /// Release lock
+    func releaseMetadataLock(key: JobMetadataKey<ByteBuffer>, id: ByteBuffer) async throws {
+        try await self.releaseMetadataLock(key: key.name, id: id)
+    }
 }
+
+typealias JobMetadataLock = JobMetadataKey<ByteBuffer>

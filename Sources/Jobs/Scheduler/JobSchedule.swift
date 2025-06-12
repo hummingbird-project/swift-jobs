@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Logging
+import NIOCore
 import ServiceLifecycle
 
 #if canImport(FoundationEssentials)
@@ -283,7 +284,43 @@ public struct JobSchedule: MutableCollection, Sendable {
 
         /// Run Job scheduler
         public func run() async throws {
+            let bytes: [UInt8] = (0..<16).map { _ in UInt8.random(in: 0...255) }
+            let lockID = ByteBuffer(string: String(base64Encoding: bytes))
+
             try await self.jobQueue.queue.waitUntilReady()
+
+            while !Task.isShuttingDownGracefully, !Task.isCancelled {
+                guard try await self.acquireLock(lockID) else {
+                    self.jobQueue.logger.info("Failed to acquire scheduler lock")
+                    try await cancelWhenGracefulShutdown {
+                        try await Task.sleep(for: .seconds(20))
+                    }
+                    continue
+                }
+                self.jobQueue.logger.info("Scheduler running")
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask {
+                        while true {
+                            guard try await self.acquireLock(lockID) else {
+                                self.jobQueue.logger.info("Failed to acquire scheduler lock")
+                                break
+                            }
+                            try await cancelWhenGracefulShutdown {
+                                try await Task.sleep(for: .seconds(10))
+                            }
+                        }
+
+                    }
+                    group.addTask {
+                        try await runScheduler(lockID)
+                    }
+                    try await group.waitForAll()
+                }
+            }
+        }
+
+        /// Run Job scheduler
+        public func runScheduler(_ lockID: ByteBuffer) async throws {
             var jobSchedule = self.jobSchedule
             // Update next scheduled date for each job schedule based off the last scheduled date stored
             do {
@@ -304,6 +341,11 @@ public struct JobSchedule: MutableCollection, Sendable {
             )
             for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
                 do {
+                    guard try await self.acquireLock(lockID) else {
+                        self.jobQueue.logger.info("Failed to acquire scheduler lock")
+                        break
+                    }
+
                     let request = job.element.createJobRequest(job.date, job.nextScheduledAt)
                     _ = try await request.push(to: self.jobQueue, options: self.jobOptions)
                     try await self.jobQueue.queue.setMetadata(
@@ -319,6 +361,14 @@ public struct JobSchedule: MutableCollection, Sendable {
                     )
                 }
             }
+        }
+
+        private func acquireLock(_ lockID: ByteBuffer) async throws -> Bool {
+            try await self.jobQueue.queue.acquireMetadataLock(
+                key: .jobSchedulerLock(schedulerName: self.name),
+                id: lockID,
+                expiresIn: .seconds(20)
+            )
         }
 
         public var description: String { "JobScheduler" }
@@ -346,4 +396,8 @@ extension JobSchedule {
 
 extension JobMetadataKey where Value == Date {
     static func jobScheduleLastDate(schedulerName: String, jobName: String) -> Self { "\(schedulerName).\(jobName).jobScheduleLastDate" }
+}
+
+extension JobMetadataKey where Value == ByteBuffer {
+    static func jobSchedulerLock(schedulerName: String) -> Self { "\(schedulerName).jobSchedulerLock" }
 }
