@@ -216,7 +216,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     }
 
     /// AsyncSequence of Jobs based on a JobSchedule
-    struct JobSequence: AsyncSequence {
+    struct JobSequence: Sequence {
         struct Element {
             let element: JobSchedule.Element
             let date: Date
@@ -225,7 +225,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         let jobSchedule: JobSchedule
         let logger: Logger
 
-        struct AsyncIterator: AsyncIteratorProtocol {
+        struct Iterator: IteratorProtocol {
             var jobSchedule: JobSchedule
             let logger: Logger
 
@@ -234,7 +234,7 @@ public struct JobSchedule: MutableCollection, Sendable {
                 self.logger = logger
             }
 
-            mutating func next() async -> Element? {
+            mutating func next() -> Element? {
                 guard let job = self.jobSchedule.nextJob() else {
                     return nil
                 }
@@ -246,24 +246,16 @@ public struct JobSchedule: MutableCollection, Sendable {
                     ]
                 )
                 let scheduledDate = job.element.nextScheduledDate
-                let timeInterval = scheduledDate.timeIntervalSinceNow
-                do {
-                    if timeInterval > 0 {
-                        try await Task.sleep(until: .now + .seconds(timeInterval))
-                    }
-                    self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
-                    return Element(
-                        element: job.element,
-                        date: scheduledDate,
-                        nextScheduledAt: self.jobSchedule[job.offset].nextScheduledDate
-                    )
-                } catch {
-                    return nil
-                }
+                self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
+                return Element(
+                    element: job.element,
+                    date: scheduledDate,
+                    nextScheduledAt: self.jobSchedule[job.offset].nextScheduledDate
+                )
             }
         }
 
-        func makeAsyncIterator() -> AsyncIterator {
+        func makeIterator() -> Iterator {
             .init(schedule: self.jobSchedule, logger: self.logger)
         }
     }
@@ -290,37 +282,23 @@ public struct JobSchedule: MutableCollection, Sendable {
             try await self.jobQueue.queue.waitUntilReady()
 
             while !Task.isShuttingDownGracefully, !Task.isCancelled {
-                guard try await self.acquireLock(lockID) else {
+                guard await self.acquireLock(lockID, expiresIn: 20) else {
                     self.jobQueue.logger.info("Failed to acquire scheduler lock")
-                    try await cancelWhenGracefulShutdown {
+                    try? await cancelWhenGracefulShutdown {
                         try await Task.sleep(for: .seconds(20))
                     }
                     continue
                 }
                 self.jobQueue.logger.info("Scheduler running")
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    group.addTask {
-                        while true {
-                            guard try await self.acquireLock(lockID) else {
-                                self.jobQueue.logger.info("Failed to acquire scheduler lock")
-                                break
-                            }
-                            try await cancelWhenGracefulShutdown {
-                                try await Task.sleep(for: .seconds(10))
-                            }
-                        }
-
-                    }
-                    group.addTask {
-                        try await runScheduler(lockID)
-                    }
-                    try await group.waitForAll()
-                }
+                await runScheduler(lockID)
             }
+
+            // Release lock so another process can pick up the scheduler
+            await self.releaseLock(lockID)
         }
 
         /// Run Job scheduler
-        public func runScheduler(_ lockID: ByteBuffer) async throws {
+        public func runScheduler(_ lockID: ByteBuffer) async {
             var jobSchedule = self.jobSchedule
             // Update next scheduled date for each job schedule based off the last scheduled date stored
             do {
@@ -339,13 +317,39 @@ public struct JobSchedule: MutableCollection, Sendable {
                 jobSchedule: jobSchedule,
                 logger: self.jobQueue.logger
             )
-            for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
-                do {
-                    guard try await self.acquireLock(lockID) else {
-                        self.jobQueue.logger.info("Failed to acquire scheduler lock")
+            for job in scheduledJobSequence {
+                guard await self.acquireLock(lockID, expiresIn: 20) else {
+                    self.jobQueue.logger.info("Failed to acquire scheduler lock")
+                    break
+                }
+
+                let timeInterval = job.date.timeIntervalSinceNow
+                if timeInterval > 0 {
+                    do {
+                        // wait until job is ready to schedule, and in the meantime continue to acquire the lock
+                        try await cancelWhenGracefulShutdown {
+                            try await withThrowingTaskGroup(of: Void.self) { group in
+                                group.addTask {
+                                    while true {
+                                        try await Task.sleep(for: .seconds(10))
+                                        guard await self.acquireLock(lockID, expiresIn: 20) else {
+                                            self.jobQueue.logger.info("Failed to acquire scheduler lock")
+                                            break
+                                        }
+                                    }
+                                }
+                                group.addTask {
+                                    try await Task.sleep(until: .now + .seconds(timeInterval))
+                                }
+                                try await group.next()
+                                group.cancelAll()
+                            }
+                        }
+                    } catch {
                         break
                     }
-
+                }
+                do {
                     let request = job.element.createJobRequest(job.date, job.nextScheduledAt)
                     _ = try await request.push(to: self.jobQueue, options: self.jobOptions)
                     try await self.jobQueue.queue.setMetadata(
@@ -363,12 +367,27 @@ public struct JobSchedule: MutableCollection, Sendable {
             }
         }
 
-        private func acquireLock(_ lockID: ByteBuffer) async throws -> Bool {
-            try await self.jobQueue.queue.acquireMetadataLock(
-                key: .jobSchedulerLock(schedulerName: self.name),
-                id: lockID,
-                expiresIn: .seconds(20)
-            )
+        private func acquireLock(_ lockID: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
+            do {
+                return try await self.jobQueue.queue.acquireMetadataLock(
+                    key: .jobSchedulerLock(schedulerName: self.name),
+                    id: lockID,
+                    expiresIn: expiresIn
+                )
+            } catch {
+                return false
+            }
+        }
+
+        private func releaseLock(_ lockID: ByteBuffer) async {
+            do {
+                try await self.jobQueue.queue.releaseMetadataLock(
+                    key: .jobSchedulerLock(schedulerName: self.name),
+                    id: lockID
+                )
+            } catch {
+                self.jobQueue.logger.debug("Failed to release schedule lock")
+            }
         }
 
         public var description: String { "JobScheduler" }

@@ -120,7 +120,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
         var queue: Deque<(job: QueuedJob, options: JobOptions)>
         var pendingJobs: [JobID: ByteBuffer]
-        var metadata: [String: (data: ByteBuffer, expires: ContinuousClock.Instant?)]
+        var metadata: [String: (data: ByteBuffer, expires: Date)]
         var isStopped: Bool
 
         init() {
@@ -206,16 +206,18 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
 
         func setMetadata(key: String, value: NIOCore.ByteBuffer) {
-            self.metadata[key] = (data: value, expires: nil)
+            self.metadata[key] = (data: value, expires: .distantFuture)
         }
 
-        func acquireMetadataLock(key: String, id: ByteBuffer, expiresIn: Duration) async -> Bool {
-            if self.metadata[key]?.data == id {
-                return true
-            } else if self.metadata[key] == nil {
+        func acquireMetadataLock(key: String, id: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
+            guard let lock = self.metadata[key] else {
                 self.metadata[key] = (data: id, expires: .now + expiresIn)
                 return true
-            } else if let expires = self.metadata[key]?.expires, expires < .now {
+            }
+            if lock.data == id {
+                self.metadata[key]!.expires = .now + expiresIn
+                return true
+            } else if lock.expires < .now {
                 self.metadata[key] = (data: id, expires: .now + expiresIn)
                 return true
             } else {
@@ -240,7 +242,7 @@ extension MemoryQueue: JobMetadataDriver {
         await self.queue.setMetadata(key: key, value: value)
     }
 
-    public func acquireMetadataLock(key: String, id: ByteBuffer, expiresIn: Duration) async -> Bool {
+    public func acquireMetadataLock(key: String, id: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
         await self.queue.acquireMetadataLock(key: key, id: id, expiresIn: expiresIn)
     }
 

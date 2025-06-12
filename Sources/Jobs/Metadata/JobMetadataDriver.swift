@@ -26,7 +26,7 @@ public protocol JobMetadataDriver {
     /// set job queue metadata
     func setMetadata(key: String, value: ByteBuffer) async throws
     /// Acquire metadata lock
-    func acquireMetadataLock(key: String, id: ByteBuffer, expiresIn: Duration) async throws -> Bool
+    func acquireMetadataLock(key: String, id: ByteBuffer, expiresIn: TimeInterval) async throws -> Bool
     /// Release metadata lock
     func releaseMetadataLock(key: String, id: ByteBuffer) async throws
 }
@@ -45,7 +45,7 @@ extension JobMetadataDriver {
     }
 
     /// Acquire lock
-    func acquireMetadataLock<ID: Codable>(key: JobMetadataKey<ID>, id: ID, expiresIn: Duration) async throws -> Bool {
+    func acquireMetadataLock<ID: Codable>(key: JobMetadataKey<ID>, id: ID, expiresIn: TimeInterval) async throws -> Bool {
         let buffer = try JSONEncoder().encodeAsByteBuffer(id, allocator: ByteBufferAllocator())
         return try await self.acquireMetadataLock(key: key.name, id: buffer, expiresIn: expiresIn)
     }
@@ -67,7 +67,7 @@ extension JobMetadataDriver {
     }
 
     /// Acquire lock
-    func acquireMetadataLock(key: JobMetadataKey<ByteBuffer>, id: ByteBuffer, expiresIn: Duration) async throws -> Bool {
+    func acquireMetadataLock(key: JobMetadataKey<ByteBuffer>, id: ByteBuffer, expiresIn: TimeInterval) async throws -> Bool {
         try await self.acquireMetadataLock(key: key.name, id: id, expiresIn: expiresIn)
     }
 

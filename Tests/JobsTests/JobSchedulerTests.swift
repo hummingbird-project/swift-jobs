@@ -275,10 +275,10 @@ final class JobSchedulerTests: XCTestCase {
             .init(job: Job2(), schedule: .everyMinute(second: (dateComponents.second! + 1) % 60)),
         ])
         let sequence = JobSchedule.JobSequence(jobSchedule: jobSchedule, logger: logger)
-        var jobIterator = sequence.makeAsyncIterator()
-        let job = await jobIterator.next()
+        var jobIterator = sequence.makeIterator()
+        let job = jobIterator.next()
         XCTAssertEqual(job?.element.jobName, "Job1")
-        let job2 = await jobIterator.next()
+        let job2 = jobIterator.next()
         XCTAssertEqual(job2?.element.jobName, "Job2")
     }
 
@@ -606,7 +606,6 @@ final class JobSchedulerTests: XCTestCase {
             await stream.first { _ in true }
             await serviceGroup.triggerGracefulShutdown()
         }
-
     }
 }
 
