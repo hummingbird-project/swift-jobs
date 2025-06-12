@@ -14,7 +14,7 @@
 
 import NIOConcurrencyHelpers
 
-class Trigger: @unchecked Sendable {
+final class Trigger: @unchecked Sendable {
     typealias Suspension = CheckedContinuation<Void, Error>
 
     enum State {
