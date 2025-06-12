@@ -323,31 +323,25 @@ public struct JobSchedule: MutableCollection, Sendable {
                     break
                 }
 
-                let timeInterval = job.date.timeIntervalSinceNow
-                if timeInterval > 0 {
-                    do {
-                        // wait until job is ready to schedule, and in the meantime continue to acquire the lock
-                        try await cancelWhenGracefulShutdown {
-                            try await withThrowingTaskGroup(of: Void.self) { group in
-                                group.addTask {
-                                    while true {
-                                        try await Task.sleep(for: .seconds(10))
-                                        guard await self.acquireLock(lockID, expiresIn: 20) else {
-                                            self.jobQueue.logger.info("Failed to acquire scheduler lock")
-                                            break
-                                        }
-                                    }
+                do {
+                    try await cancelWhenGracefulShutdown {
+                        while true {
+                            let timeInterval = job.date.timeIntervalSinceNow
+                            guard timeInterval > 10 else {
+                                if timeInterval > 0 {
+                                    try await Task.sleep(for: .seconds(timeInterval))
                                 }
-                                group.addTask {
-                                    try await Task.sleep(until: .now + .seconds(timeInterval))
-                                }
-                                try await group.next()
-                                group.cancelAll()
+                                break
+                            }
+                            try await Task.sleep(for: .seconds(10))
+                            guard await self.acquireLock(lockID, expiresIn: 20) else {
+                                self.jobQueue.logger.info("Failed to acquire scheduler lock")
+                                break
                             }
                         }
-                    } catch {
-                        break
                     }
+                } catch {
+                    break
                 }
                 do {
                     let request = job.element.createJobRequest(job.date, job.nextScheduledAt)
