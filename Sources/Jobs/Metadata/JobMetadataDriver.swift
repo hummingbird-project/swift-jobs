@@ -76,5 +76,3 @@ extension JobMetadataDriver {
         try await self.releaseMetadataLock(key: key.name, id: id)
     }
 }
-
-typealias JobMetadataLock = JobMetadataKey<ByteBuffer>

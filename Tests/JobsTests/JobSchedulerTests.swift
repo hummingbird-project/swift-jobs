@@ -596,7 +596,11 @@ final class JobSchedulerTests: XCTestCase {
         await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = await ServiceGroup(
                 configuration: .init(
-                    services: [jobQueue.processor(), jobSchedule.scheduler(on: jobQueue), jobSchedule.scheduler(on: jobQueue)],
+                    services: [
+                        jobQueue.processor(),
+                        jobSchedule.scheduler(on: jobQueue, options: .init(schedulerLock: .acquire(every: .seconds(30), for: .seconds(40)))),
+                        jobSchedule.scheduler(on: jobQueue, options: .init(schedulerLock: .acquire(every: .seconds(30), for: .seconds(40)))),
+                    ],
                     logger: logger
                 )
             )
