@@ -240,3 +240,9 @@ extension Date {
         return Date(timeIntervalSinceReferenceDate: timeValue)
     }
 }
+
+extension TimeInterval {
+    init(duration: Duration) {
+        self = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1_000_000_000_000_000_000
+    }
+}
