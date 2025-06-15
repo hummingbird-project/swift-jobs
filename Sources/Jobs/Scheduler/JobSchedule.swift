@@ -415,7 +415,7 @@ public struct JobSchedule: MutableCollection, Sendable {
 
         private func acquireLock(_ lockID: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
             do {
-                return try await self.jobQueue.queue.acquireMetadataLock(
+                return try await self.jobQueue.queue.acquireLock(
                     key: .jobSchedulerLock(schedulerName: self.name),
                     id: lockID,
                     expiresIn: expiresIn
@@ -427,7 +427,7 @@ public struct JobSchedule: MutableCollection, Sendable {
 
         private func releaseLock(_ lockID: ByteBuffer) async {
             do {
-                try await self.jobQueue.queue.releaseMetadataLock(
+                try await self.jobQueue.queue.releaseLock(
                     key: .jobSchedulerLock(schedulerName: self.name),
                     id: lockID
                 )

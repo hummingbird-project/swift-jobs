@@ -242,11 +242,11 @@ extension MemoryQueue: JobMetadataDriver {
         await self.queue.setMetadata(key: key, value: value)
     }
 
-    public func acquireMetadataLock(key: String, id: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
+    public func acquireLock(key: String, id: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
         await self.queue.acquireMetadataLock(key: key, id: id, expiresIn: expiresIn)
     }
 
-    public func releaseMetadataLock(key: String, id: ByteBuffer) async {
+    public func releaseLock(key: String, id: ByteBuffer) async {
         await self.queue.releaseMetadataLock(key: key, id: id)
     }
 }
