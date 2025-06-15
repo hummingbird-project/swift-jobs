@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Logging
+import NIOCore
 import ServiceLifecycle
 
 #if canImport(FoundationEssentials)
@@ -179,9 +180,9 @@ public struct JobSchedule: MutableCollection, Sendable {
     public func scheduler<Queue: JobQueueDriver>(
         on jobQueue: JobQueue<Queue>,
         named name: String = "default",
-        jobOptions: Queue.JobOptions = .init()
+        options: Scheduler<Queue>.Options = .init()
     ) async -> Scheduler<Queue> {
-        await .init(named: name, jobQueue: jobQueue, jobOptions: jobOptions, jobSchedule: self)
+        await .init(named: name, jobQueue: jobQueue, options: options, jobSchedule: self)
     }
 
     func nextJob() -> (offset: Int, element: Element)? {
@@ -215,7 +216,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     }
 
     /// AsyncSequence of Jobs based on a JobSchedule
-    struct JobSequence: AsyncSequence {
+    struct JobSequence: Sequence {
         struct Element {
             let element: JobSchedule.Element
             let date: Date
@@ -224,7 +225,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         let jobSchedule: JobSchedule
         let logger: Logger
 
-        struct AsyncIterator: AsyncIteratorProtocol {
+        struct Iterator: IteratorProtocol {
             var jobSchedule: JobSchedule
             let logger: Logger
 
@@ -233,7 +234,7 @@ public struct JobSchedule: MutableCollection, Sendable {
                 self.logger = logger
             }
 
-            mutating func next() async -> Element? {
+            mutating func next() -> Element? {
                 guard let job = self.jobSchedule.nextJob() else {
                     return nil
                 }
@@ -245,45 +246,103 @@ public struct JobSchedule: MutableCollection, Sendable {
                     ]
                 )
                 let scheduledDate = job.element.nextScheduledDate
-                let timeInterval = scheduledDate.timeIntervalSinceNow
-                do {
-                    if timeInterval > 0 {
-                        try await Task.sleep(until: .now + .seconds(timeInterval))
-                    }
-                    self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
-                    return Element(
-                        element: job.element,
-                        date: scheduledDate,
-                        nextScheduledAt: self.jobSchedule[job.offset].nextScheduledDate
-                    )
-                } catch {
-                    return nil
-                }
+                self.jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
+                return Element(
+                    element: job.element,
+                    date: scheduledDate,
+                    nextScheduledAt: self.jobSchedule[job.offset].nextScheduledDate
+                )
             }
         }
 
-        func makeAsyncIterator() -> AsyncIterator {
+        func makeIterator() -> Iterator {
             .init(schedule: self.jobSchedule, logger: self.logger)
         }
     }
 
     /// Job Scheduler Service
     public struct Scheduler<Driver: JobQueueDriver & JobMetadataDriver>: Service, CustomStringConvertible {
+        /// Defines how often if at all a lock should be acquired
+        public struct ExclusiveLock: Sendable {
+            enum Value: Sendable {
+                case ignore
+                case acquire(every: TimeInterval, for: TimeInterval)
+            }
+            let value: Value
+            /// Ignore lock
+            public static var ignore: Self { .init(value: .ignore) }
+            /// Acquire lock
+            /// - Parameters:
+            ///   - every: Frequency of acquiring the lock
+            ///   - for: How long the lock should be acquired for
+            public static func acquire(every: Duration, for: Duration) -> Self {
+                precondition(`for` > every, "The time between acquiring each lock shoud be less then the time you acquire the lock for.")
+                return .init(value: .acquire(every: .init(duration: every), for: .init(duration: `for`)))
+            }
+        }
+        /// Scheduler options
+        public struct Options: Sendable {
+            ///
+            let jobOptions: Driver.JobOptions
+            let schedulerLock: ExclusiveLock
+
+            ///  Initialize Scheduler Options
+            /// - Parameters:
+            ///   - jobOptions: Job options given to scheduled jobs
+            ///   - schedulerLock: Define how scheduler lock should be acquired if at all. If you have multiple scheduler
+            ///       processes you should set this to acquire a lock so one scheduler can be defined the primary
+            public init(
+                jobOptions: Driver.JobOptions = .init(),
+                schedulerLock: ExclusiveLock = .ignore
+            ) {
+                self.jobOptions = .init()
+                self.schedulerLock = schedulerLock
+            }
+        }
         let name: String
         let jobQueue: JobQueue<Driver>
         let jobSchedule: JobSchedule
-        let jobOptions: Driver.JobOptions
+        let options: Options
 
-        init(named name: String, jobQueue: JobQueue<Driver>, jobOptions: Driver.JobOptions, jobSchedule: JobSchedule) async {
+        init(named name: String, jobQueue: JobQueue<Driver>, options: Options, jobSchedule: JobSchedule) async {
             self.name = name
             self.jobQueue = jobQueue
             self.jobSchedule = jobSchedule
-            self.jobOptions = jobOptions
+            self.options = options
         }
 
         /// Run Job scheduler
         public func run() async throws {
+            let bytes: [UInt8] = (0..<16).map { _ in UInt8.random(in: 0...255) }
+            let lockID = ByteBuffer(string: String(base64Encoding: bytes))
+
             try await self.jobQueue.queue.waitUntilReady()
+
+            /// If we are locking the scheduler to one process then attempt to acquire the lock
+            /// if it fails try again in later on
+            switch self.options.schedulerLock.value {
+            case .acquire(let every, let length):
+                while !Task.isShuttingDownGracefully, !Task.isCancelled {
+                    guard await self.acquireLock(lockID, expiresIn: length) else {
+                        self.jobQueue.logger.info("Failed to acquire scheduler lock")
+                        try? await cancelWhenGracefulShutdown {
+                            try await Task.sleep(for: .seconds(every))
+                        }
+                        continue
+                    }
+                    self.jobQueue.logger.info("Scheduler running")
+                    await runScheduler(lockID)
+                }
+                // Release lock so another process can pick up the scheduler
+                await self.releaseLock(lockID)
+
+            case .ignore:
+                await runScheduler(lockID)
+            }
+        }
+
+        /// Run Job scheduler
+        public func runScheduler(_ lockID: ByteBuffer) async {
             var jobSchedule = self.jobSchedule
             // Update next scheduled date for each job schedule based off the last scheduled date stored
             do {
@@ -302,10 +361,43 @@ public struct JobSchedule: MutableCollection, Sendable {
                 jobSchedule: jobSchedule,
                 logger: self.jobQueue.logger
             )
-            for await job in scheduledJobSequence.cancelOnGracefulShutdown() {
+            for job in scheduledJobSequence {
+                do {
+                    try await cancelWhenGracefulShutdown {
+                        /// Wait until job is ready to schedule. Depending on if we are locking the scheduler
+                        /// acquire the scheduler lock every so often
+                        switch self.options.schedulerLock.value {
+                        case .ignore:
+                            try await Task.sleep(for: .seconds(job.date.timeIntervalSinceNow))
+
+                        case .acquire(let every, let length):
+                            guard await self.acquireLock(lockID, expiresIn: length) else {
+                                self.jobQueue.logger.info("Failed to acquire scheduler lock")
+                                break
+                            }
+
+                            while true {
+                                let timeInterval = job.date.timeIntervalSinceNow
+                                guard timeInterval > every else {
+                                    if timeInterval > 0 {
+                                        try await Task.sleep(for: .seconds(timeInterval))
+                                    }
+                                    break
+                                }
+                                try await Task.sleep(for: .seconds(every))
+                                guard await self.acquireLock(lockID, expiresIn: length) else {
+                                    self.jobQueue.logger.info("Failed to acquire scheduler lock")
+                                    break
+                                }
+                            }
+                        }
+                    }
+                } catch {
+                    break
+                }
                 do {
                     let request = job.element.createJobRequest(job.date, job.nextScheduledAt)
-                    _ = try await request.push(to: self.jobQueue, options: self.jobOptions)
+                    _ = try await request.push(to: self.jobQueue, options: self.options.jobOptions)
                     try await self.jobQueue.queue.setMetadata(
                         key: .jobScheduleLastDate(schedulerName: self.name, jobName: job.element.jobName),
                         value: job.date
@@ -318,6 +410,29 @@ public struct JobSchedule: MutableCollection, Sendable {
                         ]
                     )
                 }
+            }
+        }
+
+        private func acquireLock(_ lockID: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
+            do {
+                return try await self.jobQueue.queue.acquireLock(
+                    key: .jobSchedulerLock(schedulerName: self.name),
+                    id: lockID,
+                    expiresIn: expiresIn
+                )
+            } catch {
+                return false
+            }
+        }
+
+        private func releaseLock(_ lockID: ByteBuffer) async {
+            do {
+                try await self.jobQueue.queue.releaseLock(
+                    key: .jobSchedulerLock(schedulerName: self.name),
+                    id: lockID
+                )
+            } catch {
+                self.jobQueue.logger.debug("Failed to release schedule lock")
             }
         }
 
@@ -346,4 +461,8 @@ extension JobSchedule {
 
 extension JobMetadataKey where Value == Date {
     static func jobScheduleLastDate(schedulerName: String, jobName: String) -> Self { "\(schedulerName).\(jobName).jobScheduleLastDate" }
+}
+
+extension JobMetadataKey where Value == ByteBuffer {
+    static func jobSchedulerLock(schedulerName: String) -> Self { "\(schedulerName).jobSchedulerLock" }
 }

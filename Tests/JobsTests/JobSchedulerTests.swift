@@ -275,10 +275,10 @@ final class JobSchedulerTests: XCTestCase {
             .init(job: Job2(), schedule: .everyMinute(second: (dateComponents.second! + 1) % 60)),
         ])
         let sequence = JobSchedule.JobSequence(jobSchedule: jobSchedule, logger: logger)
-        var jobIterator = sequence.makeAsyncIterator()
-        let job = await jobIterator.next()
+        var jobIterator = sequence.makeIterator()
+        let job = jobIterator.next()
         XCTAssertEqual(job?.element.jobName, "Job1")
-        let job2 = await jobIterator.next()
+        let job2 = jobIterator.next()
         XCTAssertEqual(job2?.element.jobName, "Job2")
     }
 
@@ -577,6 +577,39 @@ final class JobSchedulerTests: XCTestCase {
         let lastDate = try await jobQueue.queue.getMetadata(.jobScheduleLastDate(schedulerName: "testLastDateAccuracy", jobName: "TriggerShutdown"))
         let lastDate2 = try XCTUnwrap(lastDate)
         XCTAssertEqual(lastDate2.timeIntervalSince1970, dateTriggered.timeIntervalSince1970, accuracy: 1.0)
+    }
+
+    func testMultipleSchedulers() async throws {
+        let (stream, source) = AsyncStream.makeStream(of: Void.self)
+        var logger = Logger(label: "jobs")
+        logger.logLevel = .debug
+
+        let jobQueue = JobQueue(MemoryQueue(), logger: logger)
+        jobQueue.registerJob(name: "testMultipleSchedulers", parameters: String.self) { _, _ in
+            source.yield()
+        }
+        // create schedule that ensures a job will be run in the next second
+        let dateComponents = Calendar.current.dateComponents([.hour, .minute, .second], from: Date.now + 1)
+        var jobSchedule = JobSchedule()
+        jobSchedule.addJob("testMultipleSchedulers", parameters: "Hello", schedule: .everyMinute(second: dateComponents.second!))
+
+        await withThrowingTaskGroup(of: Void.self) { group in
+            let serviceGroup = await ServiceGroup(
+                configuration: .init(
+                    services: [
+                        jobQueue.processor(),
+                        jobSchedule.scheduler(on: jobQueue, options: .init(schedulerLock: .acquire(every: .seconds(30), for: .seconds(40)))),
+                        jobSchedule.scheduler(on: jobQueue, options: .init(schedulerLock: .acquire(every: .seconds(30), for: .seconds(40)))),
+                    ],
+                    logger: logger
+                )
+            )
+            group.addTask {
+                try await serviceGroup.run()
+            }
+            await stream.first { _ in true }
+            await serviceGroup.triggerGracefulShutdown()
+        }
     }
 }
 
