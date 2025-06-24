@@ -29,11 +29,13 @@ public struct TracingJobMiddleware: JobMiddleware {
         self.queueName = queueName
     }
 
-    @inlinable
-    public func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobQueueContext) async {}
-    @inlinable
-    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {}
-
+    /// Setup tracing span and pass it onto next handler, recording success or erro into the span
+    ///
+    /// - Parameters:
+    ///   - job: Job instance
+    ///   - context: Job execution context
+    ///   - next: Next handler
+    /// - Throws:
     @inlinable
     public func handleJob(
         job: any JobInstanceProtocol,

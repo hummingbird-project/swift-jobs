@@ -212,7 +212,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
         await self.middleware.onPushJob(
             name: jobRequest.name,
             parameters: jobRequest.data.parameters,
-            context: .init(jobID: instanceID.description)
+            context: .init(jobID: instanceID.description, attempt: jobRequest.data.attempt)
         )
         self.logger.debug(
             "Pushed Job",
