@@ -109,6 +109,7 @@ public struct JobInstanceData<Parameters: Sendable & Codable>: Codable, Sendable
     /// Time job was queued
     let queuedAt: Date
     /// Current attempt
+    @usableFromInline
     let attempt: Int
     /// trace context
     let traceContext: [String: String]?

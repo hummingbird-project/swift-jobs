@@ -20,13 +20,13 @@ public protocol JobMiddleware: Sendable {
     ///   - name: Job name
     ///   - parameters: Job parameters
     ///   - context: Job queue context
-    func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobQueueContext) async
+    func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobPushQueueContext) async
     /// Job has been popped off the queue and decoded (with decode errors reported)
     ///
     /// - Parameters:
     ///   - result: Result of popping the job from the queue (Either job instance or error)
     ///   - context: Job queue context
-    func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async
+    func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobPopQueueContext) async
     /// Handle job and pass it onto next handler
     ///
     /// - Parameters:
@@ -39,19 +39,38 @@ public protocol JobMiddleware: Sendable {
         context: JobExecutionContext,
         next: (any JobInstanceProtocol, JobExecutionContext) async throws -> Void
     ) async throws
+    /// Job has completed or failed and if it failed will not be retried
+    ///
+    /// - Parameters:
+    ///   - job: Job instance
+    ///   - result: Result of completing job
+    ///   - context: Job queue context
+    func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async
 }
 
-@_documentation(visibility: internal)
-public struct NullJobMiddleware: JobMiddleware {
-    public init() {}
-
+extension JobMiddleware {
     /// Job has been pushed onto the queue
+    ///
+    /// - Parameters:
+    ///   - name: Job name
+    ///   - parameters: Job parameters
+    ///   - context: Job queue context
     @inlinable
-    public func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobQueueContext) async {}
+    public func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobPushQueueContext) async {}
     /// Job has been popped off the queue and decoded (with decode errors reported)
+    ///
+    /// - Parameters:
+    ///   - result: Result of popping the job from the queue (Either job instance or error)
+    ///   - context: Job queue context
     @inlinable
-    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {}
-    /// Handle job and pass it onto next handler (works like middleware in Hummingbird)
+    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobPopQueueContext) async {}
+    /// Handle job and pass it onto next handler
+    ///
+    /// - Parameters:
+    ///   - job: Job instance
+    ///   - context: Job execution context
+    ///   - next: Next handler
+    /// - Throws:
     @inlinable
     public func handleJob(
         job: any JobInstanceProtocol,
@@ -60,6 +79,19 @@ public struct NullJobMiddleware: JobMiddleware {
     ) async throws {
         try await next(job, context)
     }
+    /// Job has completed or failed and if it failed will not be retried
+    ///
+    /// - Parameters:
+    ///   - job: Job instance
+    ///   - result: Result of completing job
+    ///   - context: Job queue context
+    @inlinable
+    public func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {}
+}
+
+@_documentation(visibility: internal)
+public struct NullJobMiddleware: JobMiddleware {
+    public init() {}
 }
 
 struct OptionalJobMiddleware<Middleware: JobMiddleware>: JobMiddleware {
@@ -67,14 +99,14 @@ struct OptionalJobMiddleware<Middleware: JobMiddleware>: JobMiddleware {
     let middleware: Middleware?
 
     @inlinable
-    func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobQueueContext) async {
+    func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobPushQueueContext) async {
         if let middleware {
             await middleware.onPushJob(name: name, parameters: parameters, context: context)
         }
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
-    func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {
+    func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobPopQueueContext) async {
         if let middleware {
             await middleware.onPopJob(result: result, context: context)
         }
@@ -91,6 +123,13 @@ struct OptionalJobMiddleware<Middleware: JobMiddleware>: JobMiddleware {
         }
         return try await middleware.handleJob(job: job, context: context, next: next)
     }
+    // Job had completed or failed
+    @inlinable
+    public func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {
+        if let middleware {
+            await middleware.onCompletedJob(job: job, result: result, context: context)
+        }
+    }
 }
 
 struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>: JobMiddleware {
@@ -100,13 +139,13 @@ struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>
     let middleware2: Middleware2
 
     @inlinable
-    func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobQueueContext) async {
+    func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobPushQueueContext) async {
         await self.middleware1.onPushJob(name: name, parameters: parameters, context: context)
         await self.middleware2.onPushJob(name: name, parameters: parameters, context: context)
     }
     /// Job has been popped off the queue and decoded (with decode errors reported)
     @inlinable
-    func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {
+    func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobPopQueueContext) async {
         await self.middleware1.onPopJob(result: result, context: context)
         await self.middleware2.onPopJob(result: result, context: context)
     }
@@ -120,6 +159,12 @@ struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>
         try await self.middleware1.handleJob(job: job, context: context) { job, context in
             try await self.middleware2.handleJob(job: job, context: context, next: next)
         }
+    }
+    // Job had completed or failed
+    @inlinable
+    public func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {
+        await self.middleware1.onCompletedJob(job: job, result: result, context: context)
+        await self.middleware2.onCompletedJob(job: job, result: result, context: context)
     }
 }
 

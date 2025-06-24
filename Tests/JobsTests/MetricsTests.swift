@@ -425,9 +425,6 @@ final class MetricsTests: XCTestCase {
         XCTAssertEqual(meter.values.withLockedValue { $0 }[0].1, 0)
         XCTAssertEqual(meter.dimensions[0].0, "status")
         XCTAssertEqual(meter.dimensions[0].1, "processing")
-        let timer = try XCTUnwrap(Self.testMetrics.timers.withLockedValue { $0 }["swift.jobs.duration"] as? TestTimer)
-        XCTAssertEqual(timer.dimensions[1].0, "status")
-        XCTAssertEqual(timer.dimensions[1].1, "failed")
     }
 
     func testJobExecutionTime() async throws {

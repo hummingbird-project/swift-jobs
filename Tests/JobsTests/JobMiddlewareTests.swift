@@ -26,17 +26,19 @@ final class JobMiddlewareTests: XCTestCase {
         var pushed: Bool
         var popped: Bool
         var handled: Bool
+        var completed: Bool
         init() {
             self.pushed = false
             self.popped = false
             self.handled = false
+            self.completed = false
         }
 
-        func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobQueueContext) async {
+        func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobPushQueueContext) async {
             self.pushed = true
         }
 
-        func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {
+        func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobPopQueueContext) async {
             self.popped = true
         }
 
@@ -49,6 +51,9 @@ final class JobMiddlewareTests: XCTestCase {
             try await next(job, context)
         }
 
+        func onCompletedJob(job: any Jobs.JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {
+            self.completed = true
+        }
     }
 
     func testResultBuilderWithTwoMiddleware() async throws {
@@ -74,7 +79,7 @@ final class JobMiddlewareTests: XCTestCase {
             TestJobMiddleware()
             observer2
         }
-        await observers.onPushJob(name: "testResultBuilderWithTwoMiddleware", parameters: "test", context: .init(jobID: "0"))
+        await observers.onPushJob(name: "testResultBuilderWithTwoMiddleware", parameters: "test", context: .init(jobID: "0", attempt: 1))
         XCTAssertEqual(observer1.pushed, true)
         XCTAssertEqual(observer2.pushed, true)
         await observers.onPopJob(result: .success(FakeJobInstance()), context: .init(jobID: "0"))
@@ -93,6 +98,9 @@ final class JobMiddlewareTests: XCTestCase {
         ) { _, _ in }
         XCTAssertEqual(observer1.handled, true)
         XCTAssertEqual(observer2.handled, true)
+        await observers.onCompletedJob(job: FakeJobInstance(), result: .success(()), context: .init(jobID: "0"))
+        XCTAssertEqual(observer1.completed, true)
+        XCTAssertEqual(observer2.completed, true)
     }
 
     func testResultBuildeOptionalMiddleware() async throws {
@@ -123,7 +131,7 @@ final class JobMiddlewareTests: XCTestCase {
             await middlewareChain.onPushJob(
                 name: "testResultBuildeOptionalMiddleware",
                 parameters: TestParameters(value: "test"),
-                context: .init(jobID: "0")
+                context: .init(jobID: "0", attempt: 1)
             )
             XCTAssertEqual(middleware1.pushed, first == true)
             await middlewareChain.onPopJob(result: .success(FakeJobInstance()), context: .init(jobID: "0"))
@@ -140,6 +148,8 @@ final class JobMiddlewareTests: XCTestCase {
                 )
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
+            await middlewareChain.onCompletedJob(job: FakeJobInstance(), result: .success(()), context: .init(jobID: "0"))
+            XCTAssertEqual(middleware1.completed, first == true)
         }
         try await testIf(true)
         try await testIf(false)
@@ -176,7 +186,7 @@ final class JobMiddlewareTests: XCTestCase {
             await middlewareChain.onPushJob(
                 name: "testResultBuilderIfElseMiddleware",
                 parameters: TestParameters(value: "test"),
-                context: .init(jobID: "0")
+                context: .init(jobID: "0", attempt: 1)
             )
             XCTAssertEqual(middleware1.pushed, first == true)
             XCTAssertEqual(middleware2.pushed, first != true)
@@ -196,6 +206,9 @@ final class JobMiddlewareTests: XCTestCase {
             ) { _, _ in }
             XCTAssertEqual(middleware1.handled, first == true)
             XCTAssertEqual(middleware2.handled, first != true)
+            await middlewareChain.onCompletedJob(job: FakeJobInstance(), result: .success(()), context: .init(jobID: "0"))
+            XCTAssertEqual(middleware1.completed, first == true)
+            XCTAssertEqual(middleware2.completed, first != true)
         }
         try await testEitherOr(first: true)
         try await testEitherOr(first: false)
