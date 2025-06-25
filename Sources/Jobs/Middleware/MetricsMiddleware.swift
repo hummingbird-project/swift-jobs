@@ -64,15 +64,19 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///   - parameters: Job parameters
     ///   - context: Job queue context
     @inlinable
-    public func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobQueueContext) async {
-        Meter(
-            label: Self.meterLabel,
-            dimensions: [
-                ("status", JobStatus.queued.rawValue),
-                ("name", name),
-                ("queue", self.queueName),
-            ]
-        ).increment()
+    public func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobPushQueueContext) async {
+        if context.attempt > 1 {
+            self.updateMetricsForRetry(for: name)
+        } else {
+            Meter(
+                label: Self.meterLabel,
+                dimensions: [
+                    ("status", JobStatus.queued.rawValue),
+                    ("name", name),
+                    ("queue", self.queueName),
+                ]
+            ).increment()
+        }
     }
 
     /// Job has been popped off the queue and decoded (with decode errors reported)
@@ -81,7 +85,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
     ///   - result: Result of popping the job from the queue (Either job instance or error)
     ///   - context: Job queue context
     @inlinable
-    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobQueueContext) async {
+    public func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobPopQueueContext) async {
 
         switch result {
         case .failure(let error):
@@ -166,83 +170,36 @@ public struct MetricsJobMiddleware: JobMiddleware {
             ).decrement()
         }
 
-        do {
-            try await next(job, context)
-            self.updateMetrics(for: job.name, startTime: startTime)
-        } catch let error as CancellationError {
-            self.updateMetrics(
-                for: job.name,
-                startTime: startTime,
-                error: error
-            )
-            throw error
-        } catch {
-            if !job.shouldRetry(error: error) {
-                self.updateMetrics(
-                    for: job.name,
-                    startTime: startTime,
-                    error: error
-                )
-            } else {
-                // Guard against negative queue values, this is needed because we call
-                // the job queue directly in the retrying step
-                Meter(
-                    label: Self.meterLabel,
-                    dimensions: [
-                        ("status", JobStatus.queued.rawValue),
-                        ("name", job.name),
-                        ("queue", self.queueName),
-                    ]
-                ).increment()
+        try await next(job, context)
+        self.updateSuccessfulMetrics(for: job.name, startTime: startTime)
+    }
 
-                self.updateMetrics(
-                    for: job.name,
-                    startTime: startTime,
-                    retrying: true
-                )
-
-            }
-            throw error
+    /// Job has completed or failed and if it failed will not be retried
+    ///
+    /// - Parameters:
+    ///   - job: Job instance
+    ///   - result: Result of completing job
+    ///   - context: Job queue context
+    public func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {
+        switch result {
+        case .failure(let error):
+            self.updateFailedMetrics(for: job.name, error: error)
+        case .success:
+            // success was recorded in handleJob
+            break
         }
     }
 
-    /// Update job metrics
-    /// - Parameters:
-    ///   - name: String Job name
-    ///   - startTime: UInt64 when the job started
-    ///   - error: Error? job error
-    ///   - retrying: Bool if the job is being retried
-    ///
     @usableFromInline
-    func updateMetrics(
+    func updateSuccessfulMetrics(
         for name: String,
-        startTime: UInt64,
-        error: Error? = nil,
-        retrying: Bool = false
+        startTime: UInt64
     ) {
-        if retrying {
-            Counter(
-                label: Self.counterLabel,
-                dimensions: [("name", name), ("status", JobStatus.retried.rawValue), ("queue", queueName)]
-            ).increment()
-            return
-        }
-
-        let jobStatus: JobStatus =
-            if let error {
-                if error is CancellationError {
-                    .cancelled
-                } else {
-                    .failed
-                }
-            } else {
-                .succeeded
-            }
-
+        let jobStatus: JobStatus = .succeeded
         let dimensions: [(String, String)] = [
             ("name", name),
             ("status", jobStatus.rawValue),
-            ("queue", queueName),
+            ("queue", self.queueName),
         ]
 
         // Calculate job execution time
@@ -256,6 +213,39 @@ public struct MetricsJobMiddleware: JobMiddleware {
         Counter(
             label: Self.counterLabel,
             dimensions: dimensions
+        ).increment()
+    }
+
+    @usableFromInline
+    func updateFailedMetrics(
+        for name: String,
+        error: Error
+    ) {
+        let jobStatus: JobStatus =
+            if error is CancellationError {
+                .cancelled
+            } else {
+                .failed
+            }
+
+        let dimensions: [(String, String)] = [
+            ("name", name),
+            ("status", jobStatus.rawValue),
+            ("queue", self.queueName),
+        ]
+
+        // Increment job counter base on status
+        Counter(
+            label: Self.counterLabel,
+            dimensions: dimensions
+        ).increment()
+    }
+
+    @usableFromInline
+    func updateMetricsForRetry(for name: String) {
+        Counter(
+            label: Self.counterLabel,
+            dimensions: [("name", name), ("status", JobStatus.retried.rawValue), ("queue", self.queueName)]
         ).increment()
     }
 }

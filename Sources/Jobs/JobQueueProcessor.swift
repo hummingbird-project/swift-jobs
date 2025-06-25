@@ -160,11 +160,13 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
                 try await Task {
                     try await self.queue.failed(jobID: jobID, error: error)
                 }.value
+                await self.middleware.onCompletedJob(job: job, result: .failure(error), context: .init(jobID: jobID.description))
                 return
             } catch {
                 if !job.shouldRetry(error: error) {
                     logger.debug("Job: failed")
                     try await self.queue.failed(jobID: jobID, error: error)
+                    await self.middleware.onCompletedJob(job: job, result: .failure(error), context: .init(jobID: jobID.description))
                     return
                 }
 
@@ -178,6 +180,12 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
                     job: job,
                     attempt: attempt,
                     options: .init(delayUntil: delayUntil)
+                )
+                /// Call onPushJob as job has been added to the queue again
+                await self.middleware.onPushJob(
+                    name: job.name,
+                    parameters: job.parameters,
+                    context: .init(jobID: jobID.description, attempt: job.attempt)
                 )
 
                 logger.debug(
@@ -193,6 +201,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
             }
             logger.debug("Finished Job")
             try await self.queue.finished(jobID: jobID)
+            await self.middleware.onCompletedJob(job: job, result: .success(()), context: .init(jobID: jobID.description))
         } catch {
             logger.debug("Failed to set job status")
         }
