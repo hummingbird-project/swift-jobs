@@ -22,7 +22,7 @@ import Foundation
 #endif
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
-public final class MemoryQueue: JobQueueDriver, JobMetadataDriver, CancellableJobQueue, ResumableJobQueue {
+public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJobQueue {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
     /// Job options
@@ -112,14 +112,6 @@ public final class MemoryQueue: JobQueueDriver, JobMetadataDriver, CancellableJo
         await self.queue.pauseJob(jobID: jobID)
     }
 
-    public func getMetadata(_ key: String) async -> ByteBuffer? {
-        await self.queue.getMetadata(key)
-    }
-
-    public func setMetadata(key: String, value: ByteBuffer) async {
-        await self.queue.setMetadata(key: key, value: value)
-    }
-
     /// Internal actor managing the job queue
     fileprivate actor Internal {
         struct QueuedJob: Sendable {
@@ -128,7 +120,7 @@ public final class MemoryQueue: JobQueueDriver, JobMetadataDriver, CancellableJo
         }
         var queue: Deque<(job: QueuedJob, options: JobOptions)>
         var pendingJobs: [JobID: ByteBuffer]
-        var metadata: [String: ByteBuffer]
+        var metadata: [String: (data: ByteBuffer, expires: Date)]
         var isStopped: Bool
 
         init() {
@@ -210,12 +202,52 @@ public final class MemoryQueue: JobQueueDriver, JobMetadataDriver, CancellableJo
         }
 
         func getMetadata(_ key: String) -> ByteBuffer? {
-            self.metadata[key]
+            self.metadata[key]?.data
         }
 
         func setMetadata(key: String, value: NIOCore.ByteBuffer) {
-            self.metadata[key] = value
+            self.metadata[key] = (data: value, expires: .distantFuture)
         }
+
+        func acquireMetadataLock(key: String, id: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
+            guard let lock = self.metadata[key] else {
+                self.metadata[key] = (data: id, expires: .now + expiresIn)
+                return true
+            }
+            if lock.data == id {
+                self.metadata[key]!.expires = .now + expiresIn
+                return true
+            } else if lock.expires < .now {
+                self.metadata[key] = (data: id, expires: .now + expiresIn)
+                return true
+            } else {
+                return false
+            }
+        }
+
+        func releaseMetadataLock(key: String, id: ByteBuffer) async {
+            if self.metadata[key]?.data == id {
+                self.metadata[key] = nil
+            }
+        }
+    }
+}
+
+extension MemoryQueue: JobMetadataDriver {
+    public func getMetadata(_ key: String) async -> ByteBuffer? {
+        await self.queue.getMetadata(key)
+    }
+
+    public func setMetadata(key: String, value: ByteBuffer) async {
+        await self.queue.setMetadata(key: key, value: value)
+    }
+
+    public func acquireLock(key: String, id: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
+        await self.queue.acquireMetadataLock(key: key, id: id, expiresIn: expiresIn)
+    }
+
+    public func releaseLock(key: String, id: ByteBuffer) async {
+        await self.queue.releaseMetadataLock(key: key, id: id)
     }
 }
 
