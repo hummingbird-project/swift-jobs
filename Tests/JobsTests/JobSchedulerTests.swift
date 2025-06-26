@@ -12,13 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Foundation
 import Logging
 import ServiceLifecycle
-import XCTest
+import Testing
 
 @testable import Jobs
 
-final class JobSchedulerTests: XCTestCase {
+struct JobSchedulerTests {
     func testSchedule(start: String, expectedEnd: String, schedule: Schedule) throws {
         var schedule = schedule
         let dateFormatter = DateFormatter()
@@ -28,11 +29,11 @@ final class JobSchedulerTests: XCTestCase {
         guard let startDate = dateFormatter.date(from: start),
             let expectedEndDate = dateFormatter.date(from: expectedEnd)
         else {
-            XCTFail("Failed to parse dates")
+            Issue.record("Failed to parse dates")
             return
         }
         let end = schedule.nextDate(after: startDate)
-        XCTAssertEqual(expectedEndDate, end)
+        #expect(expectedEndDate == end)
     }
 
     func testInitMutatingSchedule(start: String, expectedEnd: String, schedule: inout Schedule) throws -> Date {
@@ -40,10 +41,11 @@ final class JobSchedulerTests: XCTestCase {
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
         dateFormatter.timeZone = schedule.calendar.timeZone
-        let startDate = try XCTUnwrap(dateFormatter.date(from: start))
-        let expectedEndDate = try XCTUnwrap(dateFormatter.date(from: expectedEnd))
-        let end = try XCTUnwrap(schedule.setInitialNextDate(after: startDate))
-        XCTAssertEqual(expectedEndDate, end)
+        let startDate = try #require(dateFormatter.date(from: start))
+        let expectedEndDate = try #require(dateFormatter.date(from: expectedEnd))
+        let optionalEnd = schedule.setInitialNextDate(after: startDate)
+        let end = try #require(optionalEnd)
+        #expect(expectedEndDate == end)
         return end
     }
 
@@ -52,23 +54,24 @@ final class JobSchedulerTests: XCTestCase {
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
         dateFormatter.timeZone = schedule.calendar.timeZone
-        let expectedEndDate = try XCTUnwrap(dateFormatter.date(from: expectedEnd))
-        let end = try XCTUnwrap(schedule.nextDate(after: date))
-        XCTAssertEqual(expectedEndDate, end)
+        let expectedEndDate = try #require(dateFormatter.date(from: expectedEnd))
+        let optionalEnd = schedule.nextDate(after: date)
+        let end = try #require(optionalEnd)
+        #expect(expectedEndDate == end)
         return end
     }
 
-    func testMinuteSchedule() throws {
+    @Test func testMinuteSchedule() throws {
         try self.testSchedule(start: "2021-06-21T21:10:15Z", expectedEnd: "2021-06-21T21:10:43Z", schedule: .everyMinute(second: 43))
         try self.testSchedule(start: "1999-12-31T23:59:25Z", expectedEnd: "2000-01-01T00:00:15Z", schedule: .everyMinute(second: 15))
     }
 
-    func testHourlySchedule() throws {
+    @Test func testHourlySchedule() throws {
         try self.testSchedule(start: "2021-06-21T21:10:15Z", expectedEnd: "2021-06-21T21:58:00Z", schedule: .hourly(minute: 58))
         try self.testSchedule(start: "1999-12-31T23:59:25Z", expectedEnd: "2000-01-01T00:01:00Z", schedule: .hourly(minute: 1))
     }
 
-    func testDailySchedule() throws {
+    @Test func testDailySchedule() throws {
         try self.testSchedule(
             start: "2021-06-21T21:10:15Z",
             expectedEnd: "2021-06-22T01:15:00Z",
@@ -78,7 +81,7 @@ final class JobSchedulerTests: XCTestCase {
         try self.testSchedule(start: "2024-02-28T23:59:25Z", expectedEnd: "2024-02-29T06:15:00Z", schedule: .daily(hour: 6, minute: 15))
     }
 
-    func testWeeklySchedule() throws {
+    @Test func testWeeklySchedule() throws {
         try self.testSchedule(start: "2021-06-21T21:10:15Z", expectedEnd: "2021-06-27T04:00:00Z", schedule: .weekly(day: .sunday, hour: 4))
         try self.testSchedule(
             start: "2024-03-19T23:59:56Z",
@@ -89,95 +92,96 @@ final class JobSchedulerTests: XCTestCase {
         try self.testSchedule(start: "1999-12-31T23:59:25Z", expectedEnd: "2000-01-01T08:00:00Z", schedule: .weekly(day: .saturday, hour: 8))
     }
 
-    func testMonthlySchedule() throws {
+    @Test func testMonthlySchedule() throws {
         try self.testSchedule(start: "2021-06-21T21:10:15Z", expectedEnd: "2021-07-14T04:00:00Z", schedule: .monthly(date: 14, hour: 4))
         try self.testSchedule(start: "2024-03-19T23:59:56Z", expectedEnd: "2024-04-14T04:00:00Z", schedule: .monthly(date: 14, hour: 4))
         try self.testSchedule(start: "1999-12-31T23:59:25Z", expectedEnd: "2000-01-14T04:00:00Z", schedule: .monthly(date: 14, hour: 4))
     }
 
-    func testMinutesSchedule() throws {
+    @Test func testMinutesSchedule() throws {
         var schedule = Schedule.onMinutes([0, 15, 30, 45], second: 0)
         let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-21T21:15:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-21T21:30:00Z", schedule: &schedule)
     }
 
-    func testMinutesScheduleWithOneValue() throws {
+    @Test func testMinutesScheduleWithOneValue() throws {
         var schedule = Schedule.onMinutes([0], second: 0)
         let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-21T22:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-21T23:00:00Z", schedule: &schedule)
     }
 
-    func testHoursSchedule() throws {
+    @Test func testHoursSchedule() throws {
         var schedule = Schedule.onHours([8, 20], minute: 0)
         var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-22T08:00:00Z", schedule: &schedule)
         date = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-22T20:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-23T08:00:00Z", schedule: &schedule)
     }
 
-    func testHoursScheduleWithOneValue() throws {
+    @Test func testHoursScheduleWithOneValue() throws {
         var schedule = Schedule.onHours([8], minute: 0)
         let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-22T08:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-23T08:00:00Z", schedule: &schedule)
     }
 
-    func testDaysSchedule() throws {
+    @Test func testDaysSchedule() throws {
         var schedule = Schedule.onDays([.saturday, .sunday], hour: 4, minute: 0)
         var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-26T04:00:00Z", schedule: &schedule)
         date = try self.testMutatingSchedule(date: date, expectedEnd: "2021-06-27T04:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-03T04:00:00Z", schedule: &schedule)
     }
 
-    func testDaysScheduleWithOneValue() throws {
+    @Test func testDaysScheduleWithOneValue() throws {
         var schedule = Schedule.onDays([.saturday], hour: 4, minute: 0)
         let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-26T04:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-03T04:00:00Z", schedule: &schedule)
     }
 
-    func testDatesSchedule() throws {
+    @Test func testDatesSchedule() throws {
         var schedule = Schedule.onDates([1, 2, 24], hour: 4, minute: 0)
         var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-06-24T04:00:00Z", schedule: &schedule)
         date = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-01T04:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-07-02T04:00:00Z", schedule: &schedule)
     }
 
-    func testDatesScheduleWithOneValue() throws {
+    @Test func testDatesScheduleWithOneValue() throws {
         var schedule = Schedule.onDates([1], hour: 4, minute: 0)
         let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-07-01T04:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-08-01T04:00:00Z", schedule: &schedule)
     }
 
-    func testMonthsSchedule() throws {
+    @Test func testMonthsSchedule() throws {
         var schedule = Schedule.onMonths([.january, .july], date: 2, hour: 4, minute: 0)
         var date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-07-02T04:00:00Z", schedule: &schedule)
         date = try self.testMutatingSchedule(date: date, expectedEnd: "2022-01-02T04:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2022-07-02T04:00:00Z", schedule: &schedule)
     }
 
-    func testMonthsScheduleWithOneValue() throws {
+    @Test func testMonthsScheduleWithOneValue() throws {
         var schedule = Schedule.onMonths([.april], date: 2, hour: 4, minute: 0)
         let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2022-04-02T04:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2023-04-02T04:00:00Z", schedule: &schedule)
     }
 
-    func testScheduleWithNoValues() throws {
+    @Test func testScheduleWithNoValues() throws {
         var schedule = Schedule.onMonths([], date: 2, hour: 4, minute: 0)
         let date = try self.testInitMutatingSchedule(start: "2021-06-21T21:10:16Z", expectedEnd: "2021-07-02T04:00:00Z", schedule: &schedule)
         _ = try self.testMutatingSchedule(date: date, expectedEnd: "2021-08-02T04:00:00Z", schedule: &schedule)
     }
 
-    func testScheduleTimeZone() throws {
+    @Test func testScheduleTimeZone() throws {
         let startDate = ISO8601DateFormatter().date(from: "2021-06-21T21:10:15Z")!
         var schedule = Schedule.daily(hour: 4, timeZone: .init(secondsFromGMT: 7200)!)
-        let scheduledDate = try XCTUnwrap(schedule.nextDate(after: startDate))
+        let optionalScheduleDate = schedule.nextDate(after: startDate)
+        let scheduledDate = try #require(optionalScheduleDate)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .init(secondsFromGMT: 0)!
 
         let dateComponents = calendar.dateComponents([.hour], from: scheduledDate)
         // check timezone difference is the same as the difference in the schedule
-        XCTAssertEqual((dateComponents.hour! - 4) * 3600, -7200)
+        #expect((dateComponents.hour! - 4) * 3600 == -7200)
     }
 
-    func testJobSchedule() throws {
+    @Test func testJobSchedule() throws {
         let jobName = JobName<String>("Job1")
         var schedule = JobSchedule()
         schedule.addJob(jobName, parameters: "Test job", schedule: .hourly(minute: 30), accuracy: .all)
@@ -186,19 +190,19 @@ final class JobSchedulerTests: XCTestCase {
 
         let date = schedule[0].nextScheduledDate
         let minutes = Calendar.current.component(.minute, from: date)
-        XCTAssertEqual(minutes, 30)
-        let job = try XCTUnwrap(schedule.nextJob())
-        XCTAssertEqual(job.element.jobName, "Job1")
+        #expect(minutes == 30)
+        let job = try #require(schedule.nextJob())
+        #expect(job.element.jobName == "Job1")
 
         schedule.updateNextScheduledDate(jobIndex: 0)
         let date2 = schedule[0].nextScheduledDate
         let minutes2 = Calendar.current.component(.minute, from: date2)
-        XCTAssertEqual(minutes2, 30)
-        let job2 = try XCTUnwrap(schedule.nextJob())
-        XCTAssertEqual(job2.element.jobName, "Job1")
+        #expect(minutes2 == 30)
+        let job2 = try #require(schedule.nextJob())
+        #expect(job2.element.jobName == "Job1")
     }
 
-    func testJobScheduleWithTwoJobs() throws {
+    @Test func testJobScheduleWithTwoJobs() throws {
         struct Job1: JobParameters {
             static var jobName = "Job1"
         }
@@ -216,28 +220,28 @@ final class JobSchedulerTests: XCTestCase {
         schedule.setInitialNextDate(after: startDate, logger: Logger(label: "test"))
 
         // first two jobs should be Job1
-        var job = try XCTUnwrap(schedule.nextJob())
+        var job = try #require(schedule.nextJob())
         for _ in 0..<2 {
             schedule.updateNextScheduledDate(jobIndex: job.offset)
-            XCTAssertEqual(job.element.jobName, "Job1")
-            job = try XCTUnwrap(schedule.nextJob())
+            #expect(job.element.jobName == "Job1")
+            job = try #require(schedule.nextJob())
         }
         // next job should be Job2
         schedule.updateNextScheduledDate(jobIndex: job.offset)
-        XCTAssertEqual(job.element.jobName, "Job2")
+        #expect(job.element.jobName == "Job2")
         // next 24 jobs should be Job1
         for _ in 0..<24 {
-            job = try XCTUnwrap(schedule.nextJob())
+            job = try #require(schedule.nextJob())
             schedule.updateNextScheduledDate(jobIndex: job.offset)
-            XCTAssertEqual(job.element.jobName, "Job1")
+            #expect(job.element.jobName == "Job1")
         }
         // next job should be Job2
-        job = try XCTUnwrap(schedule.nextJob())
+        job = try #require(schedule.nextJob())
         schedule.updateNextScheduledDate(jobIndex: job.offset)
-        XCTAssertEqual(job.element.jobName, "Job2")
+        #expect(job.element.jobName == "Job2")
     }
 
-    func testJobScheduledAtSameTimeSequence() async throws {
+    @Test func testJobScheduledAtSameTimeSequence() async throws {
         struct Job1: JobParameters {
             static let jobName = "Job1"
         }
@@ -250,16 +254,16 @@ final class JobSchedulerTests: XCTestCase {
         ])
         jobSchedule.setInitialNextDate(after: .now, logger: Logger(label: "test"))
 
-        let job = try XCTUnwrap(jobSchedule.nextJob())
+        let job = try #require(jobSchedule.nextJob())
         jobSchedule.updateNextScheduledDate(jobIndex: job.offset)
-        XCTAssertEqual(job.element.jobName, "Job1")
-        let job2 = try XCTUnwrap(jobSchedule.nextJob())
+        #expect(job.element.jobName == "Job1")
+        let job2 = try #require(jobSchedule.nextJob())
         jobSchedule.updateNextScheduledDate(jobIndex: job2.offset)
-        XCTAssertEqual(job2.element.jobName, "Job2")
+        #expect(job2.element.jobName == "Job2")
 
     }
 
-    func testJobScheduleSequence() async throws {
+    @Test func testJobScheduleSequence() async throws {
         struct Job1: JobParameters {
             static let jobName = "Job1"
         }
@@ -277,9 +281,9 @@ final class JobSchedulerTests: XCTestCase {
         let sequence = JobSchedule.JobSequence(jobSchedule: jobSchedule, logger: logger)
         var jobIterator = sequence.makeIterator()
         let job = jobIterator.next()
-        XCTAssertEqual(job?.element.jobName, "Job1")
+        #expect(job?.element.jobName == "Job1")
         let job2 = jobIterator.next()
-        XCTAssertEqual(job2?.element.jobName, "Job2")
+        #expect(job2?.element.jobName == "Job2")
     }
 
     func testScheduleAfterReadingLastData(
@@ -311,14 +315,14 @@ final class JobSchedulerTests: XCTestCase {
             jobSchedule.setInitialNextDate(after: lastScheduledDate, now: nowDate, logger: logger)
             for dateString in expected {
                 let date = dateFormatter.date(from: dateString)
-                XCTAssertEqual(jobSchedule.elements[0].nextScheduledDate, date, file: file, line: line)
+                #expect(jobSchedule.elements[0].nextScheduledDate == date)
                 jobSchedule.updateNextScheduledDate(jobIndex: 0)
             }
         }
     }
 
     // test we are getting the right dates after restarting scheduler
-    func testScheduleLastDateWithEveryHour() async throws {
+    @Test func testScheduleLastDateWithEveryHour() async throws {
         try testScheduleAfterReadingLastData(
             schedule: .hourly(minute: 44),
             accuracy: .latest,
@@ -336,7 +340,7 @@ final class JobSchedulerTests: XCTestCase {
     }
 
     // test we are getting the right dates after restarting scheduler
-    func testScheduleLastDateWithOnMinutes() async throws {
+    @Test func testScheduleLastDateWithOnMinutes() async throws {
         try testScheduleAfterReadingLastData(
             schedule: .onMinutes([0, 10, 20, 30, 40, 50]),
             accuracy: .latest,
@@ -361,7 +365,7 @@ final class JobSchedulerTests: XCTestCase {
     }
 
     // test we are getting the right dates after restarting scheduler
-    func testScheduleLastDateWithOnDates() async throws {
+    @Test func testScheduleLastDateWithOnDates() async throws {
         try testScheduleAfterReadingLastData(
             schedule: .onDates([4, 6, 8], hour: 8, timeZone: .init(secondsFromGMT: 0)!),
             accuracy: .latest,
@@ -379,7 +383,7 @@ final class JobSchedulerTests: XCTestCase {
     }
 
     // test we are getting the right dates after restarting scheduler
-    func testScheduleLastDateWithMultipleRanges() async throws {
+    @Test func testScheduleLastDateWithMultipleRanges() async throws {
         try testScheduleAfterReadingLastData(
             schedule: .crontab("0 3-5 4 * *", timeZone: .init(secondsFromGMT: 0)!),
             accuracy: .latest,
@@ -418,7 +422,7 @@ final class JobSchedulerTests: XCTestCase {
     }
 
     // test we are getting the right dates after restarting scheduler
-    func testScheduleLastDateWithOutOfRangeDates() async throws {
+    @Test func testScheduleLastDateWithOutOfRangeDates() async throws {
         try testScheduleAfterReadingLastData(
             schedule: .crontab("0 10 27-30 * *", timeZone: .init(secondsFromGMT: 0)!),
             accuracy: .latest,
@@ -436,7 +440,7 @@ final class JobSchedulerTests: XCTestCase {
     }
 
     // test we are getting the right dates from accuracy all
-    func testScheduleLastDateAccuracyAll() async throws {
+    @Test func testScheduleLastDateAccuracyAll() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testScheduleAfterLastDate"
         }
@@ -460,7 +464,7 @@ final class JobSchedulerTests: XCTestCase {
 
     }
 
-    func testSchedulerService() async throws {
+    @Test func testSchedulerService() async throws {
         let (stream, source) = AsyncStream.makeStream(of: Void.self)
         struct TriggerShutdownParameters: JobParameters {
             static let jobName = "TriggerShutdown"
@@ -471,8 +475,8 @@ final class JobSchedulerTests: XCTestCase {
 
         let jobQueue = JobQueue(MemoryQueue(), logger: logger)
         jobQueue.registerJob(parameters: TriggerShutdownParameters.self) { _, context in
-            XCTAssertNotNil(context.nextScheduledAt)
-            XCTAssertGreaterThan(context.nextScheduledAt!, context.queuedAt)
+            #expect(context.nextScheduledAt != nil)
+            #expect(context.nextScheduledAt! > context.queuedAt)
 
             source.yield()
         }
@@ -496,7 +500,7 @@ final class JobSchedulerTests: XCTestCase {
         }
     }
 
-    func testSchedulerLastDate() async throws {
+    @Test func testSchedulerLastDate() async throws {
         let (stream, source) = AsyncStream.makeStream(of: Void.self)
         struct TriggerShutdownParameters: JobParameters {
             static let jobName = "TriggerShutdown"
@@ -531,11 +535,11 @@ final class JobSchedulerTests: XCTestCase {
             await serviceGroup.triggerGracefulShutdown()
         }
         let lastDate = try await jobQueue.queue.getMetadata(.jobScheduleLastDate(schedulerName: "test", jobName: "TriggerShutdown"))
-        let lastDate2 = try XCTUnwrap(lastDate)
-        XCTAssertEqual(lastDate2.timeIntervalSince1970, Date.now.timeIntervalSince1970, accuracy: 1.0)
+        let lastDate2 = try #require(lastDate)
+        #expect(abs(lastDate2.timeIntervalSince1970 - Date.now.timeIntervalSince1970) < 1.0)
     }
 
-    func testSchedulerLastDateAccuracyAll() async throws {
+    @Test func testSchedulerLastDateAccuracyAll() async throws {
         let (stream, source) = AsyncStream.makeStream(of: Void.self)
         struct TriggerShutdownParameters: JobParameters {
             static let jobName = "TriggerShutdown"
@@ -575,11 +579,11 @@ final class JobSchedulerTests: XCTestCase {
             await serviceGroup.triggerGracefulShutdown()
         }
         let lastDate = try await jobQueue.queue.getMetadata(.jobScheduleLastDate(schedulerName: "testLastDateAccuracy", jobName: "TriggerShutdown"))
-        let lastDate2 = try XCTUnwrap(lastDate)
-        XCTAssertEqual(lastDate2.timeIntervalSince1970, dateTriggered.timeIntervalSince1970, accuracy: 1.0)
+        let lastDate2 = try #require(lastDate)
+        #expect(abs(lastDate2.timeIntervalSince1970 - dateTriggered.timeIntervalSince1970) < 1.0)
     }
 
-    func testMultipleSchedulers() async throws {
+    @Test func testMultipleSchedulers() async throws {
         let (stream, source) = AsyncStream.makeStream(of: Void.self)
         var logger = Logger(label: "jobs")
         logger.logLevel = .debug
