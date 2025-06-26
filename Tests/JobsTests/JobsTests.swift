@@ -13,33 +13,27 @@
 //===----------------------------------------------------------------------===//
 
 import Atomics
+import Foundation
 import Logging
 import NIOConcurrencyHelpers
 import ServiceLifecycle
-import XCTest
+import Testing
 
 @testable import Jobs
 
-extension XCTestExpectation {
-    convenience init(description: String, expectedFulfillmentCount: Int) {
-        self.init(description: description)
-        self.expectedFulfillmentCount = expectedFulfillmentCount
-    }
-}
-
-final class JobsTests: XCTestCase {
-    func testBasic() async throws {
+struct JobsTests {
+    @Test func testBasic() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testBasic"
             let value: Int
         }
         let logger = Logger(label: "JobsTests")
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 10)
+        let expectation = TestExpectation()
         let jobQueue = JobQueue(.memory, logger: logger)
         let job = JobDefinition { (parameters: TestParameters, context) in
             context.logger.info("Parameters=\(parameters.value)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
-            expectation.fulfill()
+            expectation.trigger()
         }
         jobQueue.registerJob(job)
         try await testJobQueue(JobQueueProcessor(queue: jobQueue, logger: logger)) {
@@ -54,18 +48,18 @@ final class JobsTests: XCTestCase {
             try await jobQueue.push(TestParameters(value: 9))
             try await jobQueue.push(TestParameters(value: 10))
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait(count: 10)
         }
     }
 
-    func testJobNameBasic() async throws {
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 6)
+    @Test func testJobNameBasic() async throws {
+        let expectation = TestExpectation()
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         let jobName = JobName<Int>("testJobNameBasic")
         jobQueue.registerJob(name: "testJobNameBasic", parameters: Int.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
-            expectation.fulfill()
+            expectation.trigger()
         }
         try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(jobName, parameters: 1)
@@ -75,18 +69,18 @@ final class JobsTests: XCTestCase {
             try await jobQueue.push(jobName, parameters: 5)
             try await jobQueue.push(jobName, parameters: 6)
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait(count: 6)
         }
     }
 
-    func testMultipleWorkers() async throws {
+    @Test func testMultipleWorkers() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testMultipleWorkers"
             let value: Int
         }
         let runningJobCounter = ManagedAtomic(0)
         let maxRunningJobCounter = ManagedAtomic(0)
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 10)
+        let expectation = TestExpectation()
 
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
@@ -96,7 +90,7 @@ final class JobsTests: XCTestCase {
             }
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
             context.logger.info("Parameters=\(parameters)")
-            expectation.fulfill()
+            expectation.trigger()
             runningJobCounter.wrappingDecrement(by: 1, ordering: .relaxed)
         }
         try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 4))) {
@@ -111,18 +105,18 @@ final class JobsTests: XCTestCase {
             try await jobQueue.push(TestParameters(value: 9))
             try await jobQueue.push(TestParameters(value: 10))
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait(count: 10)
 
-            XCTAssertGreaterThan(maxRunningJobCounter.load(ordering: .relaxed), 1)
-            XCTAssertLessThanOrEqual(maxRunningJobCounter.load(ordering: .relaxed), 4)
+            #expect(maxRunningJobCounter.load(ordering: .relaxed) > 1)
+            #expect(maxRunningJobCounter.load(ordering: .relaxed) <= 4)
         }
     }
 
-    func testErrorRetryAndThenSucceed() async throws {
+    @Test func testErrorRetryAndThenSucceed() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testErrorRetryAndThenSucceed"
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let expectation = TestExpectation()
         let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
         struct FailedError: Error {}
         var logger = Logger(label: "JobsTests")
@@ -141,23 +135,23 @@ final class JobsTests: XCTestCase {
                 }
             }
 
-            expectation.fulfill()
+            expectation.trigger()
             if (currentJobTryCount.withLockedValue { $0 }) == 0 {
                 throw FailedError()
             }
         }
         try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestParameters())
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait(count: 2)
         }
-        XCTAssertEqual(currentJobTryCount.withLockedValue { $0 }, 2)
+        #expect(currentJobTryCount.withLockedValue { $0 } == 2)
     }
 
-    func testErrorRetryCount() async throws {
+    @Test func testErrorRetryCount() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testErrorRetryCount"
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 3)
+        let expectation = TestExpectation()
         let failedJobCount = ManagedAtomic(0)
         let attemptCounter: NIOLockedValueBox<[Int]> = .init([])
         struct FailedError: Error {}
@@ -171,7 +165,7 @@ final class JobsTests: XCTestCase {
             parameters: TestParameters.self,
             retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.01)
         ) { _, context in
-            expectation.fulfill()
+            expectation.trigger()
             attemptCounter.withLockedValue {
                 $0.append(context.attempt)
             }
@@ -180,14 +174,14 @@ final class JobsTests: XCTestCase {
         try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestParameters())
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait(count: 3)
         }
-        XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
-        XCTAssertEqual(attemptCounter.withLockedValue { $0 }, [1, 2, 3])
+        #expect(failedJobCount.load(ordering: .relaxed) == 1)
+        #expect(attemptCounter.withLockedValue { $0 } == [1, 2, 3])
     }
 
     /// Test retry policy that does different things based on the error passed to it
-    func testRetryHandlerErrorChecking() async throws {
+    @Test func testRetryHandlerErrorChecking() async throws {
         struct TestError: Error {}
         // retry strategy that retires indefinitely unless error is TestError
         struct TestRetryStrategy: JobRetryStrategy {
@@ -207,7 +201,7 @@ final class JobsTests: XCTestCase {
         struct TestParameters: JobParameters {
             static let jobName = "testErrorRetryCount"
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let expectation = TestExpectation()
         let failedJobCount = ManagedAtomic(0)
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
@@ -219,23 +213,23 @@ final class JobsTests: XCTestCase {
             parameters: TestParameters.self,
             retryStrategy: TestRetryStrategy()
         ) { _, _ in
-            expectation.fulfill()
+            expectation.trigger()
             throw TestError()
         }
         try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestParameters())
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait()
         }
-        XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
+        #expect(failedJobCount.load(ordering: .relaxed) == 1)
     }
 
-    func testDelayedJob() async throws {
+    @Test func testDelayedJob() async throws {
         struct TestParameters: JobParameters, Equatable {
             static let jobName = "testDelayedJob"
             let value: Int
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let expectation = TestExpectation()
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
         let jobQueue = JobQueue(.memory, logger: logger)
@@ -249,7 +243,7 @@ final class JobsTests: XCTestCase {
             jobExecutionSequence.withLockedValue {
                 $0.append(parameters)
             }
-            expectation.fulfill()
+            expectation.trigger()
 
             if parameters == delayedJobParameters {
                 delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
@@ -262,38 +256,38 @@ final class JobsTests: XCTestCase {
             delayedJob.wrappingIncrement(by: 1, ordering: .relaxed)
             try await jobQueue.push(delayedJobParameters, options: .init(delayUntil: Date.now.addingTimeInterval(1)))
             try await jobQueue.push(notDelayedJobParameters)
-            XCTAssertEqual(delayedJob.load(ordering: .relaxed), 1)
-            await fulfillment(of: [expectation], timeout: 5)
-            XCTAssertEqual(delayedJob.load(ordering: .relaxed), 0)
+            #expect(delayedJob.load(ordering: .relaxed) == 1)
+            try await expectation.wait(count: 2)
+            #expect(delayedJob.load(ordering: .relaxed) == 0)
         }
 
-        XCTAssertEqual(jobExecutionSequence.withLockedValue { $0 }, [notDelayedJobParameters, delayedJobParameters])
-        XCTAssertGreaterThan(Date.now, delayedJobQueuedAt.withLockedValue { $0 })
+        #expect(jobExecutionSequence.withLockedValue { $0 } == [notDelayedJobParameters, delayedJobParameters])
+        #expect(Date.now > delayedJobQueuedAt.withLockedValue { $0 })
     }
 
-    func testJobParameters() async throws {
+    @Test func testJobParameters() async throws {
         struct TestJobParameters: JobParameters {
             static let jobName: String = "TestJobParameters"
             let id: Int
             let message: String
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called")
+        let expectation = TestExpectation()
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         jobQueue.registerJob(parameters: TestJobParameters.self) { parameters, _ in
-            XCTAssertEqual(parameters.id, 23)
-            XCTAssertEqual(parameters.message, "Hello!")
-            expectation.fulfill()
+            #expect(parameters.id == 23)
+            #expect(parameters.message == "Hello!")
+            expectation.trigger()
         }
         try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestJobParameters(id: 23, message: "Hello!"))
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait()
         }
     }
 
     /// Verify test job is cancelled when service group is cancelled
-    func testShutdownJob() async throws {
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+    @Test func testShutdownJob() async throws {
+        let expectation = TestExpectation()
 
         let cancelledJobCount = ManagedAtomic(0)
         var logger = Logger(label: "JobsTests")
@@ -311,7 +305,7 @@ final class JobsTests: XCTestCase {
             let length: Duration
         }
         jobQueue.registerJob(parameters: SleepJobParameters.self) { parameters, _ in
-            expectation.fulfill()
+            expectation.trigger()
             try await Task.sleep(for: parameters.length)
         }
         try await withThrowingTaskGroup(of: Void.self) { group in
@@ -326,15 +320,15 @@ final class JobsTests: XCTestCase {
                 try await serviceGroup.run()
             }
             try await jobQueue.push(SleepJobParameters(length: .milliseconds(1000)))
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait()
             group.cancelAll()
         }
 
-        XCTAssertEqual(cancelledJobCount.load(ordering: .relaxed), 1)
+        #expect(cancelledJobCount.load(ordering: .relaxed) == 1)
     }
 
     /// test job fails to decode but queue continues to process
-    func testFailToDecode() async throws {
+    @Test func testFailToDecode() async throws {
         struct TestIntParameter: JobParameters {
             static let jobName = "testFailToDecode"
             let value: Int
@@ -344,35 +338,35 @@ final class JobsTests: XCTestCase {
             let value: String
         }
         let string: NIOLockedValueBox<String> = .init("")
-        let expectation = XCTestExpectation(description: "job was called", expectedFulfillmentCount: 1)
+        let expectation = TestExpectation()
 
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
         let jobQueue = JobQueue(.memory, logger: logger)
         jobQueue.registerJob(parameters: TestStringParameter.self) { parameters, _ in
             string.withLockedValue { $0 = parameters.value }
-            expectation.fulfill()
+            expectation.trigger()
         }
         try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestIntParameter(value: 2))
             try await jobQueue.push(TestStringParameter(value: "test"))
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait()
         }
         string.withLockedValue {
-            XCTAssertEqual($0, "test")
+            #expect($0 == "test")
         }
     }
 
-    func testMultipleJobQueueHandlers() async throws {
+    @Test func testMultipleJobQueueHandlers() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testMultipleJobQueueHandlers"
             let value: Int
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 200)
+        let expectation = TestExpectation()
         let job = JobDefinition(parameters: TestParameters.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
-            expectation.fulfill()
+            expectation.trigger()
         }
         let logger = {
             var logger = Logger(label: "JobsTests")
@@ -399,10 +393,10 @@ final class JobsTests: XCTestCase {
                 for i in 0..<200 {
                     try await jobQueue.push(TestParameters(value: i))
                 }
-                await fulfillment(of: [expectation], timeout: 5)
+                try await expectation.wait(count: 200)
                 await serviceGroup.triggerGracefulShutdown()
             } catch {
-                XCTFail("\(String(reflecting: error))")
+                Issue.record("\(String(reflecting: error))")
                 await serviceGroup.triggerGracefulShutdown()
                 throw error
             }
@@ -410,37 +404,37 @@ final class JobsTests: XCTestCase {
     }
 
     /// Test we can user `any JobQueueProtocol` to register and push jobs
-    func testJobQueueProtocol() async throws {
+    @Test func testJobQueueProtocol() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testJobQueueProtocol"
             let value: Int
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let expectation = TestExpectation()
         let jobQueue: any JobQueueProtocol = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         let job = JobDefinition { (parameters: TestParameters, context) in
             context.logger.info("Parameters=\(parameters.value)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
-            expectation.fulfill()
+            expectation.trigger()
         }
         jobQueue.registerJob(job)
         try await testJobQueue(jobQueue.processor(options: .init())) {
             try await jobQueue.push(TestParameters(value: 1))
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait()
         }
     }
 
-    func testJobTimeout() async throws {
+    @Test func testJobTimeout() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testJobTimeout"
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let expectation = TestExpectation()
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             MemoryQueue { _, error in
-                XCTAssertEqual((error as? JobQueueError)?.code, .jobTimedOut)
-                expectation.fulfill()
+                #expect((error as? JobQueueError)?.code == .jobTimedOut)
+                expectation.trigger()
             },
             logger: logger
         )
@@ -454,16 +448,16 @@ final class JobsTests: XCTestCase {
         try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestParameters())
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait()
         }
     }
 
-    func testJobWithTimeoutThatSucceeded() async throws {
+    @Test func testJobWithTimeoutThatSucceeded() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testJobWithoutTimeout"
             let value: Int
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let expectation = TestExpectation()
         let failedJobCount = ManagedAtomic(0)
         let jobQueue = JobQueue(
             MemoryQueue { _, _ in failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed) },
@@ -472,34 +466,34 @@ final class JobsTests: XCTestCase {
         let job = JobDefinition(timeout: .seconds(1)) { (parameters: TestParameters, context) in
             context.logger.info("Parameters=\(parameters.value)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
-            expectation.fulfill()
+            expectation.trigger()
         }
         jobQueue.registerJob(job)
         try await testJobQueue(jobQueue.processor()) {
             try await jobQueue.push(TestParameters(value: 1))
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait(count: 1)
         }
-        XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 0)
+        #expect(failedJobCount.load(ordering: .relaxed) == 0)
     }
 
     // verify advance by gives us at least millisecond accuracy across 30000 years
-    func testAdvancedBy() {
+    @Test func testAdvancedBy() {
         for _ in 0..<100 {
             let date = Date(timeIntervalSinceReferenceDate: TimeInterval.random(in: 0..<1_000_000_000_000))
             let offset = Double.random(in: 0..<1_000_000_000)
             let duration = Duration.seconds(offset)
             let newDate = date._advanced(by: duration)
-            XCTAssertEqual(date.advanced(by: offset).timeIntervalSinceReferenceDate, newDate.timeIntervalSinceReferenceDate, accuracy: 0.001)
+            #expect(abs(date.advanced(by: offset).timeIntervalSinceReferenceDate - newDate.timeIntervalSinceReferenceDate) < 0.001)
         }
     }
 
-    func testCancelledJob() async throws {
+    @Test func testCancelledJob() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testCancelledJob"
             let value: Int
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let expectation = TestExpectation()
         let jobProcessed: NIOLockedValueBox<[Int]> = .init([])
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
@@ -514,7 +508,7 @@ final class JobsTests: XCTestCase {
             jobProcessed.withLockedValue {
                 $0.append(parameters.value)
             }
-            expectation.fulfill()
+            expectation.trigger()
         }
         try await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = ServiceGroup(
@@ -535,18 +529,18 @@ final class JobsTests: XCTestCase {
                 try await serviceGroup.run()
             }
 
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait()
             await serviceGroup.triggerGracefulShutdown()
         }
-        XCTAssertEqual(jobProcessed.withLockedValue { $0 }, [15])
+        #expect(jobProcessed.withLockedValue { $0 } == [15])
     }
 
-    func testPausedThenResume() async throws {
+    @Test func testPausedThenResume() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testPausedAndThenResume"
             let value: Int
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 2)
+        let expectation = TestExpectation()
         let jobRunSequence: NIOLockedValueBox<[Int]> = .init([])
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
@@ -562,7 +556,7 @@ final class JobsTests: XCTestCase {
             jobRunSequence.withLockedValue {
                 $0.append(parameters.value)
             }
-            expectation.fulfill()
+            expectation.trigger()
         }
 
         try await withThrowingTaskGroup(of: Void.self) { group in
@@ -585,18 +579,18 @@ final class JobsTests: XCTestCase {
             }
 
             try await jobQueue.resumeJob(jobID: pausableJob)
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait(count: 2)
             await serviceGroup.triggerGracefulShutdown()
         }
-        XCTAssertEqual(jobRunSequence.withLockedValue { $0 }, [30, 15])
+        #expect(jobRunSequence.withLockedValue { $0 } == [30, 15])
     }
 
-    func testJobQueueGracefulShutdownWaitsForJob() async throws {
+    @Test func testJobQueueGracefulShutdownWaitsForJob() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testJobTimeout"
         }
-        let expectationStarted = XCTestExpectation(description: "TestJob.execute started", expectedFulfillmentCount: 1)
-        let expectationEnded = XCTestExpectation(description: "TestJob.execute ended", expectedFulfillmentCount: 1)
+        let expectationStarted = TestExpectation()
+        let expectationEnded = TestExpectation()
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
@@ -607,28 +601,28 @@ final class JobsTests: XCTestCase {
             parameters: TestParameters.self,
             retryStrategy: .dontRetry
         ) { _, _ in
-            expectationStarted.fulfill()
+            expectationStarted.trigger()
             try await Task.sleep(for: .milliseconds(100))
-            expectationEnded.fulfill()
+            expectationEnded.trigger()
         }
         try await testJobQueue(jobQueue.processor(options: .init(gracefulShutdownTimeout: .seconds(10000)))) {
             _ = try await jobQueue.push(TestParameters())
-            await fulfillment(of: [expectationStarted], timeout: 5)
+            try await expectationStarted.wait()
         }
-        await fulfillment(of: [expectationEnded], timeout: 5)
+        try await expectationEnded.wait()
     }
 
-    func testJobQueueGracefulShutdownTimeout() async throws {
+    @Test func testJobQueueGracefulShutdownTimeout() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testJobTimeout"
         }
-        let expectation = XCTestExpectation(description: "TestJob.execute was called", expectedFulfillmentCount: 1)
+        let expectation = TestExpectation()
         let failedJobCount = ManagedAtomic(0)
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
             MemoryQueue { _, error in
-                XCTAssert(error is CancellationError)
+                #expect(error is CancellationError)
                 failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed)
             },
             logger: logger
@@ -637,13 +631,13 @@ final class JobsTests: XCTestCase {
             parameters: TestParameters.self,
             retryStrategy: .dontRetry
         ) { _, _ in
-            expectation.fulfill()
+            expectation.trigger()
             try await Task.sleep(for: .seconds(10))
         }
         try await testJobQueue(jobQueue.processor(options: .init(gracefulShutdownTimeout: .milliseconds(50)))) {
             try await jobQueue.push(TestParameters())
-            await fulfillment(of: [expectation], timeout: 5)
+            try await expectation.wait()
         }
-        XCTAssertEqual(failedJobCount.load(ordering: .relaxed), 1)
+        #expect(failedJobCount.load(ordering: .relaxed) == 1)
     }
 }

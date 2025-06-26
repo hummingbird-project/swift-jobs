@@ -204,10 +204,10 @@ struct JobSchedulerTests {
 
     @Test func testJobScheduleWithTwoJobs() throws {
         struct Job1: JobParameters {
-            static var jobName = "Job1"
+            static let jobName = "Job1"
         }
         struct Job2: JobParameters {
-            static var jobName = "Job2"
+            static let jobName = "Job2"
         }
         var schedule = JobSchedule()
         schedule.addJob(Job1(), schedule: .hourly(minute: 30), accuracy: .all)

@@ -36,7 +36,7 @@ struct TracingTests {
 
     @Test func testTraceOutput() async throws {
         struct TestParameters: JobParameters {
-            static var jobName: String = "TestTracing"
+            static let jobName: String = "TestTracing"
             let sleep: Double
         }
         try await Self.testTracer.withUnique {
@@ -76,7 +76,7 @@ struct TracingTests {
 
     @Test func testTracingErrorAndRetry() async throws {
         struct TestParameters: JobParameters {
-            static var jobName: String = "TestTracingErrors"
+            static let jobName: String = "TestTracingErrors"
         }
         struct FailedError: Error {}
         try await Self.testTracer.withUnique {
@@ -136,7 +136,7 @@ struct TracingTests {
 
     @Test func testParentSpan() async throws {
         struct TestParameters: JobParameters {
-            static var jobName: String = "TestParentSpan"
+            static let jobName: String = "TestParentSpan"
             let sleep: Double
         }
         struct JobTestKey: ServiceContextKey {
