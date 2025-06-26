@@ -12,11 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Foundation
 import Jobs
 import Logging
 import NIOConcurrencyHelpers
+import Testing
 import Tracing
-import XCTest
 
 @testable import Instrumentation
 
@@ -26,111 +27,114 @@ import FoundationEssentials
 import Foundation
 #endif
 
-final class TracingTests: XCTestCase {
-    func testTraceOutput() async throws {
+struct TracingTests {
+    static let testTracer = {
+        let tracer = TaskUniqueTestTracer()
+        InstrumentationSystem.bootstrap(tracer)
+        return tracer
+    }()
+
+    @Test func testTraceOutput() async throws {
         struct TestParameters: JobParameters {
             static var jobName: String = "TestTracing"
             let sleep: Double
         }
-        let expectation = expectation(description: "Expected span to be ended.")
-        let tracer = TestTracer()
-        tracer.onEndSpan = { _ in
-            expectation.fulfill()
-        }
-        InstrumentationSystem.bootstrapInternal(tracer)
+        try await Self.testTracer.withUnique {
+            let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests")) {
+                TracingJobMiddleware()
+            }
+            jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
+                context.logger.info("Parameters=\(parameters)")
+                try await Task.sleep(for: .milliseconds(parameters.sleep))
+            }
+            let expectation = TestExpectation()
+            Self.testTracer.onEndSpan = { _ in expectation.trigger() }
 
-        let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests")) {
-            TracingJobMiddleware()
-        }
-        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
-            context.logger.info("Parameters=\(parameters)")
-            try await Task.sleep(for: .milliseconds(parameters.sleep))
-        }
-        let jobID = try await testJobQueue(jobQueue.processor()) {
-            let jobID = try await jobQueue.push(TestParameters(sleep: 10))
-            await fulfillment(of: [expectation], timeout: 1)
-            return jobID
-        }
+            let jobID = try await testJobQueue(jobQueue.processor()) {
+                let jobID = try await jobQueue.push(TestParameters(sleep: 10))
+                try await expectation.wait()
+                return jobID
+            }
 
-        let span = try XCTUnwrap(tracer.spans.first)
+            let span = try #require(Self.testTracer.spans.first)
 
-        XCTAssertEqual(span.operationName, "TestTracing")
-        XCTAssertEqual(span.kind, .server)
-        XCTAssertNil(span.status)
-        XCTAssertTrue(span.recordedErrors.isEmpty)
+            #expect(span.operationName == "TestTracing")
+            #expect(span.kind == .server)
+            #expect(span.status == nil)
+            #expect(span.recordedErrors.isEmpty == true)
 
-        XCTAssertSpanAttributesEqual(
-            span.attributes,
-            [
-                "job.id": "\(jobID.uuidString)",
-                "job.attempt": 1,
-                "job.queue": "default",
-            ]
-        )
+            expectSpanAttributesEqual(
+                span.attributes,
+                [
+                    "job.id": "\(jobID.uuidString)",
+                    "job.attempt": 1,
+                    "job.queue": "default",
+                ]
+            )
+        }
     }
 
-    func testTracingErrorAndRetry() async throws {
+    @Test func testTracingErrorAndRetry() async throws {
         struct TestParameters: JobParameters {
             static var jobName: String = "TestTracingErrors"
         }
         struct FailedError: Error {}
-        let expectation = expectation(description: "Expected span to be ended.")
-        expectation.expectedFulfillmentCount = 2
-        let tracer = TestTracer()
-        tracer.onEndSpan = { _ in expectation.fulfill() }
-        InstrumentationSystem.bootstrapInternal(tracer)
-
-        let failJob = NIOLockedValueBox(true)
-        var logger = Logger(label: "JobsTests")
-        logger.logLevel = .debug
-        let jobQueue = JobQueue(.memory, logger: logger) {
-            TracingJobMiddleware()
-        }
-        jobQueue.registerJob(
-            parameters: TestParameters.self,
-            retryStrategy: .exponentialJitter(maxAttempts: 4, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.25)
-        ) { parameters, context in
-            if failJob.withLockedValue({
-                let value = $0
-                $0 = false
-                return value
-            }) {
-                throw FailedError()
+        try await Self.testTracer.withUnique {
+            let failJob = NIOLockedValueBox(true)
+            var logger = Logger(label: "JobsTests")
+            logger.logLevel = .debug
+            let jobQueue = JobQueue(.memory, logger: logger) {
+                TracingJobMiddleware()
             }
+            jobQueue.registerJob(
+                parameters: TestParameters.self,
+                retryStrategy: .exponentialJitter(maxAttempts: 4, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.25)
+            ) { parameters, context in
+                if failJob.withLockedValue({
+                    let value = $0
+                    $0 = false
+                    return value
+                }) {
+                    throw FailedError()
+                }
+            }
+            let expectation = TestExpectation()
+            Self.testTracer.onEndSpan = { _ in expectation.trigger() }
+
+            let jobID = try await testJobQueue(jobQueue.processor()) {
+                let jobID = try await jobQueue.push(TestParameters())
+                try await expectation.wait(count: 2)
+                return jobID
+            }
+
+            let span = try #require(Self.testTracer.spans.first)
+
+            #expect(span.operationName == "TestTracingErrors")
+            #expect(span.kind == .server)
+            #expect(span.status == nil)
+            let error = try #require(span.recordedErrors.first)
+
+            #expect(error.0 is FailedError)
+
+            expectSpanAttributesEqual(
+                span.attributes,
+                [
+                    "job.id": "\(jobID.uuidString)",
+                    "job.attempt": 1,
+                    "job.queue": "default",
+                ]
+            )
+            let span2 = try #require(Self.testTracer.spans.last)
+
+            #expect(span2.operationName == "TestTracingErrors")
+            #expect(span2.kind == .server)
+            #expect(span2.status == nil)
+            #expect(span2.recordedErrors.isEmpty)
+            #expect(span2.attributes.get("job.attempt") == SpanAttribute.int64(2))
         }
-        let jobID = try await testJobQueue(jobQueue.processor()) {
-            let jobID = try await jobQueue.push(TestParameters())
-            await fulfillment(of: [expectation], timeout: 5)
-            return jobID
-        }
-
-        let span = try XCTUnwrap(tracer.spans.first)
-
-        XCTAssertEqual(span.operationName, "TestTracingErrors")
-        XCTAssertEqual(span.kind, .server)
-        XCTAssertNil(span.status)
-        let error = try XCTUnwrap(span.recordedErrors.first)
-
-        XCTAssert(error.0 is FailedError)
-
-        XCTAssertSpanAttributesEqual(
-            span.attributes,
-            [
-                "job.id": "\(jobID.uuidString)",
-                "job.attempt": 1,
-                "job.queue": "default",
-            ]
-        )
-        let span2 = try XCTUnwrap(tracer.spans.last)
-
-        XCTAssertEqual(span2.operationName, "TestTracingErrors")
-        XCTAssertEqual(span2.kind, .server)
-        XCTAssertNil(span2.status)
-        XCTAssert(span2.recordedErrors.isEmpty)
-        XCTAssertEqual(span2.attributes.get("job.attempt"), SpanAttribute.int64(2))
     }
 
-    func testParentSpan() async throws {
+    @Test func testParentSpan() async throws {
         struct TestParameters: JobParameters {
             static var jobName: String = "TestParentSpan"
             let sleep: Double
@@ -139,89 +143,87 @@ final class TracingTests: XCTestCase {
             typealias Value = String
             static var nameOverride: String? { "job-test-key" }
         }
-        let jobExpectation = expectation(description: "Expecyt job to finish")
-        let tracerExpectation = expectation(description: "Expected span to be ended.")
-        tracerExpectation.expectedFulfillmentCount = 2
-        let tracer = TestTracer()
-        tracer.onEndSpan = { _ in tracerExpectation.fulfill() }
-        InstrumentationSystem.bootstrapInternal(tracer)
+        try await Self.testTracer.withUnique {
 
-        let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests")) {
-            TracingJobMiddleware(queueName: "tracing")
-        }
-        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
-            context.logger.info("Parameters=\(parameters)")
-            try await Task.sleep(for: .milliseconds(parameters.sleep))
-            jobExpectation.fulfill()
-        }
+            let jobExpectation = TestExpectation()
+            let tracerExpectation = TestExpectation()
+            Self.testTracer.onEndSpan = { _ in tracerExpectation.trigger() }
 
-        var serviceContext = ServiceContext.current ?? ServiceContext.topLevel
-        serviceContext.traceID = UUID().uuidString
-        let jobID = try await withSpan("ParentSpan", context: serviceContext, ofKind: .server) { _ in
-            let jobID = try await testJobQueue(jobQueue.processor()) {
-                let jobID = try await jobQueue.push(TestParameters(sleep: 1))
-                await fulfillment(of: [jobExpectation], timeout: 5)
+            let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests")) {
+                TracingJobMiddleware(queueName: "tracing")
+            }
+            jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
+                context.logger.info("Parameters=\(parameters)")
+                try await Task.sleep(for: .milliseconds(parameters.sleep))
+                jobExpectation.trigger()
+            }
+
+            var serviceContext = ServiceContext.current ?? ServiceContext.topLevel
+            serviceContext.traceID = UUID().uuidString
+            let jobID = try await withSpan("ParentSpan", context: serviceContext, ofKind: .server) { _ in
+                let jobID = try await testJobQueue(jobQueue.processor()) {
+                    let jobID = try await jobQueue.push(TestParameters(sleep: 1))
+                    try await jobExpectation.wait()
+                    return jobID
+                }
                 return jobID
             }
-            return jobID
+            try await tracerExpectation.wait(count: 2)
+
+            let span = try #require(Self.testTracer.spans.first)
+
+            #expect(span.operationName == "ParentSpan")
+            #expect(span.kind == .server)
+            #expect(span.status == nil)
+            #expect(span.recordedErrors.isEmpty == true)
+
+            let span2 = try #require(Self.testTracer.spans.last)
+
+            #expect(span2.operationName == "TestParentSpan")
+            #expect(span2.kind == .server)
+            #expect(span2.status == nil)
+            #expect(span2.recordedErrors.isEmpty == true)
+            let link = try #require(span2.links.first)
+            #expect(link.context.traceID == serviceContext.traceID)
+
+            expectSpanAttributesEqual(
+                span2.attributes,
+                [
+                    "job.id": "\(jobID.uuidString)",
+                    "job.attempt": 1,
+                    "job.queue": "tracing",
+                ]
+            )
         }
-        await fulfillment(of: [tracerExpectation], timeout: 5)
-
-        let span = try XCTUnwrap(tracer.spans.first)
-
-        XCTAssertEqual(span.operationName, "ParentSpan")
-        XCTAssertEqual(span.kind, .server)
-        XCTAssertNil(span.status)
-        XCTAssertTrue(span.recordedErrors.isEmpty)
-
-        let span2 = try XCTUnwrap(tracer.spans.last)
-
-        XCTAssertEqual(span2.operationName, "TestParentSpan")
-        XCTAssertEqual(span2.kind, .server)
-        XCTAssertNil(span2.status)
-        XCTAssertTrue(span2.recordedErrors.isEmpty)
-        let link = try XCTUnwrap(span2.links.first)
-        XCTAssertEqual(link.context.traceID, serviceContext.traceID)
-
-        XCTAssertSpanAttributesEqual(
-            span2.attributes,
-            [
-                "job.id": "\(jobID.uuidString)",
-                "job.attempt": 1,
-                "job.queue": "tracing",
-            ]
-        )
     }
 }
 
-private func XCTAssertSpanAttributesEqual(
+private func expectSpanAttributesEqual(
     _ lhs: @autoclosure () -> SpanAttributes,
     _ rhs: @autoclosure () -> [String: SpanAttribute],
-    file: StaticString = #filePath,
-    line: UInt = #line
+    fileID: String = #fileID,
+    filePath: String = #filePath,
+    line: Int = #line,
+    column: Int = #column
 ) {
     var rhs = rhs()
 
     // swift-format-ignore: ReplaceForEachWithForLoop
     lhs().forEach { key, attribute in
         if let rhsValue = rhs.removeValue(forKey: key) {
-            if rhsValue != attribute {
-                XCTFail(
-                    #""\#(key)" was expected to be "\#(rhsValue)" but is actually "\#(attribute)"."#,
-                    file: file,
-                    line: line
-                )
-            }
+            #expect(rhsValue == attribute, sourceLocation: .init(fileID: fileID, filePath: filePath, line: line, column: column))
         } else {
-            XCTFail(
+            Issue.record(
                 #"Did not specify expected value for "\#(key)", actual value is "\#(attribute)"."#,
-                file: file,
-                line: line
+                sourceLocation: .init(fileID: fileID, filePath: filePath, line: line, column: column)
             )
         }
     }
 
     if !rhs.isEmpty {
-        XCTFail(#"Expected attributes "\#(rhs.keys)" are not present in actual attributes."#, file: file, line: line)
+        Issue.record(
+            #"Expected attributes "\#(rhs.keys)" are not present in actual attributes."#,
+            sourceLocation: .init(fileID: fileID, filePath: filePath, line: line, column: column)
+        )
     }
 }
