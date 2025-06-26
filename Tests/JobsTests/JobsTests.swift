@@ -15,8 +15,8 @@
 import Atomics
 import Foundation
 import Logging
-import NIOConcurrencyHelpers
 import ServiceLifecycle
+import Synchronization
 import Testing
 
 @testable import Jobs
@@ -117,7 +117,7 @@ struct JobsTests {
             static let jobName = "testErrorRetryAndThenSucceed"
         }
         let expectation = TestExpectation()
-        let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
+        let currentJobTryCount: Mutex<Int> = .init(0)
         struct FailedError: Error {}
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
@@ -130,13 +130,13 @@ struct JobsTests {
             retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
         ) { _, _ in
             defer {
-                currentJobTryCount.withLockedValue {
+                currentJobTryCount.withLock {
                     $0 += 1
                 }
             }
 
             expectation.trigger()
-            if (currentJobTryCount.withLockedValue { $0 }) == 0 {
+            if (currentJobTryCount.withLock { $0 }) == 0 {
                 throw FailedError()
             }
         }
@@ -144,7 +144,7 @@ struct JobsTests {
             try await jobQueue.push(TestParameters())
             try await expectation.wait(count: 2)
         }
-        #expect(currentJobTryCount.withLockedValue { $0 } == 2)
+        #expect(currentJobTryCount.withLock { $0 } == 2)
     }
 
     @Test func testErrorRetryCount() async throws {
@@ -153,7 +153,7 @@ struct JobsTests {
         }
         let expectation = TestExpectation()
         let failedJobCount = ManagedAtomic(0)
-        let attemptCounter: NIOLockedValueBox<[Int]> = .init([])
+        let attemptCounter: Mutex<[Int]> = .init([])
         struct FailedError: Error {}
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
@@ -166,7 +166,7 @@ struct JobsTests {
             retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.01)
         ) { _, context in
             expectation.trigger()
-            attemptCounter.withLockedValue {
+            attemptCounter.withLock {
                 $0.append(context.attempt)
             }
             throw FailedError()
@@ -177,7 +177,7 @@ struct JobsTests {
             try await expectation.wait(count: 3)
         }
         #expect(failedJobCount.load(ordering: .relaxed) == 1)
-        #expect(attemptCounter.withLockedValue { $0 } == [1, 2, 3])
+        #expect(attemptCounter.withLock { $0 } == [1, 2, 3])
     }
 
     /// Test retry policy that does different things based on the error passed to it
@@ -236,18 +236,18 @@ struct JobsTests {
         let delayedJob = ManagedAtomic(0)
         let delayedJobParameters = TestParameters(value: 23)
         let notDelayedJobParameters = TestParameters(value: 89)
-        let jobExecutionSequence: NIOLockedValueBox<[TestParameters]> = .init([])
-        let delayedJobQueuedAt: NIOLockedValueBox<Date> = .init(Date.now)
+        let jobExecutionSequence: Mutex<[TestParameters]> = .init([])
+        let delayedJobQueuedAt: Mutex<Date> = .init(Date.now)
         jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
-            jobExecutionSequence.withLockedValue {
+            jobExecutionSequence.withLock {
                 $0.append(parameters)
             }
             expectation.trigger()
 
             if parameters == delayedJobParameters {
                 delayedJob.wrappingDecrement(by: 1, ordering: .relaxed)
-                delayedJobQueuedAt.withLockedValue {
+                delayedJobQueuedAt.withLock {
                     $0 = context.queuedAt
                 }
             }
@@ -261,8 +261,8 @@ struct JobsTests {
             #expect(delayedJob.load(ordering: .relaxed) == 0)
         }
 
-        #expect(jobExecutionSequence.withLockedValue { $0 } == [notDelayedJobParameters, delayedJobParameters])
-        #expect(Date.now > delayedJobQueuedAt.withLockedValue { $0 })
+        #expect(jobExecutionSequence.withLock { $0 } == [notDelayedJobParameters, delayedJobParameters])
+        #expect(Date.now > delayedJobQueuedAt.withLock { $0 })
     }
 
     @Test func testJobParameters() async throws {
@@ -337,14 +337,14 @@ struct JobsTests {
             static let jobName = "testFailToDecode"
             let value: String
         }
-        let string: NIOLockedValueBox<String> = .init("")
+        let string: Mutex<String> = .init("")
         let expectation = TestExpectation()
 
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .debug
         let jobQueue = JobQueue(.memory, logger: logger)
         jobQueue.registerJob(parameters: TestStringParameter.self) { parameters, _ in
-            string.withLockedValue { $0 = parameters.value }
+            string.withLock { $0 = parameters.value }
             expectation.trigger()
         }
         try await testJobQueue(jobQueue.processor()) {
@@ -352,7 +352,7 @@ struct JobsTests {
             try await jobQueue.push(TestStringParameter(value: "test"))
             try await expectation.wait()
         }
-        string.withLockedValue {
+        string.withLock {
             #expect($0 == "test")
         }
     }
@@ -494,7 +494,7 @@ struct JobsTests {
             let value: Int
         }
         let expectation = TestExpectation()
-        let jobProcessed: NIOLockedValueBox<[Int]> = .init([])
+        let jobProcessed: Mutex<[Int]> = .init([])
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
@@ -505,7 +505,7 @@ struct JobsTests {
             parameters: TestParameters.self,
             retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
         ) { parameters, _ in
-            jobProcessed.withLockedValue {
+            jobProcessed.withLock {
                 $0.append(parameters.value)
             }
             expectation.trigger()
@@ -532,7 +532,7 @@ struct JobsTests {
             try await expectation.wait()
             await serviceGroup.triggerGracefulShutdown()
         }
-        #expect(jobProcessed.withLockedValue { $0 } == [15])
+        #expect(jobProcessed.withLock { $0 } == [15])
     }
 
     @Test func testPausedThenResume() async throws {
@@ -541,7 +541,7 @@ struct JobsTests {
             let value: Int
         }
         let expectation = TestExpectation()
-        let jobRunSequence: NIOLockedValueBox<[Int]> = .init([])
+        let jobRunSequence: Mutex<[Int]> = .init([])
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
@@ -553,7 +553,7 @@ struct JobsTests {
             retryStrategy: .exponentialJitter(maxAttempts: 3, minJitter: 0.01, maxJitter: 0.25)
         ) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
-            jobRunSequence.withLockedValue {
+            jobRunSequence.withLock {
                 $0.append(parameters.value)
             }
             expectation.trigger()
@@ -582,7 +582,7 @@ struct JobsTests {
             try await expectation.wait(count: 2)
             await serviceGroup.triggerGracefulShutdown()
         }
-        #expect(jobRunSequence.withLockedValue { $0 } == [30, 15])
+        #expect(jobRunSequence.withLock { $0 } == [30, 15])
     }
 
     @Test func testJobQueueGracefulShutdownWaitsForJob() async throws {

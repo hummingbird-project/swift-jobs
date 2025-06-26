@@ -15,7 +15,7 @@
 import Foundation
 import Jobs
 import Logging
-import NIOConcurrencyHelpers
+import Synchronization
 import Testing
 import Tracing
 
@@ -80,7 +80,7 @@ struct TracingTests {
         }
         struct FailedError: Error {}
         try await Self.testTracer.withUnique {
-            let failJob = NIOLockedValueBox(true)
+            let failJob = Mutex(true)
             var logger = Logger(label: "JobsTests")
             logger.logLevel = .debug
             let jobQueue = JobQueue(.memory, logger: logger) {
@@ -90,7 +90,7 @@ struct TracingTests {
                 parameters: TestParameters.self,
                 retryStrategy: .exponentialJitter(maxAttempts: 4, maxBackoff: .seconds(0.5), minJitter: 0.0, maxJitter: 0.25)
             ) { parameters, context in
-                if failJob.withLockedValue({
+                if failJob.withLock({
                     let value = $0
                     $0 = false
                     return value

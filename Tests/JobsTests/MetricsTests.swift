@@ -12,14 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Atomics
 import Foundation
 import Jobs
 import Logging
 import Metrics
 import MetricsTestKit
-import NIOConcurrencyHelpers
 import ServiceLifecycle
+import Synchronization
 import Testing
 
 struct MetricsTests {
@@ -110,7 +109,7 @@ struct MetricsTests {
     }
 
     @Test func testFailToDecode() async throws {
-        let string: NIOLockedValueBox<String> = .init("")
+        let string: Mutex<String> = .init("")
         struct TestIntParameter: JobParameters {
             static let jobName = "testFailToDecode"
             let value: Int
@@ -126,7 +125,7 @@ struct MetricsTests {
             logger.logLevel = .debug
             let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests")) { MetricsJobMiddleware() }
             jobQueue.registerJob(parameters: TestStringParameter.self) { parameters, _ in
-                string.withLockedValue { $0 = parameters.value }
+                string.withLock { $0 = parameters.value }
                 expectation.trigger()
             }
             try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 2))) {
@@ -134,7 +133,7 @@ struct MetricsTests {
                 try await jobQueue.push(TestStringParameter(value: "test"))
                 try await expectation.wait()
             }
-            string.withLockedValue {
+            string.withLock {
                 #expect($0 == "test")
             }
             let jobCounters = Self.testMetrics.counters.filter { $0.label == "swift.jobs.discarded" }
@@ -153,7 +152,7 @@ struct MetricsTests {
         }
         try await Self.testMetrics.withUnique {
             let expectation = TestExpectation()
-            let currentJobTryCount: NIOLockedValueBox<Int> = .init(0)
+            let currentJobTryCount: Mutex<Int> = .init(0)
             struct FailedError: Error {}
             var logger = Logger(label: "JobsTests")
             logger.logLevel = .trace
@@ -166,14 +165,12 @@ struct MetricsTests {
                 retryStrategy: .exponentialJitter(maxAttempts: 3, maxBackoff: .seconds(0.5), minJitter: -0.25, maxJitter: 0.25)
             ) { _, _ in
                 defer {
-                    currentJobTryCount.withLockedValue {
-                        $0 += 1
-                    }
+                    currentJobTryCount.withLock { $0 += 1 }
                 }
 
                 expectation.trigger()
 
-                if (currentJobTryCount.withLockedValue { $0 }) == 0 {
+                if (currentJobTryCount.withLock { $0 }) == 0 {
                     throw FailedError()
                 }
             }
@@ -190,7 +187,7 @@ struct MetricsTests {
             try await testJobQueue(jobQueue.processor()) {
                 try await expectation.wait(count: 2)
             }
-            #expect(currentJobTryCount.withLockedValue { $0 } == 2)
+            #expect(currentJobTryCount.withLock { $0 } == 2)
 
             jobMeters = Self.testMetrics.meters.filter { $0.label == "swift.jobs.meter" }
             let processingMeter = try #require(jobMeters.first { $0["status"] == "processing" })
@@ -208,12 +205,12 @@ struct MetricsTests {
         }
         try await Self.testMetrics.withUnique {
             let expectation = TestExpectation()
-            let failedJobCount = ManagedAtomic(0)
+            let failedJobCount = Atomic(0)
             struct FailedError: Error {}
             var logger = Logger(label: "JobsTests")
             logger.logLevel = .trace
             let jobQueue = JobQueue(
-                MemoryQueue { _, _ in failedJobCount.wrappingIncrement(by: 1, ordering: .relaxed) },
+                MemoryQueue { _, _ in failedJobCount.wrappingAdd(1, ordering: .relaxed) },
                 logger: logger
             ) { MetricsJobMiddleware() }
             jobQueue.registerJob(

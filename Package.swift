@@ -7,12 +7,11 @@ let swiftSettings: [SwiftSetting] = [.enableExperimentalFeature("StrictConcurren
 
 let package = Package(
     name: "swift-jobs",
-    platforms: [.macOS(.v14), .iOS(.v17), .tvOS(.v17)],
+    platforms: [.macOS(.v15), .iOS(.v18), .tvOS(.v18)],
     products: [
         .library(name: "Jobs", targets: ["Jobs"])
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-atomics.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.1.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.4.0"),
@@ -28,7 +27,6 @@ let package = Package(
                 .product(name: "Tracing", package: "swift-distributed-tracing"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Metrics", package: "swift-metrics"),
-                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOFoundationCompat", package: "swift-nio"),
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
@@ -40,7 +38,6 @@ let package = Package(
             name: "JobsTests",
             dependencies: [
                 .byName(name: "Jobs"),
-                .product(name: "Atomics", package: "swift-atomics"),
                 .product(name: "MetricsTestKit", package: "swift-metrics"),
             ]
         ),
