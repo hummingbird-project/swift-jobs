@@ -1,4 +1,4 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.0
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -41,6 +41,7 @@ let package = Package(
             dependencies: [
                 .byName(name: "Jobs"),
                 .product(name: "Atomics", package: "swift-atomics"),
+                .product(name: "MetricsTestKit", package: "swift-metrics"),
             ]
         ),
     ]

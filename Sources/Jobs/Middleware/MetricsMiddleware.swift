@@ -67,16 +67,16 @@ public struct MetricsJobMiddleware: JobMiddleware {
     public func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobPushQueueContext) async {
         if context.attempt > 1 {
             self.updateMetricsForRetry(for: name)
-        } else {
-            Meter(
-                label: Self.meterLabel,
-                dimensions: [
-                    ("status", JobStatus.queued.rawValue),
-                    ("name", name),
-                    ("queue", self.queueName),
-                ]
-            ).increment()
         }
+        Meter(
+            label: Self.meterLabel,
+            dimensions: [
+                ("status", JobStatus.queued.rawValue),
+                ("name", name),
+                ("queue", self.queueName),
+            ]
+        ).increment()
+
     }
 
     /// Job has been popped off the queue and decoded (with decode errors reported)
