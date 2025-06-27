@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-import NIOConcurrencyHelpers
 import NIOCore
+import Synchronization
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -55,14 +55,14 @@ public final class JobRegistry: Sendable {
             let data = try JobInstanceData<Parameters>(from: decoder)
             return try JobInstance<Parameters>(job: job, data: data)
         }
-        self.builderTypeMap.withLockedValue {
+        self.builderTypeMap.withLock {
             precondition($0[job.name] == nil, "There is a job already registered under name \"\(job.name)\"")
             $0[job.name] = builder
         }
     }
 
     func decode(jobName: String, from decoder: Decoder) throws -> any JobInstanceProtocol {
-        let jobDefinitionBuilder = try self.builderTypeMap.withLockedValue {
+        let jobDefinitionBuilder = try self.builderTypeMap.withLock {
             guard let job = $0[jobName] else { throw JobQueueError(code: .unrecognisedJobId, jobName: jobName) }
             return job
         }
@@ -73,5 +73,5 @@ public final class JobRegistry: Sendable {
         }
     }
 
-    let builderTypeMap: NIOLockedValueBox<[String: @Sendable (Decoder) throws -> any JobInstanceProtocol]>
+    let builderTypeMap: Mutex<[String: @Sendable (Decoder) throws -> any JobInstanceProtocol]>
 }
