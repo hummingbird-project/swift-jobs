@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-/// JobQueueOptions
+/// Options associated with a JobQueue
 public struct JobQueueOptions: Sendable {
     /// Default job retry strategy for the job queue
     let retryStrategy: JobRetryStrategy

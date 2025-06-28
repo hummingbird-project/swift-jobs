@@ -86,6 +86,7 @@ public struct JobQueueResult<JobID: Sendable>: Sendable {
     }
 }
 
+/// Protocol for JobOptions
 public protocol JobOptionsProtocol: Sendable {
     /// Initialize job options with default value
     init()

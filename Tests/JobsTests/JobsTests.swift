@@ -56,7 +56,7 @@ struct JobsTests {
         let expectation = TestExpectation()
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         let jobName = JobName<Int>("testJobNameBasic")
-        jobQueue.registerJob(name: "testJobNameBasic", parameters: Int.self) { parameters, context in
+        jobQueue.registerJob(name: jobName) { parameters, context in
             context.logger.info("Parameters=\(parameters)")
             try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
             expectation.trigger()

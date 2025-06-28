@@ -36,7 +36,7 @@ public struct JobExecutionContext: Sendable {
     public let attempt: Int
 }
 
-/// context for job being adding/removed from queue
+/// context for job being pushed to queue
 public struct JobPushQueueContext {
     /// Job instance identifier
     public let jobID: String
@@ -51,7 +51,7 @@ public struct JobPushQueueContext {
     }
 }
 
-/// context for job being adding/removed from queue
+/// context for job being popped off the queue
 public struct JobPopQueueContext {
     /// Job instance identifier
     public let jobID: String
@@ -62,7 +62,7 @@ public struct JobPopQueueContext {
     }
 }
 
-/// context for job being adding/removed from queue
+/// context for job having completed
 public struct JobCompletedQueueContext {
     /// Job instance identifier
     public let jobID: String
