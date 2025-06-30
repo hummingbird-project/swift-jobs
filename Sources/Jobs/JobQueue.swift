@@ -45,7 +45,7 @@ public protocol JobQueueProtocol {
     func registerJob(_ job: JobDefinition<some Sendable & Codable>)
 
     ///  Create JobQueue processor that will process jobs pushed to the queue
-    /// - Parameter numWorkers: Number of workers to process jobs
+    /// - Parameter options: Processor options
     func processor(options: JobQueueProcessorOptions) -> any Service
 
     /// Job queue options
@@ -191,7 +191,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
     }
 
     ///  Create JobQueue handler that will process jobs pushed to the queue
-    /// - Parameter numWorkers: Number of workers to process jobs
+    /// - Parameter options: Processor options
     public func processor(
         options: JobQueueProcessorOptions = .init()
     ) -> any Service {

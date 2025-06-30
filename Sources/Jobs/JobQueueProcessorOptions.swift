@@ -15,14 +15,14 @@
 /// JobQueueHandler Options
 public struct JobQueueProcessorOptions: Sendable {
     /// Number of concurrent jobs being processed at one time
-    let numWorkers: Int
+    public var numWorkers: Int
     /// Timeout after graceful shutdown has been triggered, before jobs are cancelled
-    let gracefulShutdownTimeout: Duration
+    public var gracefulShutdownTimeout: Duration
 
-    /// Initialize a JobQueueHandlerOptions
+    /// Initialize a JobQueueProcessorOptions
     ///
     /// - Parameters:
-    ///   - numWorkers: Number of concurrent jobs being processed at one time
+    ///   - numWorkers: Number of concurrent jobs to be processed at one time
     ///   - gracefulShutdownTimeout: Timeout after graceful shutdown has been triggered, before jobs are cancelled
     public init(
         numWorkers: Int = 1,
