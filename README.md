@@ -27,7 +27,6 @@ Offload work from your server to other servers.
 // create job queue stored in local memory, that can run four jobs concurrently
 let jobQueue = JobQueue(
     .memory, 
-    numWorkers: 4, 
     logger: logger
 )
 // Define email job parameters. Its job name has to be unique
@@ -55,12 +54,12 @@ jobQueue.push(SendEmailJobParameters(
 
 ## Process Jobs
 
-`JobQueue` conforms to `Service` and can be used with `ServiceGroup` from `ServiceLifecycle`.
+You can create a `JobQueueProcessor` to process jobs added to yout `JobQueue`. `JobQueueProcessor` conforms to `Service` and can be used with `ServiceGroup` from `ServiceLifecycle`.
 
 ```swift
 let serviceGroup = ServiceGroup(
     configuration: .init(
-        services: [jobQueue],
+        services: [jobQueue.processor(options: .init(numWorkers: 4))],
         gracefulShutdownSignals: [.sigterm, .sigint],
         logger: Logger(label: "JobQueueService")
     )
@@ -71,10 +70,10 @@ try await serviceGroup.run()
 Or it can be added as a service attached to a Hummingbird application
 
 ```swift
-let app = Application(router: router, services: [jobQueue])
+let app = Application(router: router, services: [jobQueue.processor(options: .init(numWorkers: 4))])
 ```
 
-When the `JobQueue` service is running it processes jobs as they appear on the queue. The `maxWorkers` field in the `JobQueue` initializer indicates how many jobs it will run concurrently.
+When the `JobQueueProcessor` service is running it processes jobs as they appear on the queue. The `maxWorkers` field in the options initializer indicates how many jobs it will run concurrently.
 
 ## Documentation
 
