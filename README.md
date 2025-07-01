@@ -73,7 +73,7 @@ Or it can be added as a service attached to a Hummingbird application
 let app = Application(router: router, services: [jobQueue.processor(options: .init(numWorkers: 4))])
 ```
 
-When the `JobQueueProcessor` service is running it processes jobs as they appear on the queue. The `maxWorkers` field in the options initializer indicates how many jobs it will run concurrently.
+When the `JobQueueProcessor` service is running it processes jobs as they appear on the queue. The `numWorkers` field in the options initializer indicates how many jobs it will run concurrently.
 
 ## Documentation
 
