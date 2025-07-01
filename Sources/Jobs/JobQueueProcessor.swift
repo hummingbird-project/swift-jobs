@@ -57,39 +57,44 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
         try await queue.waitUntilReady()
         let (stream, cont) = AsyncStream.makeStream(of: Void.self)
         try await withTaskCancellationOrGracefulShutdownHandler {
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    try await withThrowingTaskGroup(of: Void.self) { group in
-                        var iterator = self.queue.makeAsyncIterator()
-                        for _ in 0..<self.options.numWorkers {
-                            if let jobResult = try await iterator.next() {
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask {
+                        try await withThrowingTaskGroup(of: Void.self) { group in
+                            var iterator = self.queue.makeAsyncIterator()
+                            for _ in 0..<self.options.numWorkers {
+                                if let jobResult = try await iterator.next() {
+                                    group.addTask {
+                                        try await self.processJobResult(jobResult)
+                                    }
+                                }
+                            }
+                            while true {
+                                try await group.next()
+                                guard let jobResult = try await iterator.next() else { break }
                                 group.addTask {
                                     try await self.processJobResult(jobResult)
                                 }
                             }
-                        }
-                        while true {
-                            try await group.next()
-                            guard let jobResult = try await iterator.next() else { break }
-                            group.addTask {
-                                try await self.processJobResult(jobResult)
-                            }
-                        }
 
-                        try await group.waitForAll()
+                            try await group.waitForAll()
+                        }
                     }
-                }
 
-                group.addTask {
-                    // wait until graceful shutdown or cancellation has been triggered
-                    await stream.first { _ in true }
-                    try await Task.sleep(for: self.options.gracefulShutdownTimeout)
+                    group.addTask {
+                        // wait until graceful shutdown or cancellation has been triggered
+                        await stream.first { _ in true }
+                        try await Task.sleep(for: self.options.gracefulShutdownTimeout)
+                        self.logger.debug("Graceful shutdown timeout occurred.")
+                    }
+                    // wait on first child task to return. If the first task to return is the queue handler then
+                    // cancel timeout task. If the first child task to return is the timeout task then cancel the
+                    // job queue handler
+                    try await group.next()
+                    group.cancelAll()
                 }
-                // wait on first child task to return. If the first task to return is the queue handler then
-                // cancel timeout task. If the first child task to return is the timeout task then cancel the
-                // job queue handler
-                try await group.next()
-                group.cancelAll()
+            } catch is CancellationError {
+                // catch cancellation error
             }
         } onCancelOrGracefulShutdown: {
             // trigger timeout
@@ -237,7 +242,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
 }
 
 extension JobQueueProcessor: CustomStringConvertible {
-    public var description: String { "JobQueueHandler<\(String(describing: Queue.self))>" }
+    public var description: String { "JobQueueProcessor<\(String(describing: Queue.self))>" }
 }
 
 extension Date {
