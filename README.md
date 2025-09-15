@@ -1,6 +1,6 @@
 <p align="center">
 <a href="https://swift.org">
-  <img src="https://img.shields.io/badge/swift-5.9-brightgreen.svg"/>
+  <img src="https://img.shields.io/badge/swift-6.0-brightgreen.svg"/>
 </a>
 <a href="https://github.com/hummingbird-project/swift-jobs/actions?query=workflow%3ACI">
   <img src="https://github.com/hummingbird-project/swift-jobs/actions/workflows/ci.yml/badge.svg?branch=main"/>
