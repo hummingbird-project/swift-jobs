@@ -1,10 +1,4 @@
 <p align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/hummingbird-project/hummingbird/assets/9382567/48de534f-8301-44bd-b117-dfb614909efd">
-  <img src="https://github.com/hummingbird-project/hummingbird/assets/9382567/e371ead8-7ca1-43e3-8077-61d8b5eab879">
-</picture>
-</p>  
-<p align="center">
 <a href="https://swift.org">
   <img src="https://img.shields.io/badge/swift-5.9-brightgreen.svg"/>
 </a>
@@ -18,8 +12,16 @@
 
 # Jobs
 
-Offload work from your server to other servers.
-
+Job queue for processing workloads asynchronously across multiple nodes.
+- Queue, pause, resume, cancel jobs
+- Queue delayed jobs
+- Job processor can be run on multiple nodes
+- Multiple drivers available (using [Valkey/Redis](https://github.com/hummingbird-project/swift-jobs-valkey), [Postgres](https://github.com/hummingbird-project/swift-jobs-postgres)
+- Graceful handling of SIGTERM, SIGINT
+- Job scheduler for crontab style triggering of jobs
+- Customizable retry support, with default implementation using exponential jitter
+- Middleware support to allow for additional customisation
+- Support for metrics and distributed tracing
 
 ## Register a Job
 
