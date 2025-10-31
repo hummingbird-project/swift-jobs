@@ -28,12 +28,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     /// Job options
     public struct JobOptions: JobOptionsProtocol {
         /// When to execute the job
-        public let delayUntil: Date
-
-        /// Requirement from `JobOptionsProtocol`
-        public init() {
-            self.delayUntil = Date.now
-        }
+        public var delayUntil: Date?
 
         public init(delayUntil: Date?) {
             self.delayUntil = delayUntil ?? Date.now
@@ -157,7 +152,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func resumeJob(jobID: JobID) {
             if let jobBuffer = self.pendingJobs[jobID] {
-                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init()))
+                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init(delayUntil: nil)))
             } else {
                 print("Warning: attempted to resume job \(jobID) which is not pending")
             }
@@ -177,7 +172,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                     return nil
                 }
                 if let request = queue.popFirst() {
-                    if request.options.delayUntil > Date.now {
+                    if let delayUntil = request.options.delayUntil, delayUntil > Date.now {
                         self.queue.append(request)
                         maxTimesToLoop -= 1
                         if maxTimesToLoop > 0 {
