@@ -40,6 +40,10 @@ internal struct WorkflowState: Codable, Sendable {
     public var endTime: Date?
     /// Current step index in the workflow
     public var currentStep: Int
+    /// Step execution history for resumption and replay
+    public var stepHistory: [WorkflowStepExecution]
+    /// Activity results for resumption
+    public var activityResults: [String: ByteBuffer]
     /// Error message if workflow failed
     public var error: String?
     /// Serialized output data (if completed)
@@ -63,10 +67,62 @@ internal struct WorkflowState: Codable, Sendable {
         self.scheduledAt = scheduledAt
         self.startTime = startTime
         self.currentStep = currentStep
+        self.stepHistory = []
+        self.activityResults = [:]
         self.endTime = nil
         self.error = nil
         self.output = nil
     }
+}
+
+/// Tracks execution of individual workflow steps
+public struct WorkflowStepExecution: Codable, Sendable {
+    /// Step index in the workflow
+    public let stepIndex: Int
+    /// Type of step (activity, parallel, condition, etc.)
+    public let stepType: WorkflowStepType
+    /// When this step started
+    public let startTime: Date
+    /// When this step completed (if applicable)
+    public var endTime: Date?
+    /// Step execution status
+    public var status: WorkflowStepStatus
+    /// Activity ID for activity steps
+    public let activityId: String?
+    /// Error if step failed
+    public var error: String?
+
+    public init(
+        stepIndex: Int,
+        stepType: WorkflowStepType,
+        startTime: Date = .now,
+        activityId: String? = nil
+    ) {
+        self.stepIndex = stepIndex
+        self.stepType = stepType
+        self.startTime = startTime
+        self.endTime = nil
+        self.status = .running
+        self.activityId = activityId
+        self.error = nil
+    }
+}
+
+/// Types of workflow steps
+public enum WorkflowStepType: String, Codable, Sendable {
+    case activity
+    case parallel
+    case condition
+    case delay
+    case signal
+}
+
+/// Status of individual workflow steps
+public enum WorkflowStepStatus: String, Codable, Sendable {
+    case running
+    case completed
+    case failed
+    case cancelled
 }
 
 /// Job that coordinates workflow execution
@@ -83,19 +139,23 @@ public struct WorkflowCoordinatorJob: JobParameters {
     public let stepIndex: Int
     /// Activity result data (if continuing from activity)
     public let activityResult: ByteBuffer?
+    /// Activity results for resumption
+    public let activityResults: [String: ByteBuffer]
 
     public init(
         workflowId: WorkflowID,
         workflowType: String,
         action: WorkflowAction,
         stepIndex: Int,
-        activityResult: ByteBuffer? = nil
+        activityResult: ByteBuffer? = nil,
+        activityResults: [String: ByteBuffer] = [:]
     ) {
         self.workflowId = workflowId
         self.workflowType = workflowType
         self.action = action
         self.stepIndex = stepIndex
         self.activityResult = activityResult
+        self.activityResults = activityResults
     }
 }
 
@@ -111,6 +171,8 @@ public enum WorkflowAction: String, Codable, Sendable {
     case complete
     /// Mark workflow as failed
     case fail
+    /// Cancel a running workflow
+    case cancel
 }
 
 /// Job that executes an activity within a workflow

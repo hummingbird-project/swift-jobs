@@ -141,6 +141,12 @@ public final class WorkflowExecutionContext: Sendable {
         self._currentStep = ManagedAtomic(currentStep)
     }
 
+    /// Get activity result directly from driver - no caching layer needed
+    internal func getActivityResult(_ activityId: String) async throws -> ByteBuffer? {
+        let resultKey = "activity_result:\(activityId)"
+        return try await metadataQueue.getMetadata(resultKey)
+    }
+
     /// Execute an activity using type-safe activity parameters
     /// - Parameters:
     ///   - activityType: Activity type conforming to ActivityParameters
@@ -215,7 +221,6 @@ public final class WorkflowExecutionContext: Sendable {
                         "activityName": .string(activityName),
                     ]
                 )
-                // Increment step counter and return cached result
                 currentStep += 1
                 return value
             case .failure(let error):

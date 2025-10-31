@@ -58,13 +58,17 @@ public struct WorkflowOptions: Sendable {
     public let timeout: Duration?
     /// Custom retry strategy for the workflow
     public let retryPolicy: (any JobRetryStrategy)?
+    /// Custom workflow ID prefix
+    public let workflowIdPrefix: String?
 
     public init(
         timeout: Duration? = nil,
-        retryPolicy: (any JobRetryStrategy)? = nil
+        retryPolicy: (any JobRetryStrategy)? = nil,
+        workflowIdPrefix: String? = nil
     ) {
         self.timeout = timeout
         self.retryPolicy = retryPolicy
+        self.workflowIdPrefix = workflowIdPrefix
     }
 }
 
@@ -110,8 +114,12 @@ public enum WorkflowError: Error {
     case activityFailed(String)
     case unknownActivity(String)
     case workflowTimedOut
-    case workflowCancelled
+    case workflowCancelled(WorkflowID)
     case workflowFailed(String)
+    case noOutput(WorkflowID)
+    case unexpectedStatus(WorkflowID, WorkflowStatus)
+    case timeout(WorkflowID, Duration)
+    case validationFailed(String)
 }
 
 // MARK: - Default Implementation

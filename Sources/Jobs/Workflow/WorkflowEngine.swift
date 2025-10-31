@@ -266,31 +266,31 @@ public final class WorkflowEngine<Queue: JobQueueDriver & JobMetadataDriver>: Se
     /// Cancel a running workflow
     /// - Parameter workflowId: The workflow ID to cancel
     public func cancelWorkflow(_ workflowId: WorkflowID) async throws {
-        var state = try await getInternalWorkflowState(workflowId)
+        let state = try await getInternalWorkflowState(workflowId)
         guard state.status == .running else {
             return  // Already completed or failed
         }
 
-        state.status = .cancelled
-        state.endTime = .now
-
-        let stateBuffer = try JSONEncoder().encodeAsByteBuffer(
-            state,
-            allocator: ByteBufferAllocator()
+        // Push a cancellation job to properly handle running activities
+        let cancellationJob = WorkflowCoordinatorJob(
+            workflowId: workflowId,
+            workflowType: state.workflowType,
+            action: .cancel,
+            stepIndex: state.currentStep
         )
 
-        try await jobQueue.queue.setMetadata(
-            key: "workflow:\(workflowId.value)",
-            value: stateBuffer
-        )
+        _ = try await jobQueue.push(cancellationJob)
 
-        logger.debug("Cancelled workflow", metadata: ["workflowId": .string(workflowId.value)])
+        logger.debug(
+            "Workflow cancellation requested",
+            metadata: ["workflowId": .string(workflowId.value)]
+        )
     }
 
     // MARK: - Private Methods
 
     /// Get internal workflow state directly
-    private func getInternalWorkflowState(_ workflowId: WorkflowID) async throws -> WorkflowState {
+    internal func getInternalWorkflowState(_ workflowId: WorkflowID) async throws -> WorkflowState {
         let key = "workflow:\(workflowId.value)"
         guard let stateBuffer = try await jobQueue.queue.getMetadata(key) else {
             throw WorkflowError.executionNotFound(workflowId)
@@ -409,6 +409,9 @@ public final class WorkflowEngine<Queue: JobQueueDriver & JobMetadataDriver>: Se
 
         case .fail:
             try await failWorkflow(job, context: context)
+
+        case .cancel:
+            try await cancelWorkflowExecution(job, context: context)
         }
     }
 
@@ -499,7 +502,34 @@ public final class WorkflowEngine<Queue: JobQueueDriver & JobMetadataDriver>: Se
         context: JobExecutionContext
     ) async throws {
         // Get workflow state
-        let state = try await getInternalWorkflowState(job.workflowId)
+        var state = try await getInternalWorkflowState(job.workflowId)
+
+        // Check if workflow was cancelled
+        guard state.status == .running else {
+            context.logger.debug(
+                "Workflow not running, skipping continuation",
+                metadata: [
+                    "workflowId": .string(job.workflowId.value),
+                    "status": .string(state.status.rawValue),
+                ]
+            )
+            return
+        }
+
+        // Merge activity results from the job
+        for (key, value) in job.activityResults {
+            state.activityResults[key] = value
+        }
+
+        // Update step history with completion of previous step
+        if let _ = job.activityResult, let _ = state.stepHistory.last {
+            let stepIndex = state.stepHistory.count - 1
+            state.stepHistory[stepIndex].status = .completed
+            state.stepHistory[stepIndex].endTime = .now
+        }
+
+        // Update current step
+        state.currentStep = job.stepIndex
 
         // Create workflow executor
         let executor = try workflowRegistry.createWorkflow(
@@ -507,16 +537,15 @@ public final class WorkflowEngine<Queue: JobQueueDriver & JobMetadataDriver>: Se
             input: state.input
         )
 
-        // Create workflow execution context starting from step 0 for replay safety
-        // The replay mechanism will handle which activities to execute vs return cached results
+        // Create workflow execution context with activity results for resumption
         let workflowContext = WorkflowExecutionContext(
             workflowId: job.workflowId,
             workflowType: job.workflowType,
             jobQueue: jobQueue,
             logger: context.logger,
-            queuedAt: context.queuedAt,
-            scheduledAt: context.nextScheduledAt,
-            currentStep: 0,
+            queuedAt: state.queuedAt,
+            scheduledAt: state.scheduledAt,
+            currentStep: job.stepIndex,
             startTime: state.startTime
         )
 
@@ -698,6 +727,100 @@ public final class WorkflowEngine<Queue: JobQueueDriver & JobMetadataDriver>: Se
             "Workflow marked as failed",
             metadata: ["workflowId": .string(job.workflowId.value)]
         )
+    }
+
+    private func cancelWorkflowExecution(
+        _ job: WorkflowCoordinatorJob,
+        context: JobExecutionContext
+    ) async throws {
+        var state = try await getInternalWorkflowState(job.workflowId)
+
+        // Mark all running steps as cancelled
+        for i in state.stepHistory.indices {
+            if state.stepHistory[i].status == .running {
+                state.stepHistory[i].status = .cancelled
+                state.stepHistory[i].endTime = .now
+                state.stepHistory[i].error = "Workflow cancelled"
+            }
+        }
+
+        state.status = .cancelled
+        state.endTime = .now
+        state.error = "Workflow cancelled by user"
+
+        let stateBuffer = try JSONEncoder().encodeAsByteBuffer(
+            state,
+            allocator: ByteBufferAllocator()
+        )
+
+        try await jobQueue.queue.setMetadata(
+            key: "workflow:\(job.workflowId.value)",
+            value: stateBuffer
+        )
+
+        context.logger.debug(
+            "Workflow execution cancelled",
+            metadata: ["workflowId": .string(job.workflowId.value)]
+        )
+    }
+
+    /// Run a workflow and wait for completion
+    public func run<W: WorkflowProtocol>(
+        _ workflowType: W.Type,
+        input: W.Input,
+        workflowId: WorkflowID? = nil,
+        options: WorkflowOptions = .init()
+    ) async throws -> W.Output {
+        // Start the workflow
+        let id = try await startWorkflow(workflowType, input: input, workflowId: workflowId, options: options)
+
+        // Wait for completion
+        let status = try await waitForWorkflowCompletion(
+            id,
+            timeout: options.timeout ?? .seconds(300)  // 5 minute default timeout
+        )
+
+        // Check final status
+        switch status.status {
+        case .completed:
+            guard let outputBuffer = status.output else {
+                throw WorkflowError.noOutput(id)
+            }
+            return try JSONDecoder().decode(W.Output.self, from: outputBuffer)
+
+        case .failed:
+            let errorMessage = status.error ?? "Unknown workflow error"
+            throw WorkflowError.workflowFailed(errorMessage)
+
+        case .cancelled:
+            throw WorkflowError.workflowCancelled(id)
+
+        default:
+            throw WorkflowError.unexpectedStatus(id, status.status)
+        }
+    }
+
+    /// Wait for workflow completion with polling
+    private func waitForWorkflowCompletion(
+        _ workflowId: WorkflowID,
+        timeout: Duration
+    ) async throws -> WorkflowExecutionStatus {
+        let startTime = Date()
+        let timeoutInterval = TimeInterval(timeout.components.seconds) + (TimeInterval(timeout.components.attoseconds) / 1_000_000_000_000_000_000)
+
+        while Date().timeIntervalSince(startTime) < timeoutInterval {
+            let status = try await getWorkflowStatus(workflowId)
+
+            switch status.status {
+            case .completed, .failed, .cancelled:
+                return status
+            case .running:
+                // Continue polling
+                try await Task.sleep(for: .milliseconds(100))
+            }
+        }
+
+        throw WorkflowError.timeout(workflowId, timeout)
     }
 
     private func handleActivityExecution(
