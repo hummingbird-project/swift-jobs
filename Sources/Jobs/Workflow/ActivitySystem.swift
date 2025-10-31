@@ -94,15 +94,11 @@ public protocol ActivityParameters: Sendable {
 /// Simple delay job for sleep functionality
 internal struct DelayJob: JobParameters {
     public static let jobName = "DelayJob"
-
-    public init() {}
 }
 
 /// Registry for activity functions
 public final class ActivityRegistry: Sendable {
     private let activities: Mutex<[String: @Sendable (ByteBuffer) async throws -> AnyActivityResult]> = .init([:])
-
-    internal init() {}
 
     /// Register activities from containers
     internal func registerActivities(from containers: [any ActivityContainer]) {
