@@ -63,7 +63,7 @@ extension JobQueueProtocol {
         parameters: Parameters
     ) async throws -> Queue.JobID {
         let request = JobRequest(name: jobName.name, parameters: parameters, queuedAt: .now, attempt: 1)
-        return try await self.push(jobRequest: request, options: .init(delayUntil: nil))
+        return try await self.push(jobRequest: request, options: .init(delayUntil: .now))
     }
 
     ///  Push Job onto queue
@@ -74,7 +74,7 @@ extension JobQueueProtocol {
     @discardableResult public func push<Parameters: JobParameters>(
         _ parameters: Parameters
     ) async throws -> Queue.JobID {
-        try await self.push(.init(Parameters.jobName), parameters: parameters, options: .init(delayUntil: nil))
+        try await self.push(.init(Parameters.jobName), parameters: parameters, options: .init(delayUntil: .now))
     }
 
     ///  Push Job onto queue
