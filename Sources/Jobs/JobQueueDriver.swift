@@ -91,7 +91,7 @@ public protocol JobOptionsProtocol: Sendable {
     /// When to execute the job
     var delayUntil: Date { get }
 
-    init (delayUntil: Date)
+    init(delayUntil: Date)
 }
 
 /// Options for retrying a job
