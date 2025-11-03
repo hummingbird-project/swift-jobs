@@ -1506,10 +1506,13 @@ struct WorkflowIntegrationTests {
                 }
 
                 func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
-                    context.logger.info("Waiting for approval signal", metadata: [
-                        "WorkflowID": .stringConvertible(context.workflowId),
-                        "BusinessID": .stringConvertible(context.workflowId.workflowId)
-                    ])
+                    context.logger.info(
+                        "Waiting for approval signal",
+                        metadata: [
+                            "WorkflowID": .stringConvertible(context.workflowId),
+                            "BusinessID": .stringConvertible(context.workflowId.workflowId),
+                        ]
+                    )
 
                     // Wait for approval signal
                     let approvalData = try await context.waitForSignal(

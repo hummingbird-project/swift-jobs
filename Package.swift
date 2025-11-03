@@ -50,7 +50,7 @@ let package = Package(
             name: "WorkflowsTests",
             dependencies: [
                 .byName(name: "Jobs"),
-                .byName(name: "Workflows")
+                .byName(name: "Workflows"),
             ]
         ),
     ]

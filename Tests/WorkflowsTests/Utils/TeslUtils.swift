@@ -40,4 +40,3 @@ public func testWorkflow<Value>(
         return value
     }
 }
-
