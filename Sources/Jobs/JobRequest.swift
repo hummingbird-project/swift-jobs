@@ -64,7 +64,7 @@ extension JobRequest: SchedulableJobRequest {
     /// Added so it's possible for the scheduler to add date partitions
     internal func push<Queue: JobQueueDriver>(
         to jobQueue: JobQueue<Queue>,
-        options: Queue.JobOptions = .init(delayUntil: .now)
+        options: Queue.JobOptions = .init()
     ) async throws -> Queue.JobID {
         try await jobQueue.push(jobRequest: self, options: options)
     }

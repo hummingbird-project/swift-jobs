@@ -27,6 +27,11 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     public typealias JobID = UUID
     /// Job options
     public struct JobOptions: JobOptionsProtocol {
+
+        public init() {
+            self.delayUntil = .now
+        }
+
         /// When to execute the job
         public let delayUntil: Date
 
@@ -152,7 +157,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func resumeJob(jobID: JobID) {
             if let jobBuffer = self.pendingJobs[jobID] {
-                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init(delayUntil: .now)))
+                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init()))
             } else {
                 print("Warning: attempted to resume job \(jobID) which is not pending")
             }
