@@ -27,13 +27,12 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     public typealias JobID = UUID
     /// Job options
     public struct JobOptions: JobOptionsProtocol {
-
-        public init() {
-            self.delayUntil = .now
-        }
-
         /// When to execute the job
         public let delayUntil: Date
+
+        public init() {
+            self.delayUntil = Date.now
+        }
 
         public init(delayUntil: Date = .now) {
             self.delayUntil = delayUntil
