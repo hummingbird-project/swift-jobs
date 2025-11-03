@@ -34,7 +34,7 @@ public protocol WorkflowProtocol: Sendable {
     /// Initialize workflow instance
     ///
     /// Required for the factory pattern. Most workflows are stateless structs
-    /// and can implement this as: `init() {}`, but it's required in your implementation.
+    /// and can implement this as: `init() {}`, but it's not required in your implementation.
     init()
 
     /// Execute the workflow with the given input
@@ -121,6 +121,37 @@ public enum WorkflowError: Error {
     case unexpectedStatus(WorkflowID, WorkflowStatus)
     case timeout(WorkflowID, Duration)
     case validationFailed(String)
+}
+
+extension WorkflowError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .unknownWorkflowType(let type):
+            return "Unknown workflow type: \(type)"
+        case .executionNotFound(let workflowId):
+            return "Workflow execution not found: \(workflowId.value)"
+        case .invalidInputType:
+            return "Invalid input type for workflow"
+        case .activityFailed(let message):
+            return "Activity failed: \(message)"
+        case .unknownActivity(let name):
+            return "Unknown activity: \(name)"
+        case .workflowTimedOut:
+            return "Workflow timed out"
+        case .workflowCancelled(let workflowId):
+            return "Workflow cancelled: \(workflowId.value)"
+        case .workflowFailed(let message):
+            return message
+        case .noOutput(let workflowId):
+            return "No output available for workflow: \(workflowId.value)"
+        case .unexpectedStatus(let workflowId, let status):
+            return "Unexpected status \(status.rawValue) for workflow: \(workflowId.value)"
+        case .timeout(let workflowId, let duration):
+            return "Workflow \(workflowId.value) timed out after \(duration)"
+        case .validationFailed(let message):
+            return "Validation failed: \(message)"
+        }
+    }
 }
 
 // MARK: - Default Implementation

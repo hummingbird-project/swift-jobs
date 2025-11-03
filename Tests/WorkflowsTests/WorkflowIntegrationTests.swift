@@ -21,43 +21,8 @@ import Testing
 @testable import Jobs
 @testable import Workflows
 
+@Suite("WorkflowIntegrationTests")
 struct WorkflowIntegrationTests {
-
-    // MARK: - Helper Methods for Workflow Completion
-
-    /// Helper to wait for workflow completion using TestExpectation
-    private func waitForWorkflowCompletion(
-        _ workflowId: WorkflowID,
-        engine: WorkflowEngine<MemoryQueue>,
-        expectedStatus: WorkflowStatus = .completed,
-        timeout: Duration = .seconds(10),
-        description: String = "workflow completion"
-    ) async throws -> WorkflowExecutionStatus {
-        let expectation = TestExpectation()
-
-        let pollingTask = Task {
-            while !Task.isCancelled {
-                do {
-                    let status = try await engine.getWorkflowStatus(workflowId)
-                    if status.status == expectedStatus {
-                        expectation.trigger()
-                        return
-                    } else if status.status == .failed && expectedStatus != .failed {
-                        expectation.trigger()
-                        return
-                    }
-                    try await Task.sleep(for: .milliseconds(100))
-                } catch {
-                    break
-                }
-            }
-        }
-
-        defer { pollingTask.cancel() }
-
-        try await expectation.wait(for: description, timeout: timeout)
-        return try await engine.getWorkflowStatus(workflowId)
-    }
 
     // MARK: - Test Workflows
 
@@ -460,7 +425,7 @@ struct WorkflowIntegrationTests {
             #expect(workflowId.value.count > 0)
 
             // Wait for workflow completion
-            let finalStatus = try await waitForWorkflowCompletion(workflowId, engine: workflowEngine, description: "single activity workflow")
+            let finalStatus = try await waitForWorkflowCompletion(workflowId, engine: workflowEngine, description: "multiple activities workflow")
             if finalStatus.status == .failed {
                 #expect(Bool(false), "Workflow failed: \(finalStatus.error ?? "Unknown error")")
                 return

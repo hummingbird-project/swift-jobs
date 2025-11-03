@@ -29,8 +29,6 @@ import Foundation
 public final class WorkflowRegistry: Sendable {
     private let workflowTypes: Mutex<[String: any WorkflowFactory]> = .init([:])
 
-    public init() {}
-
     /// Register a workflow type
     /// - Parameter workflowType: The workflow type to register
     public func registerWorkflow<W: WorkflowProtocol>(_ workflowType: W.Type) {
@@ -114,8 +112,8 @@ internal struct ScheduledWorkflowExecutionJob: JobParameters, Codable {
 /// Main workflow engine
 /// Workflow execution engine with scheduling support
 public final class WorkflowEngine<Queue: JobQueueDriver & JobMetadataDriver>: Sendable {
-    private let jobQueue: JobQueue<Queue>
-    private let logger: Logger
+    internal let jobQueue: JobQueue<Queue>
+    internal let logger: Logger
     private let workflowRegistry: WorkflowRegistry
     private let internalRegistry: ActivityRegistry
 
@@ -135,6 +133,7 @@ public final class WorkflowEngine<Queue: JobQueueDriver & JobMetadataDriver>: Se
         self.registerWorkflowCoordinator()
         self.registerActivityExecutor()
         self.registerDelayJob()
+        self.registerChildWorkflowCoordinator()
     }
 
     /// Register a workflow type with the engine

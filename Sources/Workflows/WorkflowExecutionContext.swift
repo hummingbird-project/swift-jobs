@@ -70,7 +70,7 @@ public final class WorkflowExecutionContext: Sendable {
     /// Job queue for executing activities - package-private to prevent external interference
     package let jobQueue: any JobQueueProtocol & Sendable
     /// Direct access to metadata storage - private for internal workflow operations
-    private let metadataQueue: any JobMetadataDriver
+    internal let metadataQueue: any JobMetadataDriver
     /// Logger for workflow execution
     public let logger: Logger
     /// When this workflow was queued for execution
@@ -183,7 +183,7 @@ public final class WorkflowExecutionContext: Sendable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys  // Ensure deterministic field ordering
         let inputBuffer = try encoder.encodeAsByteBuffer(input, allocator: ByteBufferAllocator())
-        let inputHash = deterministicHash(buffer: inputBuffer, activityName: activityName)
+        let inputHash = WorkflowUtilities.deterministicHash(buffer: inputBuffer, activityName: activityName)
         let activityId = "\(workflowId.runId):\(activityName):\(inputHash)"
 
         logger.debug(
@@ -443,22 +443,6 @@ public final class WorkflowExecutionContext: Sendable {
         }
 
         return nil
-    }
-
-    /// Simple deterministic hash function for activity IDs
-    /// This replaces Swift's Hasher which is non-deterministic across restarts
-    private func deterministicHash(buffer: ByteBuffer, activityName: String) -> String {
-        var hash: UInt64 = 14_695_981_039_346_656_037  // FNV-1a offset basis
-        let prime: UInt64 = 1_099_511_628_211  // FNV-1a prime
-
-        let bytes = buffer.getBytes(at: 0, length: buffer.readableBytes) ?? []
-
-        for byte in bytes {
-            hash ^= UInt64(byte)
-            hash = hash &* prime
-        }
-
-        return String(hash, radix: 16)
     }
 }
 
