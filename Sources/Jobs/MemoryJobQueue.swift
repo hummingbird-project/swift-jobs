@@ -29,11 +29,13 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     public struct JobOptions: JobOptionsProtocol {
         /// When to execute the job
         public let delayUntil: Date
-
+        /// Requirement from `JobOptionsProtocol`
         public init() {
             self.delayUntil = Date.now
         }
-
+        /// Requirement from `JobOptionsProtocol`
+        /// - Parameters:
+        ///   - delayUntil: When to execute the job
         public init(delayUntil: Date = .now) {
             self.delayUntil = delayUntil
         }
