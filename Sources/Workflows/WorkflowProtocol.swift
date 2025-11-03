@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Jobs
 import NIOCore
 
 #if canImport(FoundationEssentials)

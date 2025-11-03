@@ -19,6 +19,7 @@ import ServiceLifecycle
 import Testing
 
 @testable import Jobs
+@testable import Workflows
 
 struct WorkflowIntegrationTests {
 
@@ -431,7 +432,7 @@ struct WorkflowIntegrationTests {
     func testSimpleWorkflow() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let workflowId = try await workflowEngine.startWorkflow(
                 SimpleWorkflow.self,
                 input: SimpleWorkflow.Input(message: "Hello World", count: 5)
@@ -450,7 +451,7 @@ struct WorkflowIntegrationTests {
     func testSingleActivityWorkflow() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let workflowId = try await workflowEngine.startWorkflow(
                 SingleActivityWorkflow.self,
                 input: SingleActivityWorkflow.Input(text: "hello world")
@@ -473,7 +474,7 @@ struct WorkflowIntegrationTests {
     func testMultipleActivitiesWorkflow() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let workflowId = try await workflowEngine.startWorkflow(
                 MultipleActivitiesWorkflow.self,
                 input: MultipleActivitiesWorkflow.Input(
@@ -505,7 +506,7 @@ struct WorkflowIntegrationTests {
     func testWorkflowValidationFailure() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let workflowId = try await workflowEngine.startWorkflow(
                 MultipleActivitiesWorkflow.self,
                 input: MultipleActivitiesWorkflow.Input(
@@ -537,7 +538,7 @@ struct WorkflowIntegrationTests {
     func testErrorHandlingWorkflowRecovery() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let workflowId = try await workflowEngine.startWorkflow(
                 ErrorHandlingWorkflow.self,
                 input: ErrorHandlingWorkflow.Input(
@@ -567,7 +568,7 @@ struct WorkflowIntegrationTests {
     func testErrorHandlingWorkflowNonRecoverable() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let workflowId = try await workflowEngine.startWorkflow(
                 ErrorHandlingWorkflow.self,
                 input: ErrorHandlingWorkflow.Input(
@@ -598,7 +599,7 @@ struct WorkflowIntegrationTests {
     func testCustomWorkflowId() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let customId = WorkflowID(workflowId: "CUSTOM-WORKFLOW-123")
 
             let returnedId = try await workflowEngine.startWorkflow(
@@ -620,7 +621,7 @@ struct WorkflowIntegrationTests {
     func testWorkflowCancellation() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             // Start a simple workflow that we can cancel immediately
             let workflowId = try await workflowEngine.startWorkflow(
                 SimpleWorkflow.self,
@@ -651,7 +652,7 @@ struct WorkflowIntegrationTests {
     func testWorkflowStatusQuerying() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let workflowId = try await workflowEngine.startWorkflow(
                 SimpleWorkflow.self,
                 input: SimpleWorkflow.Input(message: "Status Test", count: 42)
@@ -687,7 +688,7 @@ struct WorkflowIntegrationTests {
     func testMultipleWorkflowVersions() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let businessWorkflowId = "ORDER-PROCESS-123"
 
             // Start first version of the workflow
@@ -736,7 +737,7 @@ struct WorkflowIntegrationTests {
     func testConcurrentWorkflowExecutions() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let workflowCount = 5
             var workflowIds: [WorkflowID] = []
 
@@ -779,7 +780,7 @@ struct WorkflowIntegrationTests {
     func testParallelActivityExecution() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let startTime = Date()
 
             let workflowId = try await workflowEngine.startWorkflow(
@@ -853,7 +854,7 @@ struct WorkflowIntegrationTests {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
         workflowEngine.registerWorkflow(SleepWorkflow.self)
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let startTime = Date()
 
             let workflowId = try await workflowEngine.startWorkflow(
@@ -898,7 +899,7 @@ struct WorkflowIntegrationTests {
     func testConcurrentWorkflowsWithSameInput() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             // Start two workflows with identical input
             let input = MultipleActivitiesWorkflow.Input(
                 orderId: "ORDER-123",
@@ -990,7 +991,7 @@ struct WorkflowIntegrationTests {
             }
         }
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             workflowEngine.registerWorkflow(TimingTestWorkflow.self)
 
             let workflowId = try await workflowEngine.startWorkflow(
@@ -1180,8 +1181,8 @@ struct WorkflowIntegrationTests {
     func testWorkflowSignaling() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
-            // Define type-safe signal
+        try await testWorkflow(processor) {
+            // Define Signal
             struct ApprovalSignal: SignalParameters {
                 static let signalName = "approval"
                 typealias Input = String
@@ -1256,7 +1257,7 @@ struct WorkflowIntegrationTests {
     func testWorkflowSignalingNoData() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             // Define continue signal without meaningful data
             struct ContinueSignal: SignalParameters {
                 static let signalName = "continue"
@@ -1324,7 +1325,7 @@ struct WorkflowIntegrationTests {
     func testWorkflowSignalTimeout() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             // Define a signal that will never be sent
             struct NeverSentSignal: SignalParameters {
                 static let signalName = "never-sent"
@@ -1379,8 +1380,8 @@ struct WorkflowIntegrationTests {
     func testMultipleSignals() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
-            // Define type-safe signals for multi-step process
+        try await testWorkflow(processor) {
+            // Define signals for multi-step process
             struct Step1Signal: SignalParameters {
                 static let signalName = "step1"
                 typealias Input = String
@@ -1471,8 +1472,8 @@ struct WorkflowIntegrationTests {
     func testApprovalWorkflowSignaling() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
-            // Define type-safe signals
+        try await testWorkflow(processor) {
+            // Define Signals
             struct ApprovalSignal: SignalParameters {
                 static let signalName = "approval"
                 typealias Input = ApprovalData
@@ -1505,9 +1506,12 @@ struct WorkflowIntegrationTests {
                 }
 
                 func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
-                    context.logger.info("Waiting for type-safe approval signal")
+                    context.logger.info("Waiting for approval signal", metadata: [
+                        "WorkflowID": .stringConvertible(context.workflowId),
+                        "BusinessID": .stringConvertible(context.workflowId.workflowId)
+                    ])
 
-                    // Wait for type-safe approval signal
+                    // Wait for approval signal
                     let approvalData = try await context.waitForSignal(
                         ApprovalSignal.self,
                         timeout: .seconds(5)
@@ -1533,13 +1537,14 @@ struct WorkflowIntegrationTests {
             // Start the workflow
             let workflowId = try await workflowEngine.startWorkflow(
                 ApprovalRequestWorkflow.self,
-                input: ApprovalRequestWorkflow.Input(requestId: "REQ-789")
+                input: ApprovalRequestWorkflow.Input(requestId: "REQ-789"),
+                workflowId: WorkflowID(workflowId: "approval-request-wf-123")
             )
 
             // Give workflow time to start and reach the signal wait
             try await Task.sleep(for: .milliseconds(500))
 
-            // Send type-safe approval signal
+            // Send approval signal
             try await workflowEngine.signalWorkflow(
                 workflowId,
                 signalType: ApprovalSignal.self,
@@ -1581,7 +1586,7 @@ struct WorkflowIntegrationTests {
     func testWorkflowRunSuccess() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             // Use the run method to execute workflow and get result
             let result = try await workflowEngine.run(
                 SimpleWorkflow.self,
@@ -1598,7 +1603,7 @@ struct WorkflowIntegrationTests {
     func testWorkflowRunTimeout() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             // Create a long-running workflow for timeout testing
             struct LongRunningWorkflow: WorkflowProtocol {
                 static let workflowName = "LongRunning"
@@ -1634,7 +1639,7 @@ struct WorkflowIntegrationTests {
     func testWorkflowRunFailure() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        let _ = try await testWorkflow(processor) {
             // Test workflow failure handling
             await #expect(throws: WorkflowError.self) {
                 _ = try await workflowEngine.run(
@@ -1650,7 +1655,7 @@ struct WorkflowIntegrationTests {
     func testWorkflowStepTracking() async throws {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
-        try await testJobQueue(processor) {
+        try await testWorkflow(processor) {
             let workflowId = try await workflowEngine.startWorkflow(
                 MultipleActivitiesWorkflow.self,
                 input: MultipleActivitiesWorkflow.Input(

@@ -33,12 +33,24 @@ let package = Package(
             ],
             swiftSettings: swiftSettings
         ),
+        .target(
+            name: "Workflows",
+            dependencies: [.byName(name: "Jobs")],
+            swiftSettings: swiftSettings
+        ),
         // test targets
         .testTarget(
             name: "JobsTests",
             dependencies: [
                 .byName(name: "Jobs"),
                 .product(name: "MetricsTestKit", package: "swift-metrics"),
+            ]
+        ),
+        .testTarget(
+            name: "WorkflowsTests",
+            dependencies: [
+                .byName(name: "Jobs"),
+                .byName(name: "Workflows")
             ]
         ),
     ]

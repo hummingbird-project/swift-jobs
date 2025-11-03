@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Atomics
+import Jobs
 import Logging
 import NIOCore
 import ServiceLifecycle

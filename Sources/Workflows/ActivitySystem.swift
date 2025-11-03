@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Jobs
 import NIOCore
 import Synchronization
 

@@ -314,7 +314,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         /// Run Job scheduler
         public func run() async throws {
             let bytes: [UInt8] = (0..<16).map { _ in UInt8.random(in: 0...255) }
-            let lockID = ByteBuffer(string: String(base64Encoding: bytes))
+            let lockID = ByteBuffer(bytes: bytes)
 
             try await self.jobQueue.queue.waitUntilReady()
 

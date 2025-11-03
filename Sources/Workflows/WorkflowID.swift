@@ -46,7 +46,7 @@ public struct WorkflowID: Sendable, Hashable, CustomStringConvertible, Codable {
     /// - Parameters:
     ///   - workflowId: The business workflow identifier
     ///   - runId: The execution run identifier
-    public init(workflowId: String, runId: String) {
+    internal init(workflowId: String, runId: String) {
         self.workflowId = workflowId
         self.runId = runId
     }

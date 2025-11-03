@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Atomics
+import Jobs
 import Logging
 import NIOCore
 import Synchronization
@@ -486,5 +487,11 @@ extension WorkflowError {
 
     static func signalTimeout(_ signalName: String) -> WorkflowError {
         .workflowFailed("Signal '\(signalName)' timed out")
+    }
+}
+
+extension TimeInterval {
+    init(duration: Duration) {
+        self = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1_000_000_000_000_000_000
     }
 }
