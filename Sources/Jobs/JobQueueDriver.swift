@@ -90,14 +90,18 @@ public struct JobQueueResult<JobID: Sendable>: Sendable {
 public protocol JobOptionsProtocol: Sendable {
     init()
 
-    /// When to execute the job
+    /// Initialize JobOptionsProtocol
+    /// - Parameters:
+    ///   - delayUntil: When to execute the job
     init(delayUntil: Date)
 }
 
 extension JobOptionsProtocol {
     /// When to execute the job
     var delayUntil: Date { .now }
-
+    /// Initialize JobOptionsProtocol
+    /// - Parameters:
+    ///   - delayUntil: When to execute the job
     init(delayUntil: Date) {
         self.init()
     }
@@ -107,7 +111,9 @@ extension JobOptionsProtocol {
 public struct JobRetryOptions {
     /// When to execute the job
     public let delayUntil: Date
-
+    /// Default init JobOptionsProtocol
+    /// - Parameters:
+    ///   - delayUntil: When to execute the job
     init(delayUntil: Date) {
         self.delayUntil = delayUntil
     }
