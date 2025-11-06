@@ -292,7 +292,7 @@ public struct JobSchedule: MutableCollection, Sendable {
             ///   - schedulerLock: Define how scheduler lock should be acquired if at all. If you have multiple scheduler
             ///       processes you should set this to acquire a lock so one scheduler can be defined the primary
             public init(
-                jobOptions: Driver.JobOptions = .init(),
+                jobOptions: Driver.JobOptions = .init(delayUntil: .now),
                 schedulerLock: ExclusiveLock = .ignore
             ) {
                 self.jobOptions = jobOptions
