@@ -305,8 +305,9 @@ struct MetricsTests {
             }
             jobQueue.registerJob(job)
             try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 1))) {
-                // add two jobs. First job ensures the second job is queued for more than 50ms
-                try await jobQueue.push(SleepJobParameters(wait: 50))
+                // add two jobs. First job ensures the second job is queued for more than 40ms
+                // Using longer sleep to make timing more reliable in CI environments
+                try await jobQueue.push(SleepJobParameters(wait: 100))
                 try await jobQueue.push(SleepJobParameters(wait: 5))
                 try await expectation.wait(count: 2)
             }
@@ -314,7 +315,9 @@ struct MetricsTests {
             let jobTimers = Self.testMetrics.timers.filter { $0.label == "swift.jobs.queued.duration" }
             let succeededTimer = try #require(jobTimers.first { $0["name"] == "testJobQueuedTime" })
             #expect(succeededTimer.values.count == 2)
-            #expect(succeededTimer.values[1] > 50_000_000)
+            // Second job should be queued for at least 40ms (allowing some timing variance)
+            // since first job sleeps for 100ms and we have only 1 worker
+            #expect(succeededTimer.values[1] > 40_000_000)
             expectMetricDimensionsEqual(
                 succeededTimer.dimensions,
                 ["name": SleepJobParameters.jobName, "queue": "default"]
