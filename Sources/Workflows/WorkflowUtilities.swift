@@ -267,6 +267,16 @@ extension Duration {
     public static func weeks(_ weeks: Double) -> Duration {
         .seconds(Int(weeks * 604800))
     }
+
+    /// Get the time interval in seconds as a Double
+    var timeInterval: TimeInterval {
+        Double(self.components.seconds) + Double(self.components.attoseconds) / 1_000_000_000_000_000_000
+    }
+
+    /// Get nanoseconds as UInt64
+    var nanoseconds: UInt64 {
+        UInt64(self.components.seconds) * 1_000_000_000 + UInt64(self.components.attoseconds / 1_000_000_000)
+    }
 }
 
 /// How to resolve conflicts when merging metadata
