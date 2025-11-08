@@ -118,50 +118,6 @@ package struct WorkflowUtilities {
         }
     }
 
-    /// Validate workflow or activity name
-    /// Ensures names follow conventions and don't contain problematic characters
-    ///
-    /// - Parameter name: The name to validate
-    /// - Returns: True if valid, false otherwise
-    internal static func isValidWorkflowName(_ name: String) -> Bool {
-        // Check basic requirements
-        guard !name.isEmpty && name.count <= 100 else { return false }
-
-        // Must start with letter or underscore
-        guard let firstChar = name.first,
-            firstChar.isLetter || firstChar == "_"
-        else { return false }
-
-        // Can only contain letters, numbers, underscores, and hyphens
-        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
-        return name.unicodeScalars.allSatisfy { allowedCharacters.contains($0) }
-    }
-
-    /// Create a safe workflow name from a potentially unsafe string
-    /// Sanitizes input to create a valid workflow name
-    ///
-    /// - Parameter input: The input string to sanitize
-    /// - Returns: A safe workflow name
-    internal static func sanitizeWorkflowName(_ input: String) -> String {
-        // Remove or replace invalid characters
-        let sanitized =
-            input
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: " ", with: "_")
-            .replacingOccurrences(of: ".", with: "_")
-            .components(separatedBy: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-")).inverted)
-            .joined()
-
-        // Ensure it starts with a valid character
-        let result = sanitized.isEmpty ? "workflow" : sanitized
-        if let firstChar = result.first, !firstChar.isLetter && firstChar != "_" {
-            return "_" + result
-        }
-
-        // Limit length
-        return String(result.prefix(100))
-    }
-
     /// Extract workflow type from a full workflow name
     /// Useful for parsing composite workflow names
     ///
@@ -287,23 +243,6 @@ package enum MetadataConflictResolution {
     case keepOverlay
     /// Merge values with comma separation
     case merge
-}
-
-/// ISO 8601 date formatting utilities
-extension Date {
-    /// Format date as ISO 8601 string with fractional seconds
-    public var iso8601StringWithFractionalSeconds: String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: self)
-    }
-
-    /// Format date as ISO 8601 string without fractional seconds
-    public var iso8601String: String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.string(from: self)
-    }
 }
 
 /// ByteBuffer utilities for workflows
