@@ -90,6 +90,17 @@ public struct JobQueueResult<JobID: Sendable>: Sendable {
 public protocol JobOptionsProtocol: Sendable {
     /// Initialize job options with default value
     init()
+
+    /// Fairness key for resource allocation (optional)
+    var fairnessKey: String? { get }
+    /// Fairness weight for this job type (higher = more resources)
+    var fairnessWeight: Double { get }
+
+    /// Required protocol initializer for JobOptionsProtocol compliance
+    /// - Parameters:
+    ///   - fairnessKey: Fairness key for resource allocation (optional)
+    ///   - fairnessWeight: Fairness weight for this job type
+    init(fairnessKey: String?, fairnessWeight: Double)
 }
 
 /// Options for retrying a job
