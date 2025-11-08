@@ -118,17 +118,6 @@ package struct WorkflowUtilities {
         }
     }
 
-    /// Extract workflow type from a full workflow name
-    /// Useful for parsing composite workflow names
-    ///
-    /// - Parameter fullName: The full workflow name (e.g., "MyWorkflow_v2_prod")
-    /// - Returns: The base type name (e.g., "MyWorkflow")
-    internal static func extractWorkflowType(from fullName: String) -> String {
-        // Split on common delimiters and take the first part
-        let delimiters = CharacterSet(charactersIn: "_-.")
-        return fullName.components(separatedBy: delimiters).first ?? fullName
-    }
-
     /// Merge metadata dictionaries with conflict resolution
     /// Useful for combining workflow and activity metadata
     ///
