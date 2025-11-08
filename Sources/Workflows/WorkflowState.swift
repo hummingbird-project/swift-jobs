@@ -21,14 +21,14 @@ import FoundationEssentials
 import Foundation
 #endif
 
-/// Workflow execution state stored in job metadata
-internal struct WorkflowState: Codable, Sendable {
+/// Workflow execution state with typed input and output from WorkflowProtocol
+public struct WorkflowState<Input: Codable & Sendable, Output: Codable & Sendable>: Codable, Sendable {
     /// Unique workflow execution identifier
     public let id: WorkflowID
     /// Type name of the workflow
     public let workflowType: String
-    /// Serialized input data
-    public let input: ByteBuffer
+    /// Workflow input data
+    public let input: Input
     /// Current execution status
     public var status: WorkflowStatus
     /// When the workflow was queued
@@ -43,17 +43,15 @@ internal struct WorkflowState: Codable, Sendable {
     public var currentStep: Int
     /// Step execution history for resumption and replay
     public var stepHistory: [WorkflowStepExecution]
-    /// Activity results for resumption
-    public var activityResults: [String: ByteBuffer]
     /// Error message if workflow failed
     public var error: String?
-    /// Serialized output data (if completed)
-    public var output: ByteBuffer?
+    /// Workflow output data (if completed)
+    public var output: Output?
 
-    internal init(
+    public init(
         id: WorkflowID,
         workflowType: String,
-        input: ByteBuffer,
+        input: Input,
         status: WorkflowStatus = .running,
         queuedAt: Date = .now,
         scheduledAt: Date? = nil,
@@ -69,7 +67,6 @@ internal struct WorkflowState: Codable, Sendable {
         self.startTime = startTime
         self.currentStep = currentStep
         self.stepHistory = []
-        self.activityResults = [:]
         self.endTime = nil
         self.error = nil
         self.output = nil
@@ -78,34 +75,76 @@ internal struct WorkflowState: Codable, Sendable {
 
 /// Tracks execution of individual workflow steps
 public struct WorkflowStepExecution: Codable, Sendable {
+    /// Workflow execution ID this step belongs to
+    public let workflowId: WorkflowID
     /// Step index in the workflow
     public let stepIndex: Int
+    /// Human-readable step name/identifier
+    public let stepName: String
     /// Type of step (activity, parallel, condition, etc.)
     public let stepType: WorkflowStepType
-    /// When this step started
-    public let startTime: Date
+    /// When this step was created
+    public let createdAt: Date
+    /// When this step was queued for execution
+    public var queuedAt: Date?
+    /// When this step started executing
+    public var startedAt: Date?
     /// When this step completed (if applicable)
-    public var endTime: Date?
+    public var completedAt: Date?
     /// Step execution status
     public var status: WorkflowStepStatus
     /// Activity ID for activity steps
     public let activityId: String?
+    /// Worker ID that executed this step
+    public var workerId: String?
+    /// Current retry attempt (0 for first attempt)
+    public var retryAttempt: Int
+    /// Maximum number of retry attempts allowed
+    public let maxRetries: Int
     /// Error if step failed
     public var error: String?
+    /// Step input data (encoded as JSON)
+    public var input: Data?
+    /// Step output data (encoded as JSON)
+    public var output: Data?
+    /// Step timeout duration
+    public let timeout: Duration?
+    /// Priority level for step execution
+    public let priority: Int
+    /// Additional metadata for this step
+    public var metadata: [String: String]
 
     public init(
+        workflowId: WorkflowID,
         stepIndex: Int,
+        stepName: String,
         stepType: WorkflowStepType,
-        startTime: Date = .now,
-        activityId: String? = nil
+        createdAt: Date = .now,
+        activityId: String? = nil,
+        maxRetries: Int = 3,
+        timeout: Duration? = nil,
+        priority: Int = 1,
+        metadata: [String: String] = [:]
     ) {
+        self.workflowId = workflowId
         self.stepIndex = stepIndex
+        self.stepName = stepName
         self.stepType = stepType
-        self.startTime = startTime
-        self.endTime = nil
-        self.status = .running
+        self.createdAt = createdAt
+        self.queuedAt = nil
+        self.startedAt = nil
+        self.completedAt = nil
+        self.status = .pending
         self.activityId = activityId
+        self.workerId = nil
+        self.retryAttempt = 0
+        self.maxRetries = maxRetries
         self.error = nil
+        self.input = nil
+        self.output = nil
+        self.timeout = timeout
+        self.priority = priority
+        self.metadata = metadata
     }
 }
 
@@ -116,14 +155,125 @@ public enum WorkflowStepType: String, Codable, Sendable {
     case condition
     case delay
     case signal
+    case fork
+    case join
+    case loop
+    case subworkflow
 }
 
-/// Status of individual workflow steps
+/// Status of workflow step execution
 public enum WorkflowStepStatus: String, Codable, Sendable {
-    case running
-    case completed
-    case failed
-    case cancelled
+    /// Step has been created but not yet queued
+    case pending = "PENDING"
+    /// Step is queued for execution
+    case queued = "QUEUED"
+    /// Step has been assigned to a worker
+    case assigned = "ASSIGNED"
+    /// Step is currently running
+    case running = "RUNNING"
+    /// Step completed successfully
+    case succeeded = "SUCCEEDED"
+    /// Step failed
+    case failed = "FAILED"
+    /// Step was cancelled
+    case cancelled = "CANCELLED"
+    /// Step is being cancelled
+    case cancelling = "CANCELLING"
+    /// Step is in backoff state before retry
+    case backoff = "BACKOFF"
+    /// Step was skipped due to conditions
+    case skipped = "SKIPPED"
+    /// Step timed out
+    case timedOut = "TIMED_OUT"
+}
+
+// MARK: - Step Execution Helpers
+
+extension WorkflowStepExecution {
+    /// Mark step as queued
+    public mutating func markQueued() {
+        self.status = .queued
+        self.queuedAt = .now
+    }
+
+    /// Mark step as assigned to a worker
+    public mutating func markAssigned(to workerId: String) {
+        self.status = .assigned
+        self.workerId = workerId
+    }
+
+    /// Mark step as started
+    public mutating func markStarted() {
+        self.status = .running
+        self.startedAt = .now
+    }
+
+    /// Mark step as completed successfully
+    public mutating func markCompleted(output: Data? = nil) {
+        self.status = .succeeded
+        self.completedAt = .now
+        self.output = output
+    }
+
+    /// Mark step as failed
+    public mutating func markFailed(error: String) {
+        self.status = .failed
+        self.completedAt = .now
+        self.error = error
+    }
+
+    /// Mark step as cancelled
+    public mutating func markCancelled() {
+        self.status = .cancelled
+        self.completedAt = .now
+    }
+
+    /// Mark step as timed out
+    public mutating func markTimedOut() {
+        self.status = .timedOut
+        self.completedAt = .now
+        self.error = "Step execution timed out"
+    }
+
+    /// Mark step as skipped
+    public mutating func markSkipped(reason: String? = nil) {
+        self.status = .skipped
+        self.completedAt = .now
+        if let reason = reason {
+            self.metadata["skip_reason"] = reason
+        }
+    }
+
+    /// Increment retry attempt
+    public mutating func incrementRetry() {
+        self.retryAttempt += 1
+        self.status = .backoff
+    }
+
+    /// Check if step can be retried
+    public var canRetry: Bool {
+        retryAttempt < maxRetries && (status == .failed || status == .timedOut)
+    }
+
+    /// Get execution duration if step has completed
+    public var duration: TimeInterval? {
+        guard let startedAt = startedAt,
+            let completedAt = completedAt
+        else {
+            return nil
+        }
+        return completedAt.timeIntervalSince(startedAt)
+    }
+
+    /// Check if step is in a terminal state
+    public var isTerminal: Bool {
+        switch status {
+        case .succeeded, .failed, .cancelled, .skipped, .timedOut:
+            return true
+        case .pending, .queued, .assigned, .running, .cancelling, .backoff:
+            return false
+        }
+    }
 }
 
 /// Job that coordinates workflow execution
@@ -138,25 +288,17 @@ public struct WorkflowCoordinatorJob: JobParameters {
     public let action: WorkflowAction
     /// Current step index
     public let stepIndex: Int
-    /// Activity result data (if continuing from activity)
-    public let activityResult: ByteBuffer?
-    /// Activity results for resumption
-    public let activityResults: [String: ByteBuffer]
 
     public init(
         workflowId: WorkflowID,
         workflowType: String,
         action: WorkflowAction,
-        stepIndex: Int,
-        activityResult: ByteBuffer? = nil,
-        activityResults: [String: ByteBuffer] = [:]
+        stepIndex: Int
     ) {
         self.workflowId = workflowId
         self.workflowType = workflowType
         self.action = action
         self.stepIndex = stepIndex
-        self.activityResult = activityResult
-        self.activityResults = activityResults
     }
 }
 
@@ -166,86 +308,83 @@ public enum WorkflowAction: String, Codable, Sendable {
     case start
     /// Continue execution after an activity completes
     case continueFromActivity
-    /// Execute a parallel step
-    case executeParallelStep
     /// Mark workflow as completed
     case complete
     /// Mark workflow as failed
     case fail
-    /// Cancel a running workflow
+    /// Mark workflow as cancelled
     case cancel
 }
 
 /// Job that executes an activity within a workflow
 public struct ActivityExecutionJob: JobParameters {
-    public static let jobName = "ActivityExecution"
+    public static var jobName: String { "ActivityExecution" }
 
     /// Unique identifier for this activity execution
-    public let activityId: String
+    public let activityId: ActivityID
     /// The workflow this activity belongs to
     public let workflowId: WorkflowID
     /// Name of the activity to execute
     public let activityName: String
-    /// Serialized activity parameters
-    public let parameters: ByteBuffer
+    /// Activity input data (serialized as ByteBuffer for type erasure)
+    public let inputBuffer: ByteBuffer
     /// Timeout for activity execution
     public let timeout: Duration?
-    /// Serialized retry policy
-    public let retryPolicy: ByteBuffer?
+    /// Retry policy type name
+    public let retryPolicyType: String?
     /// Workflow type for continuation after activity completion
     public let workflowType: String
     /// Current step index for continuation
     public let stepIndex: Int
 
-    internal init(
-        activityId: String,
+    public init<Input: Codable & Sendable>(
+        activityId: ActivityID,
         workflowId: WorkflowID,
         activityName: String,
-        parameters: ByteBuffer,
+        input: Input,
         timeout: Duration? = nil,
-        retryPolicy: ByteBuffer? = nil,
+        retryPolicyType: String? = nil,
         workflowType: String,
         stepIndex: Int
-    ) {
+    ) throws {
         self.activityId = activityId
         self.workflowId = workflowId
         self.activityName = activityName
-        self.parameters = parameters
+        self.inputBuffer = try JSONEncoder().encodeAsByteBuffer(input, allocator: ByteBufferAllocator())
         self.timeout = timeout
-        self.retryPolicy = retryPolicy
+        self.retryPolicyType = retryPolicyType
         self.workflowType = workflowType
         self.stepIndex = stepIndex
     }
+
 }
 
 /// Result of an activity execution
+/// Result of activity execution with proper error type information
 public enum ActivityResult<T: Codable & Sendable>: Codable, Sendable {
     case success(T)
-    case failure(String)
+    case failure(ActivityErrorInfo)
 }
 
-/// Type-erased activity result for storage
-public struct AnyActivityResult: Codable, Sendable {
-    public let isSuccess: Bool
-    public let data: ByteBuffer
+/// Error information for activity failures
+public struct ActivityErrorInfo: Codable, Sendable {
+    /// Human-readable error message
+    public let message: String
+    /// Error type name for type checking
+    public let errorType: String
+    /// Whether this error represents cancellation
+    public let isCancellation: Bool
 
-    public init<T: Codable & Sendable>(success value: T) throws {
-        self.isSuccess = true
-        self.data = try JSONEncoder().encodeAsByteBuffer(value, allocator: ByteBufferAllocator())
+    public init(message: String, errorType: String, isCancellation: Bool = false) {
+        self.message = message
+        self.errorType = errorType
+        self.isCancellation = isCancellation
     }
 
-    public init(failure error: String) throws {
-        self.isSuccess = false
-        self.data = try JSONEncoder().encodeAsByteBuffer(error, allocator: ByteBufferAllocator())
-    }
-
-    public func decode<T: Codable & Sendable>(as type: T.Type) throws -> ActivityResult<T> {
-        if isSuccess {
-            let value = try JSONDecoder().decode(T.self, from: data)
-            return .success(value)
-        } else {
-            let error = try JSONDecoder().decode(String.self, from: data)
-            return .failure(error)
-        }
+    /// Create from Swift Error
+    public init(from error: Error) {
+        self.message = error.localizedDescription
+        self.errorType = String(describing: type(of: error))
+        self.isCancellation = error is CancellationError || error is WorkflowCancelledFailure
     }
 }

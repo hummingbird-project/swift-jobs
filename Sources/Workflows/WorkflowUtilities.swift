@@ -60,8 +60,8 @@ package struct WorkflowUtilities {
     ///   - string: The string to hash
     ///   - context: Additional context string to include in hash
     /// - Returns: A deterministic 8-character hexadecimal hash string
-    package static func deterministicHash(string: String, context: String = "") -> String {
-        let buffer = ByteBufferAllocator().buffer(string: string)
+    package static func deterministicHash(string: String, context: String = "", allocator: ByteBufferAllocator = ByteBufferAllocator()) -> String {
+        let buffer = allocator.buffer(string: string)
         return deterministicHash(buffer: buffer, activityName: context)
     }
 

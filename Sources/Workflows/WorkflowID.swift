@@ -35,6 +35,16 @@ public struct WorkflowID: Sendable, Hashable, CustomStringConvertible, Codable {
         self.runId = UUID().uuidString
     }
 
+    /// Generate a workflow ID with class name prefix
+    /// - Parameter workflowType: The workflow type to generate ID for
+    /// - Returns: A workflow ID with format "WorkflowName-UUID_PREFIX"
+    internal static func generate<W: WorkflowProtocol>(for workflowType: W.Type) -> WorkflowID {
+        let workflowName = W.workflowName
+        let uuidPrefix = UUID().uuidString.prefix(8)
+        let businessId = "\(workflowName)-\(uuidPrefix)"
+        return WorkflowID(workflowId: businessId)
+    }
+
     /// Create a workflow ID with a specific business ID and generated run ID
     /// - Parameter workflowId: The business workflow identifier
     public init(workflowId: String) {
@@ -70,6 +80,32 @@ public struct WorkflowID: Sendable, Hashable, CustomStringConvertible, Codable {
 }
 
 extension WorkflowID: ExpressibleByStringLiteral {
+    public init(stringLiteral value: String) {
+        self.init(value)
+    }
+}
+
+/// Unique identifier for an activity execution
+public struct ActivityID: Sendable, Hashable, CustomStringConvertible, Codable {
+    /// Unique activity execution identifier
+    public let value: String
+
+    /// Create a new unique activity ID
+    public init() {
+        self.value = UUID().uuidString
+    }
+
+    /// Create an activity ID with a specific value
+    /// - Parameter value: The activity identifier
+    public init(_ value: String) {
+        self.value = value
+    }
+
+    /// String representation of the activity ID
+    public var description: String { value }
+}
+
+extension ActivityID: ExpressibleByStringLiteral {
     public init(stringLiteral value: String) {
         self.init(value)
     }

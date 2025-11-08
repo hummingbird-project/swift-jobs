@@ -35,8 +35,8 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             self.delayUntil = Date.now
         }
 
-        public init(delayUntil: Date?) {
-            self.delayUntil = delayUntil ?? Date.now
+        public init(delayUntil: Date = .now) {
+            self.delayUntil = delayUntil
         }
     }
 

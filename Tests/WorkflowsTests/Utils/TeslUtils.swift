@@ -44,20 +44,22 @@ public func testWorkflow<Value>(
     }
 }
 
-/// Helper to wait for workflow completion using TestExpectation
-public func waitForWorkflowCompletion(
+/// Helper to wait for workflow completion using TestExpectation (generic version)
+public func waitForWorkflowCompletion<Input: Codable & Sendable, Output: Codable & Sendable>(
     _ workflowId: WorkflowID,
-    engine: WorkflowEngine<MemoryQueue>,
+    engine: WorkflowEngine<MemoryWorkflowQueue>,
+    inputType: Input.Type,
+    outputType: Output.Type,
     expectedStatus: WorkflowStatus = .completed,
     timeout: Duration = .seconds(10),
     description: String = "workflow completion"
-) async throws -> WorkflowExecutionStatus {
+) async throws -> WorkflowRun<Input, Output> {
     let expectation = TestExpectation()
 
     let pollingTask = Task {
         while !Task.isCancelled {
             do {
-                let status = try await engine.getWorkflowStatus(workflowId)
+                guard let status = try await engine.getWorkflowSummary(workflowId) else { return }
                 if status.status == expectedStatus {
                     expectation.trigger()
                     return
@@ -75,5 +77,16 @@ public func waitForWorkflowCompletion(
     defer { pollingTask.cancel() }
 
     try await expectation.wait(for: description, timeout: timeout)
-    return try await engine.getWorkflowStatus(workflowId)
+
+    // Get the typed workflow run
+    guard
+        let workflowRun = try await engine.jobQueue.queue.workflowRepository.getWorkflowRun(
+            workflowId,
+            inputType: inputType,
+            outputType: outputType
+        )
+    else {
+        throw WorkflowError.executionNotFound(workflowId)
+    }
+    return workflowRun
 }

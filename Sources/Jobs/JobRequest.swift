@@ -26,7 +26,7 @@ public struct JobRequest<Parameters: Sendable & Codable>: Encodable {
     public let data: JobInstanceData<Parameters>
 
     @usableFromInline
-    init(
+    package init(
         name: String,
         parameters: Parameters,
         queuedAt: Date,
@@ -62,9 +62,9 @@ public struct JobRequest<Parameters: Sendable & Codable>: Encodable {
 
 extension JobRequest: SchedulableJobRequest {
     /// Added so it's possible for the scheduler to add date partitions
-    internal func push<Queue: JobQueueDriver>(
+    package func push<Queue: JobQueueDriver>(
         to jobQueue: JobQueue<Queue>,
-        options: Queue.JobOptions = .init()
+        options: Queue.JobOptions = .init(delayUntil: .now)
     ) async throws -> Queue.JobID {
         try await jobQueue.push(jobRequest: self, options: options)
     }

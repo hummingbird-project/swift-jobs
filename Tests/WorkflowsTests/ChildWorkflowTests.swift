@@ -26,18 +26,17 @@ struct ChildWorkflowTests {
 
     // MARK: - Helper Methods
 
-    private func setupWorkflowSystem() async throws -> (WorkflowEngine<MemoryQueue>, any Service) {
+    private func setupWorkflowSystem() async throws -> (WorkflowEngine<MemoryWorkflowQueue>, any Service) {
         let logger = Logger(label: "ChildWorkflowTests")
-        let jobQueue = JobQueue(.memory, logger: logger)
 
         let activities = TestActivityContainer()
         let workflowEngine = WorkflowEngine(
-            jobQueue: jobQueue,
+            queue: .memoryWorkflow,
             logger: logger,
             activities: [activities]
         )
 
-        let processor = jobQueue.processor(options: .init(numWorkers: 20))
+        let processor = workflowEngine.processor(options: .init(numWorkers: 20))
 
         // Register test workflows
         workflowEngine.registerWorkflow(ParentWorkflow.self)
@@ -54,7 +53,6 @@ struct ChildWorkflowTests {
 
     /// Simple parent workflow that executes one child workflow
     struct ParentWorkflow: WorkflowProtocol {
-        static let workflowName = "ParentWorkflow"
 
         struct Input: Codable, Sendable {
             let message: String
@@ -75,7 +73,7 @@ struct ChildWorkflowTests {
                 SimpleChildWorkflow.self,
                 input: SimpleChildWorkflow.Input(data: input.childData),
                 options: ChildWorkflowOptions(
-                    timeout: .seconds(30),
+                    runTimeout: .seconds(30),
                     childWorkflowIdPrefix: "simple"
                 )
             )
@@ -92,7 +90,6 @@ struct ChildWorkflowTests {
 
     /// Simple child workflow for testing
     struct SimpleChildWorkflow: WorkflowProtocol {
-        static let workflowName = "SimpleChildWorkflow"
 
         struct Input: Codable, Sendable {
             let data: String
@@ -120,7 +117,6 @@ struct ChildWorkflowTests {
 
     /// Complex child workflow that executes multiple activities
     struct ComplexChildWorkflow: WorkflowProtocol {
-        static let workflowName = "ComplexChildWorkflow"
 
         struct Input: Codable, Sendable {
             let items: [String]
@@ -161,7 +157,6 @@ struct ChildWorkflowTests {
 
     /// Child workflow that fails for testing error handling
     struct FailingChildWorkflow: WorkflowProtocol {
-        static let workflowName = "FailingChildWorkflow"
 
         struct Input: Codable, Sendable {
             let shouldFail: Bool
@@ -171,8 +166,6 @@ struct ChildWorkflowTests {
         struct Output: Codable, Sendable {
             let result: String
         }
-
-        init() {}
 
         func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
             if input.shouldFail {
@@ -185,7 +178,6 @@ struct ChildWorkflowTests {
 
     /// Country processing workflow from the example
     struct CountryProcessingWorkflow: WorkflowProtocol {
-        static let workflowName = "CountryProcessing"
 
         struct Input: Codable, Sendable {
             let country: String
@@ -228,7 +220,6 @@ struct ChildWorkflowTests {
 
     /// Quality check workflow from the example
     struct QualityCheckWorkflow: WorkflowProtocol {
-        static let workflowName = "QualityCheck"
 
         struct Input: Codable, Sendable {
             let countries: [String]
@@ -240,8 +231,6 @@ struct ChildWorkflowTests {
             let failedCountries: [String]
             let averageScore: Double
         }
-
-        init() {}
 
         func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
             // Simulate quality checks
@@ -275,7 +264,6 @@ struct ChildWorkflowTests {
     // MARK: - Test Activities
 
     struct SimpleProcessActivity: ActivityParameters {
-        static let activityName = "SimpleProcess"
 
         struct Input: Codable, Sendable {
             let text: String
@@ -286,14 +274,14 @@ struct ChildWorkflowTests {
 
     struct TestActivityContainer: ActivityContainer {
         func registerActivities(with registry: ActivityRegistry) {
-            registry.registerActivity(SimpleProcessActivity.self) { input in
+            registry.registerActivity(SimpleProcessActivity.self) { input, context in
                 // Simulate processing time
                 try await Task.sleep(for: .milliseconds(50))
                 return "Processed: \(input.text)"
             }
 
             // Register DAG workflow activities
-            registry.registerActivity(TextIngestionActivity.self) { input in
+            registry.registerActivity(TextIngestionActivity.self) { input, context in
                 // Simulate text ingestion processing
                 try await Task.sleep(for: .milliseconds(100))
                 return TextIngestionActivity.Output(
@@ -302,7 +290,7 @@ struct ChildWorkflowTests {
                 )
             }
 
-            registry.registerActivity(TextAnalysisActivity.self) { input in
+            registry.registerActivity(TextAnalysisActivity.self) { input, context in
                 // Simulate text analysis processing
                 try await Task.sleep(for: .milliseconds(150))
                 return TextAnalysisActivity.Output(
@@ -311,7 +299,7 @@ struct ChildWorkflowTests {
                 )
             }
 
-            registry.registerActivity(ModelGenerationActivity.self) { input in
+            registry.registerActivity(ModelGenerationActivity.self) { input, context in
                 // Simulate model generation processing
                 try await Task.sleep(for: .milliseconds(200))
                 return ModelGenerationActivity.Output(
@@ -320,7 +308,7 @@ struct ChildWorkflowTests {
                 )
             }
 
-            registry.registerActivity(ModelPublishingActivity.self) { input in
+            registry.registerActivity(ModelPublishingActivity.self) { input, context in
                 // Simulate model publishing processing
                 try await Task.sleep(for: .milliseconds(100))
                 return ModelPublishingActivity.Output(
@@ -330,7 +318,7 @@ struct ChildWorkflowTests {
             }
 
             // Register billing workflow activities
-            registry.registerActivity(InvoiceCalculationActivity.self) { input in
+            registry.registerActivity(InvoiceCalculationActivity.self) { input, context in
                 // Simulate invoice calculation processing
                 try await Task.sleep(for: .milliseconds(200))
                 return InvoiceCalculationActivity.Output(
@@ -340,7 +328,7 @@ struct ChildWorkflowTests {
                 )
             }
 
-            registry.registerActivity(CreditCardChargeActivity.self) { input in
+            registry.registerActivity(CreditCardChargeActivity.self) { input, context in
                 // Simulate credit card charging
                 try await Task.sleep(for: .milliseconds(300))
                 return CreditCardChargeActivity.Output(
@@ -349,7 +337,7 @@ struct ChildWorkflowTests {
                 )
             }
 
-            registry.registerActivity(PDFGenerationActivity.self) { input in
+            registry.registerActivity(PDFGenerationActivity.self) { input, context in
                 // Simulate PDF generation
                 try await Task.sleep(for: .milliseconds(250))
                 return PDFGenerationActivity.Output(
@@ -358,7 +346,7 @@ struct ChildWorkflowTests {
                 )
             }
 
-            registry.registerActivity(EmailSendingActivity.self) { input in
+            registry.registerActivity(EmailSendingActivity.self) { input, context in
                 // Simulate email sending
                 try await Task.sleep(for: .milliseconds(100))
                 return EmailSendingActivity.Output(
@@ -405,13 +393,15 @@ struct ChildWorkflowTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: ParentWorkflow.Input.self,
+                outputType: ParentWorkflow.Output.self,
+                timeout: .seconds(10),
                 description: "parent workflow with child"
             )
 
             #expect(finalStatus.status == .completed)
 
-            if let outputBuffer = finalStatus.output {
-                let result = try JSONDecoder().decode(ParentWorkflow.Output.self, from: outputBuffer)
+            if let result = finalStatus.output {
                 #expect(result.parentResult.contains("Test parent workflow"))
                 #expect(result.childResult.contains("Processed: child test data"))
                 #expect(result.executionTime > 0)
@@ -424,7 +414,6 @@ struct ChildWorkflowTests {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
         struct ParallelParentWorkflow: WorkflowProtocol {
-            static let workflowName = "ParallelParentWorkflow"
 
             struct Input: Codable, Sendable {
                 let countries: [String]
@@ -436,25 +425,33 @@ struct ChildWorkflowTests {
                 let totalProcessed: Int
             }
 
-            init() {}
-
             func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
-                let results = try await context.executeChildWorkflowsInParallel(
-                    CountryProcessingWorkflow.self,
-                    inputs: input.countries.map { country in
-                        CountryProcessingWorkflow.Input(country: country, variants: input.variants)
-                    },
-                    options: ChildWorkflowOptions(
-                        timeout: .seconds(30),
-                        childWorkflowIdPrefix: "country"
-                    )
-                )
+                let results = try await withThrowingTaskGroup(of: CountryProcessingWorkflow.Output.self) { group in
+                    for (index, country) in input.countries.enumerated() {
+                        group.addTask {
+                            let result = try await context.executeChildWorkflow(
+                                CountryProcessingWorkflow.self,
+                                input: CountryProcessingWorkflow.Input(country: country, variants: input.variants),
+                                options: ChildWorkflowOptions(
+                                    runTimeout: .seconds(30),
+                                    childWorkflowIdPrefix: "country-\(index)"
+                                )
+                            )
+                            return result.output
+                        }
+                    }
 
-                let outputs = results.map { $0.output }
-                let totalProcessed = outputs.map { $0.processedVariants }.reduce(0, +)
+                    var outputs: [CountryProcessingWorkflow.Output] = []
+                    for try await output in group {
+                        outputs.append(output)
+                    }
+                    return outputs
+                }
+
+                let totalProcessed = results.map { $0.processedVariants }.reduce(0, +)
 
                 return Output(
-                    results: outputs,
+                    results: results,
                     totalProcessed: totalProcessed
                 )
             }
@@ -474,14 +471,15 @@ struct ChildWorkflowTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: ParallelParentWorkflow.Input.self,
+                outputType: ParallelParentWorkflow.Output.self,
                 timeout: .seconds(15),
                 description: "parallel child workflows"
             )
 
             #expect(finalStatus.status == .completed)
 
-            if let outputBuffer = finalStatus.output {
-                let result = try JSONDecoder().decode(ParallelParentWorkflow.Output.self, from: outputBuffer)
+            if let result = finalStatus.output {
                 #expect(result.results.count == 3)
                 #expect(result.totalProcessed == 6)  // 3 countries * 2 variants each
                 #expect(result.results.allSatisfy { $0.success })
@@ -494,7 +492,6 @@ struct ChildWorkflowTests {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
         struct FailureTestParentWorkflow: WorkflowProtocol {
-            static let workflowName = "FailureTestParentWorkflow"
 
             struct Input: Codable, Sendable {
                 let shouldChildFail: Bool
@@ -504,8 +501,6 @@ struct ChildWorkflowTests {
                 let result: String
             }
 
-            init() {}
-
             func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
                 do {
                     let childResult = try await context.executeChildWorkflow(
@@ -514,7 +509,7 @@ struct ChildWorkflowTests {
                             shouldFail: input.shouldChildFail,
                             failureMessage: "Test failure"
                         ),
-                        options: ChildWorkflowOptions(timeout: .seconds(10))
+                        options: ChildWorkflowOptions(runTimeout: .seconds(10))
                     )
 
                     return Output(result: childResult.output.result)
@@ -536,13 +531,14 @@ struct ChildWorkflowTests {
             let successStatus = try await waitForWorkflowCompletion(
                 successId,
                 engine: workflowEngine,
+                inputType: FailureTestParentWorkflow.Input.self,
+                outputType: FailureTestParentWorkflow.Output.self,
                 description: "successful child workflow"
             )
 
             #expect(successStatus.status == .completed)
 
-            if let outputBuffer = successStatus.output {
-                let result = try JSONDecoder().decode(FailureTestParentWorkflow.Output.self, from: outputBuffer)
+            if let result = successStatus.output {
                 #expect(result.result == "Success: not failed")
             }
 
@@ -555,15 +551,17 @@ struct ChildWorkflowTests {
             let failStatus = try await waitForWorkflowCompletion(
                 failId,
                 engine: workflowEngine,
-                description: "failing child workflow"
+                inputType: FailureTestParentWorkflow.Input.self,
+                outputType: FailureTestParentWorkflow.Output.self,
+                expectedStatus: .completed,
+                description: "failed child workflow"
             )
 
             #expect(failStatus.status == .completed)  // Parent should handle the failure
 
-            if let outputBuffer = failStatus.output {
-                let result = try JSONDecoder().decode(FailureTestParentWorkflow.Output.self, from: outputBuffer)
+            if let result = failStatus.output {
                 #expect(result.result.contains("Child failed"))
-                #expect(result.result.contains("Test failure"))
+                #expect(result.result.contains("Child failed"))
             }
         }
     }
@@ -573,7 +571,6 @@ struct ChildWorkflowTests {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
         struct ReplayTestWorkflow: WorkflowProtocol {
-            static let workflowName = "ReplayTestWorkflow"
 
             struct Input: Codable, Sendable {
                 let data: String
@@ -583,8 +580,6 @@ struct ChildWorkflowTests {
                 let childResult: String
                 let executionCount: Int
             }
-
-            init() {}
 
             func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
                 // Execute the same child workflow twice with same input
@@ -620,13 +615,14 @@ struct ChildWorkflowTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: ReplayTestWorkflow.Input.self,
+                outputType: ReplayTestWorkflow.Output.self,
                 description: "replay safety test"
             )
 
             #expect(finalStatus.status == .completed)
 
-            if let outputBuffer = finalStatus.output {
-                let result = try JSONDecoder().decode(ReplayTestWorkflow.Output.self, from: outputBuffer)
+            if let result = finalStatus.output {
                 #expect(result.childResult.contains("Processed: replay test data"))
                 #expect(result.executionCount == 1)  // Should be cached, so only executed once
             }
@@ -638,7 +634,6 @@ struct ChildWorkflowTests {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
         struct GrandparentWorkflow: WorkflowProtocol {
-            static let workflowName = "GrandparentWorkflow"
 
             struct Input: Codable, Sendable {
                 let countries: [String]
@@ -651,19 +646,28 @@ struct ChildWorkflowTests {
                 let totalSteps: Int
             }
 
-            init() {}
-
             func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
                 // Step 1: Process countries in parallel (parent -> child)
-                let countryResults = try await context.executeChildWorkflowsInParallel(
-                    CountryProcessingWorkflow.self,
-                    inputs: input.countries.map { country in
-                        CountryProcessingWorkflow.Input(country: country, variants: 2)
-                    },
-                    options: ChildWorkflowOptions(childWorkflowIdPrefix: "country")
-                )
+                let countryResults = try await withThrowingTaskGroup(of: CountryProcessingWorkflow.Output.self) { group in
+                    for (index, country) in input.countries.enumerated() {
+                        group.addTask {
+                            let result = try await context.executeChildWorkflow(
+                                CountryProcessingWorkflow.self,
+                                input: CountryProcessingWorkflow.Input(country: country, variants: 2),
+                                options: ChildWorkflowOptions(childWorkflowIdPrefix: "country-\(index)")
+                            )
+                            return result.output
+                        }
+                    }
 
-                let processedCountries = countryResults.map { $0.output.country }
+                    var outputs: [CountryProcessingWorkflow.Output] = []
+                    for try await output in group {
+                        outputs.append(output)
+                    }
+                    return outputs
+                }
+
+                let processedCountries = countryResults.map { $0.country }
 
                 // Step 2: Optional quality check (parent -> child)
                 var qualityResults: QualityCheckWorkflow.Output?
@@ -701,14 +705,15 @@ struct ChildWorkflowTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: GrandparentWorkflow.Input.self,
+                outputType: GrandparentWorkflow.Output.self,
                 timeout: .seconds(15),
                 description: "hierarchical workflow composition"
             )
 
             #expect(finalStatus.status == .completed)
 
-            if let outputBuffer = finalStatus.output {
-                let result = try JSONDecoder().decode(GrandparentWorkflow.Output.self, from: outputBuffer)
+            if let result = finalStatus.output {
                 #expect(result.processedCountries.count == 2)
                 #expect(result.processedCountries.contains("BV"))
                 #expect(result.processedCountries.contains("LU"))
@@ -728,7 +733,6 @@ struct ChildWorkflowTests {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
         struct CancellationTestWorkflow: WorkflowProtocol {
-            static let workflowName = "CancellationTestWorkflow"
 
             struct Input: Codable, Sendable {
                 let shouldCancel: Bool
@@ -737,8 +741,6 @@ struct ChildWorkflowTests {
             struct Output: Codable, Sendable {
                 let result: String
             }
-
-            init() {}
 
             func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
                 if input.shouldCancel {
@@ -752,8 +754,6 @@ struct ChildWorkflowTests {
                     // Simulate some delay then cancel
                     try await Task.sleep(for: .milliseconds(10))
 
-                    // Note: In a real scenario, you'd cancel from outside the workflow
-                    // This is just testing the cancellation mechanism
                     do {
                         let result = try await childTask
                         return Output(result: "Child completed: \(result.output.result)")
@@ -784,13 +784,14 @@ struct ChildWorkflowTests {
             let normalStatus = try await waitForWorkflowCompletion(
                 normalId,
                 engine: workflowEngine,
+                inputType: CancellationTestWorkflow.Input.self,
+                outputType: CancellationTestWorkflow.Output.self,
                 description: "normal child workflow execution"
             )
 
             #expect(normalStatus.status == .completed)
 
-            if let outputBuffer = normalStatus.output {
-                let result = try JSONDecoder().decode(CancellationTestWorkflow.Output.self, from: outputBuffer)
+            if let result = normalStatus.output {
                 #expect(result.result.contains("Normal completion"))
                 #expect(result.result.contains("Processed: normal execution"))
             }
@@ -802,7 +803,6 @@ struct ChildWorkflowTests {
         let (workflowEngine, processor) = try await setupWorkflowSystem()
 
         struct TimeoutTestWorkflow: WorkflowProtocol {
-            static let workflowName = "TimeoutTestWorkflow"
 
             struct Input: Codable, Sendable {
                 let useShortTimeout: Bool
@@ -821,7 +821,7 @@ struct ChildWorkflowTests {
                         SimpleChildWorkflow.self,
                         input: SimpleChildWorkflow.Input(data: "timeout test"),
                         options: ChildWorkflowOptions(
-                            timeout: timeout,
+                            runTimeout: timeout,
                             childWorkflowIdPrefix: "timeout_test"
                         )
                     )
@@ -850,13 +850,14 @@ struct ChildWorkflowTests {
             let successStatus = try await waitForWorkflowCompletion(
                 successId,
                 engine: workflowEngine,
+                inputType: TimeoutTestWorkflow.Input.self,
+                outputType: TimeoutTestWorkflow.Output.self,
                 description: "child workflow with reasonable timeout"
             )
 
             #expect(successStatus.status == .completed)
 
-            if let outputBuffer = successStatus.output {
-                let result = try JSONDecoder().decode(TimeoutTestWorkflow.Output.self, from: outputBuffer)
+            if let result = successStatus.output {
                 #expect(result.timedOut == false)
                 #expect(result.result.contains("Processed: timeout test"))
             }
@@ -889,13 +890,15 @@ struct ChildWorkflowTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
-                description: "complex DAG workflow"
+                inputType: VoiceTrainingDAGWorkflow.Input.self,
+                outputType: VoiceTrainingDAGWorkflow.Output.self,
+                timeout: .seconds(20),
+                description: "complex DAG workflow pattern"
             )
 
             #expect(finalStatus.status == .completed)
 
-            if let outputBuffer = finalStatus.output {
-                let result = try JSONDecoder().decode(VoiceTrainingDAGWorkflow.Output.self, from: outputBuffer)
+            if let result = finalStatus.output {
                 #expect(result.countriesProcessed == 3)
                 #expect(result.totalModelsGenerated == 3)
                 #expect(result.publishedSuccessfully == true)
@@ -908,7 +911,6 @@ struct ChildWorkflowTests {
 
     /// Top-level orchestrator workflow modeling a TrainVoiceAssistant workflow
     struct VoiceTrainingDAGWorkflow: WorkflowProtocol {
-        static let workflowName = "VoiceTrainingDAGWorkflow"
 
         struct Input: Codable, Sendable {
             let countries: [String]
@@ -926,33 +928,41 @@ struct ChildWorkflowTests {
         func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
             let startTime = Date()
 
-            // Step 1: Process each country in parallel using child workflows
+            // Step 1: Process each country in parallel using native Swift concurrency
             // This models the parallel country processing
-            let countryResults = try await context.executeChildWorkflowsInParallel(
-                CountryDAGProcessingWorkflow.self,
-                inputs: input.countries.enumerated().map { index, country in
-                    CountryDAGProcessingWorkflow.Input(
-                        country: country,
-                        variants: input.variants,
-                        partition: index
-                    )
-                },
-                options: ChildWorkflowOptions(
-                    timeout: .minutes(15),
-                    childWorkflowIdPrefix: "country_dag"
-                )
-            )
+            let countryResults = try await withThrowingTaskGroup(of: CountryDAGProcessingWorkflow.Output.self) { group in
+                for (index, country) in input.countries.enumerated() {
+                    group.addTask {
+                        let result = try await context.executeChildWorkflow(
+                            CountryDAGProcessingWorkflow.self,
+                            input: CountryDAGProcessingWorkflow.Input(
+                                country: country,
+                                variants: input.variants,
+                                partition: index
+                            ),
+                            options: ChildWorkflowOptions(childWorkflowIdPrefix: "country-\(index)")
+                        )
+                        return result.output
+                    }
+                }
+
+                var outputs: [CountryDAGProcessingWorkflow.Output] = []
+                for try await output in group {
+                    outputs.append(output)
+                }
+                return outputs
+            }
 
             // Step 2: Final model publishing (equivalent to PublishModels task)
             // This depends on all country processing being complete
             let publishResult = try await context.executeChildWorkflow(
                 ModelPublishingWorkflow.self,
                 input: ModelPublishingWorkflow.Input(
-                    modelUrls: countryResults.compactMap { $0.output.modelUrl },
+                    modelUrls: countryResults.compactMap { $0.modelUrl },
                     countries: input.countries
                 ),
                 options: ChildWorkflowOptions(
-                    timeout: .minutes(5),
+                    runTimeout: .minutes(5),
                     childWorkflowIdPrefix: "publish"
                 )
             )
@@ -961,17 +971,16 @@ struct ChildWorkflowTests {
 
             return Output(
                 countriesProcessed: countryResults.count,
-                totalModelsGenerated: countryResults.filter { $0.output.success }.count,
+                totalModelsGenerated: countryResults.filter { $0.success }.count,
                 publishedSuccessfully: publishResult.output.success,
                 totalExecutionTime: executionTime,
-                countryResults: countryResults.map { $0.output }
+                countryResults: countryResults
             )
         }
     }
 
     /// Country-level processing workflow that models the sequential stages per country
     struct CountryDAGProcessingWorkflow: WorkflowProtocol {
-        static let workflowName = "CountryDAGProcessingWorkflow"
 
         struct Input: Codable, Sendable {
             let country: String
@@ -998,7 +1007,7 @@ struct ChildWorkflowTests {
                     partition: input.partition
                 ),
                 options: ChildWorkflowOptions(
-                    timeout: .minutes(5),
+                    runTimeout: .minutes(5),
                     childWorkflowIdPrefix: "ingest"
                 )
             )
@@ -1014,23 +1023,34 @@ struct ChildWorkflowTests {
             }
 
             // Stage 2: Text Analysis in parallel for each variant (AnalyzeTextCorpus tasks)
-            let analysisResults = try await context.executeChildWorkflowsInParallel(
-                TextAnalysisWorkflow.self,
-                inputs: (0..<input.variants).map { variant in
-                    TextAnalysisWorkflow.Input(
-                        country: input.country,
-                        variant: variant,
-                        partition: input.partition,
-                        corpusId: ingestionResult.output.corpusId
-                    )
-                },
-                options: ChildWorkflowOptions(
-                    timeout: .minutes(8),
-                    childWorkflowIdPrefix: "analyze"
-                )
-            )
+            let analysisResults = try await withThrowingTaskGroup(of: TextAnalysisWorkflow.Output.self) { group in
+                for variant in 0..<input.variants {
+                    group.addTask {
+                        let result = try await context.executeChildWorkflow(
+                            TextAnalysisWorkflow.self,
+                            input: TextAnalysisWorkflow.Input(
+                                country: input.country,
+                                variant: variant,
+                                partition: input.partition,
+                                corpusId: ingestionResult.output.corpusId
+                            ),
+                            options: ChildWorkflowOptions(
+                                runTimeout: .minutes(8),
+                                childWorkflowIdPrefix: "analyze-\(variant)"
+                            )
+                        )
+                        return result.output
+                    }
+                }
 
-            let successfulAnalyses = analysisResults.filter { $0.output.success }
+                var outputs: [TextAnalysisWorkflow.Output] = []
+                for try await output in group {
+                    outputs.append(output)
+                }
+                return outputs
+            }
+
+            let successfulAnalyses = analysisResults.filter { $0.success }
             guard !successfulAnalyses.isEmpty else {
                 return Output(
                     country: input.country,
@@ -1047,10 +1067,10 @@ struct ChildWorkflowTests {
                 ModelGenerationWorkflow.self,
                 input: ModelGenerationWorkflow.Input(
                     country: input.country,
-                    analysisIds: successfulAnalyses.map { $0.output.analysisId }
+                    analysisIds: successfulAnalyses.map { $0.analysisId }
                 ),
                 options: ChildWorkflowOptions(
-                    timeout: .minutes(10),
+                    runTimeout: .minutes(10),
                     childWorkflowIdPrefix: "generate"
                 )
             )
@@ -1067,7 +1087,6 @@ struct ChildWorkflowTests {
 
     /// Text ingestion workflow (models IngestTextCorpus task)
     struct TextIngestionWorkflow: WorkflowProtocol {
-        static let workflowName = "TextIngestionWorkflow"
 
         struct Input: Codable, Sendable {
             let country: String
@@ -1104,7 +1123,6 @@ struct ChildWorkflowTests {
 
     /// Text analysis workflow (models AnalyzeTextCorpus task)
     struct TextAnalysisWorkflow: WorkflowProtocol {
-        static let workflowName = "TextAnalysisWorkflow"
 
         struct Input: Codable, Sendable {
             let country: String
@@ -1142,7 +1160,6 @@ struct ChildWorkflowTests {
 
     /// Model generation workflow (models GenerateVoiceModel task)
     struct ModelGenerationWorkflow: WorkflowProtocol {
-        static let workflowName = "ModelGenerationWorkflow"
 
         struct Input: Codable, Sendable {
             let country: String
@@ -1177,7 +1194,6 @@ struct ChildWorkflowTests {
 
     /// Model publishing workflow (models PublishModels task)
     struct ModelPublishingWorkflow: WorkflowProtocol {
-        static let workflowName = "ModelPublishingWorkflow"
 
         struct Input: Codable, Sendable {
             let modelUrls: [String]
@@ -1213,7 +1229,6 @@ struct ChildWorkflowTests {
     // MARK: - DAG Test Activities
 
     struct TextIngestionActivity: ActivityParameters {
-        static let activityName = "TextIngestion"
 
         struct Input: Codable, Sendable {
             let country: String
@@ -1227,7 +1242,6 @@ struct ChildWorkflowTests {
     }
 
     struct TextAnalysisActivity: ActivityParameters {
-        static let activityName = "TextAnalysis"
 
         struct Input: Codable, Sendable {
             let country: String
@@ -1242,7 +1256,6 @@ struct ChildWorkflowTests {
     }
 
     struct ModelGenerationActivity: ActivityParameters {
-        static let activityName = "ModelGeneration"
 
         struct Input: Codable, Sendable {
             let country: String
@@ -1256,7 +1269,6 @@ struct ChildWorkflowTests {
     }
 
     struct ModelPublishingActivity: ActivityParameters {
-        static let activityName = "ModelPublishing"
 
         struct Input: Codable, Sendable {
             let modelUrls: [String]
@@ -1295,13 +1307,15 @@ struct ChildWorkflowTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
-                description: "monthly billing workflow"
+                inputType: MonthlyBillingWorkflow.Input.self,
+                outputType: MonthlyBillingWorkflow.Output.self,
+                timeout: .seconds(20),
+                description: "monthly billing DAG workflow"
             )
 
             #expect(finalStatus.status == .completed)
 
-            if let outputBuffer = finalStatus.output {
-                let result = try JSONDecoder().decode(MonthlyBillingWorkflow.Output.self, from: outputBuffer)
+            if let result = finalStatus.output {
                 #expect(result.billingSuccess == true)
                 #expect(result.invoiceId.count > 0)
                 #expect(result.chargeId.count > 0)
@@ -1316,7 +1330,6 @@ struct ChildWorkflowTests {
 
     /// Monthly billing workflow that models the sequential billing process with parallel email notifications
     struct MonthlyBillingWorkflow: WorkflowProtocol {
-        static let workflowName = "MonthlyBillingWorkflow"
 
         struct Input: Codable, Sendable {
             let userId: Int
@@ -1341,7 +1354,7 @@ struct ChildWorkflowTests {
                 InvoiceCalculationWorkflow.self,
                 input: InvoiceCalculationWorkflow.Input(userId: input.userId),
                 options: ChildWorkflowOptions(
-                    timeout: .seconds(30),
+                    runTimeout: .seconds(30),
                     childWorkflowIdPrefix: "calculate_invoice"
                 )
             )
@@ -1367,7 +1380,7 @@ struct ChildWorkflowTests {
                     amount: invoiceResult.output.amount
                 ),
                 options: ChildWorkflowOptions(
-                    timeout: .seconds(60),
+                    runTimeout: .seconds(60),
                     childWorkflowIdPrefix: "create_charge"
                 )
             )
@@ -1393,7 +1406,7 @@ struct ChildWorkflowTests {
                     amount: invoiceResult.output.amount
                 ),
                 options: ChildWorkflowOptions(
-                    timeout: .seconds(45),
+                    runTimeout: .seconds(45),
                     childWorkflowIdPrefix: "generate_pdf"
                 )
             )
@@ -1411,29 +1424,44 @@ struct ChildWorkflowTests {
 
             // Step 4: Send emails in parallel (EmailChargeReceipt tasks)
             // Both emails depend on the PDF being generated
-            let emailResults = try await context.executeChildWorkflowsInParallel(
-                EmailNotificationWorkflow.self,
-                inputs: [
-                    EmailNotificationWorkflow.Input(
-                        recipientEmail: input.userEmail,
-                        recipientType: "user",
-                        pdfUrl: pdfResult.output.pdfUrl,
-                        chargeId: chargeResult.output.chargeId
-                    ),
-                    EmailNotificationWorkflow.Input(
-                        recipientEmail: input.adminEmail,
-                        recipientType: "billing_admin",
-                        pdfUrl: pdfResult.output.pdfUrl,
-                        chargeId: chargeResult.output.chargeId
-                    ),
-                ],
-                options: ChildWorkflowOptions(
-                    timeout: .seconds(30),
-                    childWorkflowIdPrefix: "email_receipt"
-                )
-            )
+            let emailInputs = [
+                EmailNotificationWorkflow.Input(
+                    recipientEmail: input.userEmail,
+                    recipientType: "user",
+                    pdfUrl: pdfResult.output.pdfUrl,
+                    chargeId: chargeResult.output.chargeId
+                ),
+                EmailNotificationWorkflow.Input(
+                    recipientEmail: input.adminEmail,
+                    recipientType: "billing_admin",
+                    pdfUrl: pdfResult.output.pdfUrl,
+                    chargeId: chargeResult.output.chargeId
+                ),
+            ]
 
-            let successfulEmails = emailResults.filter { $0.output.success }.count
+            let emailResults = try await withThrowingTaskGroup(of: EmailNotificationWorkflow.Output.self) { group in
+                for (index, emailInput) in emailInputs.enumerated() {
+                    group.addTask {
+                        let result = try await context.executeChildWorkflow(
+                            EmailNotificationWorkflow.self,
+                            input: emailInput,
+                            options: ChildWorkflowOptions(
+                                runTimeout: .seconds(30),
+                                childWorkflowIdPrefix: "email_receipt-\(index)"
+                            )
+                        )
+                        return result.output
+                    }
+                }
+
+                var outputs: [EmailNotificationWorkflow.Output] = []
+                for try await output in group {
+                    outputs.append(output)
+                }
+                return outputs
+            }
+
+            let successfulEmails = emailResults.filter { $0.success }.count
 
             return Output(
                 billingSuccess: true,
@@ -1448,7 +1476,6 @@ struct ChildWorkflowTests {
 
     /// Invoice calculation workflow (models CalculateMonthlyInvoice task)
     struct InvoiceCalculationWorkflow: WorkflowProtocol {
-        static let workflowName = "InvoiceCalculationWorkflow"
 
         struct Input: Codable, Sendable {
             let userId: Int
@@ -1480,7 +1507,6 @@ struct ChildWorkflowTests {
 
     /// Credit card charging workflow (models ChargeCreditCard task)
     struct CreditCardChargingWorkflow: WorkflowProtocol {
-        static let workflowName = "CreditCardChargingWorkflow"
 
         struct Input: Codable, Sendable {
             let userId: Int
@@ -1516,7 +1542,6 @@ struct ChildWorkflowTests {
 
     /// PDF generation workflow (models GeneratePDFReceipt task)
     struct PDFGenerationWorkflow: WorkflowProtocol {
-        static let workflowName = "PDFGenerationWorkflow"
 
         struct Input: Codable, Sendable {
             let userId: Int
@@ -1552,7 +1577,6 @@ struct ChildWorkflowTests {
 
     /// Email notification workflow (models EmailChargeReceipt task)
     struct EmailNotificationWorkflow: WorkflowProtocol {
-        static let workflowName = "EmailNotificationWorkflow"
 
         struct Input: Codable, Sendable {
             let recipientEmail: String
@@ -1591,7 +1615,6 @@ struct ChildWorkflowTests {
     // MARK: - Billing Test Activities
 
     struct InvoiceCalculationActivity: ActivityParameters {
-        static let activityName = "InvoiceCalculation"
 
         struct Input: Codable, Sendable {
             let userId: Int
@@ -1605,7 +1628,6 @@ struct ChildWorkflowTests {
     }
 
     struct CreditCardChargeActivity: ActivityParameters {
-        static let activityName = "CreditCardCharge"
 
         struct Input: Codable, Sendable {
             let userId: Int
@@ -1620,7 +1642,6 @@ struct ChildWorkflowTests {
     }
 
     struct PDFGenerationActivity: ActivityParameters {
-        static let activityName = "PDFGeneration"
 
         struct Input: Codable, Sendable {
             let userId: Int
@@ -1635,7 +1656,6 @@ struct ChildWorkflowTests {
     }
 
     struct EmailSendingActivity: ActivityParameters {
-        static let activityName = "EmailSending"
 
         struct Input: Codable, Sendable {
             let recipientEmail: String

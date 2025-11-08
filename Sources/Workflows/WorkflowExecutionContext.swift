@@ -30,10 +30,10 @@ internal struct AnyWorkflowSignal: Codable {
     let dataBuffer: ByteBuffer?
     let timestamp: Date
 
-    init<T: Codable & Sendable>(_ signal: WorkflowSignal<T>) throws {
+    init<T: Codable & Sendable>(_ signal: WorkflowSignal<T>, allocator: ByteBufferAllocator = ByteBufferAllocator()) throws {
         self.signalName = signal.signalName
         if let data = signal.data {
-            self.dataBuffer = try JSONEncoder().encodeAsByteBuffer(data, allocator: ByteBufferAllocator())
+            self.dataBuffer = try JSONEncoder().encodeAsByteBuffer(data, allocator: allocator)
         } else {
             self.dataBuffer = nil
         }
@@ -51,7 +51,15 @@ public protocol SignalParameters: Sendable {
     associatedtype Input: Codable & Sendable
 
     /// Name of the signal
+    /// Defaults to the type name (e.g., "UpdateStatusSignal")
     static var signalName: String { get }
+}
+
+/// Default implementation using type name
+extension SignalParameters {
+    public static var signalName: String {
+        String(describing: self)
+    }
 }
 
 /// Signal data structure
@@ -61,18 +69,56 @@ internal struct WorkflowSignal<T: Codable & Sendable>: Codable {
     let timestamp: Date
 }
 
+/// Update request data structure
+internal struct WorkflowUpdateRequest<Input: Codable & Sendable>: Codable {
+    let updateId: UUID
+    let workflowType: String
+    let input: Input
+    let timestamp: Date
+}
+
+/// Update response data structure
+internal struct WorkflowUpdateResponse<Output: Codable & Sendable>: Codable {
+    let updateId: UUID
+    let result: Output?
+    let error: String?
+    let timestamp: Date
+
+    init(updateId: UUID, result: Output) {
+        self.updateId = updateId
+        self.result = result
+        self.error = nil
+        self.timestamp = Date.now
+    }
+
+    init(updateId: UUID, error: String) {
+        self.updateId = updateId
+        self.result = nil
+        self.error = error
+        self.timestamp = Date.now
+    }
+}
+
 /// Context for workflow execution
 public final class WorkflowExecutionContext: Sendable {
     /// Workflow execution ID
     public let workflowId: WorkflowID
     /// Workflow type name for continuation after activity completion
     public let workflowType: String
-    /// Job queue for executing activities - package-private to prevent external interference
-    package let jobQueue: any JobQueueProtocol & Sendable
-    /// Direct access to metadata storage - private for internal workflow operations
-    internal let metadataQueue: any JobMetadataDriver
+    /// Queue driver for executing activities - package-private to prevent external interference
+    package let queueDriver: any WorkflowQueueDriver
     /// Logger for workflow execution
     public let logger: Logger
+    /// Query registry for this workflow instance
+    internal let queryRegistry: WorkflowQueryRegistry
+    /// Shared ByteBuffer allocator for efficient memory management
+    internal let allocator: ByteBufferAllocator
+    /// Workflow registry for encoding/decoding
+    internal let workflowRegistry: WorkflowRegistry
+    /// Workflow repository for accessing workflow data
+    public var workflowRepository: WorkflowRepository {
+        queueDriver
+    }
     /// When this workflow was queued for execution
     public let queuedAt: Date
     /// When this workflow was scheduled to run (nil for immediate workflows)
@@ -83,6 +129,8 @@ public final class WorkflowExecutionContext: Sendable {
     private let _endTime: ManagedAtomic<UInt64>
     /// Current step in the workflow - tracks activity execution order for replay safety
     private let _currentStep: ManagedAtomic<Int>
+    /// Workflow engine for handling sleep operations
+    private let sleepEngine: (any WorkflowEngineProtocol & Sendable)?
 
     /// Current step in the workflow
     public var currentStep: Int {
@@ -120,50 +168,62 @@ public final class WorkflowExecutionContext: Sendable {
         return endTime.timeIntervalSince(queuedAt)
     }
 
-    internal init<Queue: JobQueueDriver & JobMetadataDriver>(
+    internal init<Queue: WorkflowQueueDriver>(
         workflowId: WorkflowID,
         workflowType: String,
         jobQueue: JobQueue<Queue>,
         logger: Logger,
+        allocator: ByteBufferAllocator,
+        workflowRegistry: WorkflowRegistry,
         queuedAt: Date,
         scheduledAt: Date? = nil,
         currentStep: Int = 0,
-        startTime: Date = .now
+        startTime: Date = Date.now,
+        sleepEngine: (any WorkflowEngineProtocol & Sendable)?
     ) {
         self.workflowId = workflowId
         self.workflowType = workflowType
-        self.jobQueue = jobQueue
-        self.metadataQueue = jobQueue.queue
+        self.queueDriver = jobQueue.queue
         self.logger = logger
+        self.allocator = allocator
+        self.workflowRegistry = workflowRegistry
+        self.queryRegistry = WorkflowQueryRegistry(logger: logger)
         self.queuedAt = queuedAt
         self.scheduledAt = scheduledAt
         self.startTime = startTime
         self._endTime = ManagedAtomic(0)
         self._currentStep = ManagedAtomic(currentStep)
+        self.sleepEngine = sleepEngine
     }
 
-    /// Get activity result directly from driver - no caching layer needed
-    internal func getActivityResult(_ activityId: String) async throws -> ByteBuffer? {
-        let resultKey = "activity_result:\(activityId)"
-        return try await metadataQueue.getMetadata(resultKey)
+    /// Push a job to the queue (helper method for child workflows)
+    package func pushJob<Parameters: JobParameters>(_ job: Parameters) async throws -> any Sendable & CustomStringConvertible {
+        try await queueDriver.pushWorkflowJob(job)
+    }
+
+    /// Get activity result directly from repository - returns typed result
+    internal func getActivityResult<T: Codable & Sendable>(_ activityId: ActivityID, resultType: T.Type) async throws -> ActivityResult<T>? {
+        try await queueDriver.getResult(activityId, resultType: resultType)
     }
 
     /// Execute an activity using type-safe activity parameters
+    /// Execute an activity and wait for its completion
     /// - Parameters:
-    ///   - activityType: Activity type conforming to ActivityParameters
+    ///   - activityType: Type of the activity to execute (must conform to ActivityParameters)
     ///   - input: Input parameters for the activity
     ///   - options: Activity execution options
-    /// - Returns: The activity result
-    @discardableResult
+    /// - Returns: The activity's output result
     public func executeActivity<A: ActivityParameters>(
         _ activityType: A.Type,
         input: A.Input,
-        options: ActivityOptions = .init()
+        options: ActivityOptions = .init(),
+        isolation: isolated (any Actor)? = #isolation
     ) async throws -> A.Output {
         try await executeActivity(
             activityName: A.activityName,
             input: input,
-            options: options
+            options: options,
+            isolation: isolation
         )
     }
 
@@ -176,13 +236,14 @@ public final class WorkflowExecutionContext: Sendable {
     public func executeActivity<Input: Codable & Sendable, Output: Codable & Sendable>(
         activityName: String,
         input: Input,
-        options: ActivityOptions
+        options: ActivityOptions,
+        isolation: isolated (any Actor)? = #isolation
     ) async throws -> Output {
         // Create deterministic activity ID based on activity name and input hash
         // This ensures replay safety and handles parallel activities correctly
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys  // Ensure deterministic field ordering
-        let inputBuffer = try encoder.encodeAsByteBuffer(input, allocator: ByteBufferAllocator())
+        let inputBuffer = try encoder.encodeAsByteBuffer(input, allocator: allocator)
         let inputHash = WorkflowUtilities.deterministicHash(buffer: inputBuffer, activityName: activityName)
         let activityId = "\(workflowId.runId):\(activityName):\(inputHash)"
 
@@ -195,24 +256,16 @@ public final class WorkflowExecutionContext: Sendable {
             ]
         )
 
-        // Serialize activity input using ByteBuffer
-        let parametersBuffer = try JSONEncoder().encodeAsByteBuffer(input, allocator: ByteBufferAllocator())
-
-        // Serialize retry policy if provided
-        let retryPolicyBuffer: ByteBuffer?
+        // Get retry policy type name if provided
+        let retryPolicyType: String?
         if let retryPolicy = options.retryPolicy {
-            let strategyName = String(describing: type(of: retryPolicy))
-            retryPolicyBuffer = try JSONEncoder().encodeAsByteBuffer(strategyName, allocator: ByteBufferAllocator())
+            retryPolicyType = String(describing: type(of: retryPolicy))
         } else {
-            retryPolicyBuffer = nil
+            retryPolicyType = nil
         }
 
         // Check if this activity already completed (replay safety)
-        let resultKey = "activity_result:\(activityId)"
-        if let resultBuffer = try await metadataQueue.getMetadata(resultKey) {
-            let anyResult = try JSONDecoder().decode(AnyActivityResult.self, from: resultBuffer)
-            let result: ActivityResult<Output> = try anyResult.decode(as: Output.self)
-
+        if let result = try await queueDriver.getResult(ActivityID(activityId), resultType: Output.self) {
             switch result {
             case .success(let value):
                 logger.debug(
@@ -224,17 +277,25 @@ public final class WorkflowExecutionContext: Sendable {
                 )
                 currentStep += 1
                 return value
-            case .failure(let error):
+            case .failure(let errorInfo):
                 logger.error(
                     "Activity had previously failed",
                     metadata: [
                         "activityId": .string(activityId),
                         "activityName": .string(activityName),
-                        "error": .string(error),
+                        "error": .string(errorInfo.message),
+                        "errorType": .string(errorInfo.errorType),
                     ]
                 )
                 currentStep += 1
-                throw WorkflowError.activityFailed(error)
+                // Check if the error is due to cancellation using proper type information
+                if errorInfo.isCancellation {
+                    let cancelledFailure = WorkflowCancelledFailure(message: errorInfo.message, workflowId: workflowId)
+                    throw ActivityFailure(activityName: activityName, cause: cancelledFailure)
+                } else {
+                    let cause = WorkflowError.activityFailed(errorInfo.message)
+                    throw ActivityFailure(activityName: activityName, cause: cause)
+                }
             }
         }
 
@@ -244,76 +305,32 @@ public final class WorkflowExecutionContext: Sendable {
         currentStep += 1
 
         // Create activity execution job with workflow type for restart safety
-        let activityJob = ActivityExecutionJob(
-            activityId: activityId,
+        let activityJob = try ActivityExecutionJob(
+            activityId: ActivityID(activityId),
             workflowId: workflowId,
             activityName: activityName,
-            parameters: parametersBuffer,
+            input: input,
             timeout: options.startToCloseTimeout,
-            retryPolicy: retryPolicyBuffer,
+            retryPolicyType: retryPolicyType,
             workflowType: workflowType,
             stepIndex: currentStepIndex
         )
 
         // Push activity job to queue
-        let jobId = try await jobQueue.push(activityJob)
+        _ = try await queueDriver.pushWorkflowJob(activityJob)
 
         logger.debug(
             "Activity job queued",
             metadata: [
-                "activityId": .string(activityId),
-                "jobId": .stringConvertible(jobId),
+                "activityId": .string(activityId)
             ]
         )
 
-        // Wait for activity completion
-        return try await waitForActivityCompletion(
-            activityId: activityId,
-            expectedType: Output.self
-        )
-    }
-
-    /// Wait for an activity to complete and return its result
-    /// This method polls for activity completion since replay safety is handled earlier
-    private func waitForActivityCompletion<Output: Codable & Sendable>(
-        activityId: String,
-        expectedType: Output.Type
-    ) async throws -> Output {
-        let resultKey = "activity_result:\(activityId)"
-
-        // Poll for activity completion
-        let maxWaitTime = Date.now.addingTimeInterval(300)  // 5 minute timeout
-        while Date.now < maxWaitTime {
-            if let resultBuffer = try await metadataQueue.getMetadata(resultKey) {
-                let anyResult = try JSONDecoder().decode(AnyActivityResult.self, from: resultBuffer)
-                let result: ActivityResult<Output> = try anyResult.decode(as: Output.self)
-
-                switch result {
-                case .success(let value):
-                    logger.debug(
-                        "Activity completed successfully",
-                        metadata: [
-                            "activityId": .string(activityId)
-                        ]
-                    )
-                    return value
-                case .failure(let error):
-                    logger.error(
-                        "Activity failed",
-                        metadata: [
-                            "activityId": .string(activityId),
-                            "error": .string(error),
-                        ]
-                    )
-                    throw WorkflowError.activityFailed(error)
-                }
-            }
-
-            // Wait before polling again
-            try await Task.sleep(for: .milliseconds(100))
+        // Wait for activity completion via middleware callback - no polling needed!
+        guard let engine = sleepEngine else {
+            throw WorkflowError.workflowFailed("Sleep engine not available")
         }
-
-        throw WorkflowError.activityTimeout(activityId)
+        return try await engine.waitForActivity(activityId: activityId, expectedType: Output.self)
     }
 
     /// Wait for an external signal to be sent to this workflow using type-safe signal parameters
@@ -333,40 +350,48 @@ public final class WorkflowExecutionContext: Sendable {
         )
     }
 
-    /// Sleep for a specified duration using a custom SleepJob
+    /// Sleep for a specified duration using WorkflowDelayJob with middleware-based completion
     /// - Parameter duration: How long to sleep
     public func sleep(for duration: Duration) async throws {
-        // Generate unique sleep ID for restart safety
-        let sleepId = UUID().uuidString
+        // Generate deterministic sleep ID based on current step for restart safety
+        let sleepId = "sleep_\(currentStep)"
         let sleepKey = "workflow_sleep:\(workflowId.value):\(sleepId)"
 
-        // Check if sleep already completed (restart safety)
-        if let _ = try await metadataQueue.getMetadata(sleepKey) {
-            return  // Sleep was already completed before restart
+        // Get current step and increment for next activity
+        let currentStepIndex = currentStep
+        currentStep += 1
+
+        // Create a WorkflowDelayJob that will be handled by middleware when it completes
+        let delayJob = WorkflowDelayJob(
+            sleepKey: sleepKey,
+            workflowId: workflowId,
+            sleepId: sleepId
+        )
+        let delayUntil = Date.now.addingTimeInterval(TimeInterval(duration.timeInterval))
+
+        // Schedule the delay job to execute at delayUntil time
+        let jobId = try await queueDriver.pushWorkflowJob(delayJob, delayUntil: delayUntil)
+
+        // Track the scheduled job for potential cancellation
+        if let engine = sleepEngine {
+            await engine.trackSleepJob(workflowId: workflowId, jobId: jobId)
         }
 
-        // Create a SleepJob with the duration and sleep tracking info
-        let sleepJob = WorkflowSleepJob(
-            sleepId: sleepId,
-            workflowId: workflowId,
-            duration: duration,
-            sleepKey: sleepKey
+        logger.debug(
+            "Sleep job scheduled with delayUntil - waiting for middleware completion",
+            metadata: [
+                "sleepId": .string(sleepId),
+                "delayUntil": .stringConvertible(delayUntil),
+                "stepIndex": .stringConvertible(currentStepIndex),
+            ]
         )
 
-        // Push the sleep job to the queue
-        _ = try await jobQueue.push(sleepJob)
-
-        // Wait for the sleep to complete by polling the sleep completion key
-        let endTime = Date.now.addingTimeInterval(TimeInterval(duration: duration) + 10)
-
-        while Date.now < endTime {
-            if let _ = try await metadataQueue.getMetadata(sleepKey) {
-                return  // Sleep completed
-            }
-            try await Task.sleep(for: .milliseconds(100))
+        // Wait for the DelayJob to complete via middleware notification
+        // middleware will resume when job completes
+        guard let engine = sleepEngine else {
+            throw WorkflowError.workflowFailed("Sleep engine not available")
         }
-
-        throw WorkflowError.workflowTimedOut
+        return try await engine.waitForSleep(sleepKey: sleepKey)
     }
 
     /// Internal string-based signal wait implementation
@@ -387,56 +412,59 @@ public final class WorkflowExecutionContext: Sendable {
         )
 
         // Check if signal already exists
-        if let signalBuffer = try await metadataQueue.getMetadata(signalKey) {
-            let anySignal = try JSONDecoder().decode(AnyWorkflowSignal.self, from: signalBuffer)
-
-            // Remove the signal after consumption
-            try await metadataQueue.setMetadata(key: signalKey, value: ByteBuffer())
-
-            logger.debug(
-                "Signal already available",
-                metadata: [
-                    "workflowId": .string(workflowId.value),
-                    "signalName": .string(signalName),
-                ]
-            )
-
-            return try anySignal.decode(as: type)
-        }
-
-        // Mark that we're waiting for this signal
-        let waitingMarker = "waiting"
-        let waitingBuffer = try JSONEncoder().encodeAsByteBuffer(waitingMarker, allocator: ByteBufferAllocator())
-        try await metadataQueue.setMetadata(key: waitingKey, value: waitingBuffer)
-
-        // Poll for the signal
-        let startTime = Date.now
-        let endTime = timeout.map { startTime.addingTimeInterval(TimeInterval(duration: $0)) } ?? Date.distantFuture
-
-        while Date.now < endTime {
-            if let signalBuffer = try await metadataQueue.getMetadata(signalKey) {
-                let anySignal = try JSONDecoder().decode(AnyWorkflowSignal.self, from: signalBuffer)
-
-                // Clean up
-                try await metadataQueue.setMetadata(key: signalKey, value: ByteBuffer())
-                try await metadataQueue.setMetadata(key: waitingKey, value: ByteBuffer())
+        if let result = try await queueDriver.getResult(ActivityID(signalKey), resultType: AnyWorkflowSignal.self) {
+            switch result {
+            case .success(let anySignal):
+                // Remove the signal after consumption
+                try await queueDriver.deleteResult(ActivityID(signalKey))
 
                 logger.debug(
-                    "Received signal",
+                    "Signal already available",
                     metadata: [
                         "workflowId": .string(workflowId.value),
                         "signalName": .string(signalName),
                     ]
                 )
-
                 return try anySignal.decode(as: type)
+            case .failure:
+                break
             }
+        }
 
+        // Mark as waiting for signal
+        try await queueDriver.saveResult(ActivityID(waitingKey), result: ActivityResult<String>.success("waiting"))
+
+        // Poll for the signal
+        let startTime = Date.now
+        let endTime = timeout.map { startTime.addingTimeInterval(TimeInterval(duration: $0)) } ?? Date.distantFuture
+
+        // Poll for the signal
+
+        while Date.now < endTime {
+            if let result = try await queueDriver.getResult(ActivityID(signalKey), resultType: AnyWorkflowSignal.self) {
+                switch result {
+                case .success(let anySignal):
+                    // Clean up
+                    try await queueDriver.deleteResult(ActivityID(signalKey))
+                    try await queueDriver.deleteResult(ActivityID(waitingKey))
+
+                    logger.debug(
+                        "Received signal",
+                        metadata: [
+                            "workflowId": .string(workflowId.value),
+                            "signalName": .string(signalName),
+                        ]
+                    )
+                    return try anySignal.decode(as: type)
+                case .failure:
+                    break
+                }
+            }
             try await Task.sleep(for: .milliseconds(100))
         }
 
         // Clean up waiting marker on timeout
-        try await metadataQueue.setMetadata(key: waitingKey, value: ByteBuffer())
+        try await queueDriver.deleteResult(ActivityID(waitingKey))
 
         if timeout != nil {
             throw WorkflowError.signalTimeout(signalName)
@@ -444,33 +472,250 @@ public final class WorkflowExecutionContext: Sendable {
 
         return nil
     }
+
+    /// Wait for a condition to be met using event-driven continuation pattern
+    /// - Parameters:
+    ///   - timeout: Optional timeout duration (nil = wait indefinitely)
+    ///   - condition: Closure that returns true when condition is met
+    public func awaitCondition(timeout: Duration? = nil, condition: @Sendable @escaping () -> Bool) async throws {
+        // Check condition immediately first
+        if condition() {
+            return
+        }
+
+        let conditionId = UUID().uuidString
+
+        logger.debug(
+            "Waiting for condition",
+            metadata: [
+                "workflowId": .string(workflowId.value),
+                "conditionId": .string(conditionId),
+            ]
+        )
+
+        return try await withCheckedThrowingContinuation { continuation in
+            Task {
+                // Register continuation in global registry
+                await WorkflowConditionRegistry.shared.register(
+                    conditionId: conditionId,
+                    workflowId: workflowId,
+                    condition: condition,
+                    continuation: continuation
+                )
+
+                // Set up timeout if specified
+                if let timeout = timeout {
+                    Task {
+                        let timeoutSeconds =
+                            Double(timeout.components.seconds) + Double(timeout.components.attoseconds) / 1_000_000_000_000_000_000
+                        try await Task.sleep(for: .seconds(timeoutSeconds))
+
+                        await WorkflowConditionRegistry.shared.failCondition(
+                            conditionId: conditionId,
+                            error: WorkflowError.conditionTimeout(timeout)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /// Store workflow output with proper types
+    /// This should be called by ConcreteWorkflowExecutor when workflow completes
+    /// Store workflow output when execution completes
+    /// - Parameters:
+    ///   - input: Input data that was passed to the workflow
+    ///   - output: Output data returned by the workflow
+    ///   - inputType: Type of the input for type safety
+    ///   - outputType: Type of the output for type safety
+    public func storeWorkflowOutput<Input: Codable & Sendable, Output: Codable & Sendable>(
+        input: Input,
+        output: Output,
+        inputType: Input.Type,
+        outputType: Output.Type
+    ) async throws {
+        // Get the current workflow execution
+        guard var execution = try await queueDriver.workflowRepository.getExecution(workflowId) else {
+            logger.error("Failed to find workflow execution for output storage")
+            return
+        }
+
+        // Encode the output using the registry for consistent serialization
+        execution.result = try workflowRegistry.encode(output)
+
+        // Update the execution with the output
+        try await queueDriver.workflowRepository.updateExecution(execution)
+
+        logger.debug(
+            "Stored workflow output successfully",
+            metadata: [
+                "workflowId": .string(workflowId.value),
+                "outputType": .string(String(describing: outputType)),
+            ]
+        )
+    }
+
 }
 
-/// Workflow sleep job that handles timing internally
-internal struct WorkflowSleepJob: JobParameters {
-    public static let jobName = "WorkflowSleepJob"
+/// Workflow delay job that uses delayUntil for precise timing
+internal struct WorkflowDelayJob: JobParameters {
+    public static let jobName = "WorkflowDelayJob"
 
-    let sleepId: String
-    let workflowId: WorkflowID
-    let duration: Duration
     let sleepKey: String
+    let workflowId: WorkflowID
+    let sleepId: String
 
-    public init(sleepId: String, workflowId: WorkflowID, duration: Duration, sleepKey: String) {
-        self.sleepId = sleepId
-        self.workflowId = workflowId
-        self.duration = duration
+    public init(sleepKey: String, workflowId: WorkflowID, sleepId: String) {
         self.sleepKey = sleepKey
+        self.workflowId = workflowId
+        self.sleepId = sleepId
+    }
+}
+
+/// Protocol for workflow engines that can handle sleep and activity operations
+protocol WorkflowEngineProtocol: Sendable {
+    func waitForSleep(sleepKey: String) async throws
+    func waitForActivity<Output: Codable & Sendable>(activityId: String, expectedType: Output.Type) async throws -> Output
+    func trackSleepJob(workflowId: WorkflowID, jobId: any Sendable & CustomStringConvertible) async
+}
+
+/// Registry for managing workflow condition continuations using the same pattern as other registries
+public final class WorkflowConditionRegistry: Sendable {
+    public static let shared = WorkflowConditionRegistry()
+
+    private let conditions: Mutex<[String: ConditionEntry]> = .init([:])
+    private let logger = Logger(label: "WorkflowConditionRegistry")
+
+    private struct ConditionEntry: Sendable {
+        let workflowId: WorkflowID
+        let condition: @Sendable () -> Bool
+        let continuation: CheckedContinuation<Void, Error>
+    }
+
+    private init() {}
+
+    /// Register a condition continuation
+    public func register(
+        conditionId: String,
+        workflowId: WorkflowID,
+        condition: @Sendable @escaping () -> Bool,
+        continuation: CheckedContinuation<Void, Error>
+    ) async {
+        let entry = ConditionEntry(
+            workflowId: workflowId,
+            condition: condition,
+            continuation: continuation
+        )
+
+        conditions.withLock {
+            $0[conditionId] = entry
+        }
+
+        logger.debug(
+            "Registered condition",
+            metadata: [
+                "conditionId": .string(conditionId),
+                "workflowId": .string(workflowId.value),
+            ]
+        )
+    }
+
+    /// Evaluate all conditions for a workflow and complete any that are now true
+    public func evaluateConditions(for workflowId: WorkflowID) {
+        let workflowConditions = conditions.withLock {
+            $0.filter { _, entry in
+                entry.workflowId == workflowId
+            }
+        }
+
+        for (conditionId, entry) in workflowConditions {
+            if entry.condition() {
+                // Remove and complete the condition
+                let removedEntry = conditions.withLock {
+                    $0.removeValue(forKey: conditionId)
+                }
+
+                if let removedEntry = removedEntry {
+                    removedEntry.continuation.resume()
+
+                    logger.debug(
+                        "Condition met, completed",
+                        metadata: [
+                            "conditionId": .string(conditionId),
+                            "workflowId": .string(workflowId.value),
+                        ]
+                    )
+                }
+            }
+        }
+    }
+
+    /// Fail a condition with an error
+    public func failCondition(conditionId: String, error: Error) async {
+        let entry = conditions.withLock {
+            $0.removeValue(forKey: conditionId)
+        }
+
+        if let entry = entry {
+            entry.continuation.resume(throwing: error)
+
+            logger.debug(
+                "Failed condition",
+                metadata: [
+                    "conditionId": .string(conditionId),
+                    "workflowId": .string(entry.workflowId.value),
+                ]
+            )
+        }
+    }
+
+    /// Clean up all conditions for a workflow
+    public func cleanup(workflowId: WorkflowID) async {
+        let workflowConditions = conditions.withLock { conditions in
+            let entries = conditions.filter { _, entry in
+                entry.workflowId == workflowId
+            }
+
+            for (conditionId, _) in entries {
+                conditions.removeValue(forKey: conditionId)
+            }
+
+            return entries
+        }
+
+        let error = WorkflowError.workflowNotAccessible(workflowId)
+        for (_, entry) in workflowConditions {
+            entry.continuation.resume(throwing: error)
+        }
+
+        if !workflowConditions.isEmpty {
+            logger.debug(
+                "Cleaned up conditions",
+                metadata: [
+                    "workflowId": .string(workflowId.value),
+                    "count": .stringConvertible(workflowConditions.count),
+                ]
+            )
+        }
     }
 }
 
 /// Additional workflow errors
 extension WorkflowError {
-    static func activityTimeout(_ activityId: String) -> WorkflowError {
-        .activityFailed("Activity \(activityId) timed out")
-    }
-
     static func signalTimeout(_ signalName: String) -> WorkflowError {
         .workflowFailed("Signal '\(signalName)' timed out")
+    }
+
+    static func updateTimeout(_ workflowId: WorkflowID, _ timeout: Duration) -> WorkflowError {
+        .workflowFailed("Update to workflow '\(workflowId.value)' timed out after \(timeout)")
+    }
+
+    static func conditionTimeout(_ timeout: Duration) -> WorkflowError {
+        .workflowFailed("Condition not met within timeout of \(timeout)")
+    }
+
+    static func invalidState(_ message: String) -> WorkflowError {
+        .workflowFailed("Invalid state: \(message)")
     }
 }
 

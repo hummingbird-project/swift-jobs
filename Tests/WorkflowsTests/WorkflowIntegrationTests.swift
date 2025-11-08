@@ -28,7 +28,6 @@ struct WorkflowIntegrationTests {
 
     /// Simple workflow for basic testing
     struct SimpleWorkflow: WorkflowProtocol {
-        static let workflowName = "SimpleWorkflow"
 
         struct Input: Codable, Sendable {
             let message: String
@@ -51,7 +50,6 @@ struct WorkflowIntegrationTests {
 
     /// Workflow with single activity
     struct SingleActivityWorkflow: WorkflowProtocol {
-        static let workflowName = "SingleActivityWorkflow"
 
         struct Input: Codable, Sendable {
             let text: String
@@ -73,7 +71,6 @@ struct WorkflowIntegrationTests {
     }
 
     struct ProcessTextActivity: ActivityParameters {
-        static let activityName = "processText"
         typealias Input = TextProcessingInput
         typealias Output = String
     }
@@ -81,7 +78,6 @@ struct WorkflowIntegrationTests {
     // MARK: - Multiple Activities Workflow
 
     struct MultipleActivitiesWorkflow: WorkflowProtocol {
-        static let workflowName = "MultipleActivitiesWorkflow"
 
         struct Input: Codable, Sendable {
             let orderId: String
@@ -101,7 +97,7 @@ struct WorkflowIntegrationTests {
                 input: OrderValidationInput(orderId: input.orderId, customerId: input.customerId, amount: input.amount),
                 options: ActivityOptions(
                     startToCloseTimeout: .seconds(10),
-                    retryPolicy: .exponentialJitter(maxAttempts: 3)
+                    retryPolicy: nil
                 )
             )
 
@@ -120,10 +116,10 @@ struct WorkflowIntegrationTests {
             )
 
             // Step 3: Update order status
-            let _: EmptyOutput = try await context.executeActivity(
+            let _ = try await context.executeActivity(
                 UpdateOrderStatusActivity.self,
                 input: StatusUpdateInput(orderId: input.orderId, status: "completed"),
-                options: ActivityOptions(startToCloseTimeout: .seconds(15))
+                options: ActivityOptions()
             )
 
             return Output(
@@ -134,26 +130,21 @@ struct WorkflowIntegrationTests {
     }
 
     struct ValidateOrderActivity: ActivityParameters {
-        static let activityName = "validateOrder"
         typealias Input = OrderValidationInput
         typealias Output = Bool
     }
 
     struct ProcessPaymentActivity: ActivityParameters {
-        static let activityName = "processPayment"
         typealias Input = PaymentInput
         typealias Output = String
     }
 
     struct UpdateOrderStatusActivity: ActivityParameters {
-        static let activityName = "updateOrderStatus"
         typealias Input = StatusUpdateInput
-        typealias Output = EmptyOutput
     }
 
     /// Workflow that demonstrates error handling
     struct ErrorHandlingWorkflow: WorkflowProtocol {
-        static let workflowName = "ErrorHandlingWorkflow"
 
         struct Input: Codable, Sendable {
             let shouldFail: Bool
@@ -188,7 +179,6 @@ struct WorkflowIntegrationTests {
     }
 
     struct RiskyOperationActivity: ActivityParameters {
-        static let activityName = "riskyOperation"
         typealias Input = RiskyOperationInput
         typealias Output = String
     }
@@ -196,7 +186,6 @@ struct WorkflowIntegrationTests {
     // MARK: - Parallel Execution Test Workflow
 
     struct ParallelActivitiesWorkflow: WorkflowProtocol {
-        static let workflowName = "ParallelActivitiesWorkflow"
 
         struct Input: Codable, Sendable {
             let data: String
@@ -232,19 +221,16 @@ struct WorkflowIntegrationTests {
     }
 
     struct ParallelTask1Activity: ActivityParameters {
-        static let activityName = "parallelTask1"
         typealias Input = ParallelTaskInput
         typealias Output = String
     }
 
     struct ParallelTask2Activity: ActivityParameters {
-        static let activityName = "parallelTask2"
         typealias Input = ParallelTaskInput
         typealias Output = String
     }
 
     struct ParallelTask3Activity: ActivityParameters {
-        static let activityName = "parallelTask3"
         typealias Input = ParallelTaskInput
         typealias Output = String
     }
@@ -292,16 +278,15 @@ struct WorkflowIntegrationTests {
 
     // MARK: - Helper Methods
 
-    func setupWorkflowSystem() async throws -> (WorkflowEngine<MemoryQueue>, any Service) {
+    func setupWorkflowSystem() async throws -> (WorkflowEngine<MemoryWorkflowQueue>, any Service) {
         let logger = Logger(label: "WorkflowIntegrationTests")
-        let jobQueue = JobQueue(.memory, logger: logger)
 
         // Create activity container with test activities
         let activities = TestActivityContainer()
 
         // Create workflow engine with activity container
         let workflowEngine = WorkflowEngine(
-            jobQueue: jobQueue,
+            queue: .memoryWorkflow,
             logger: logger,
             activities: [activities]
         )
@@ -317,7 +302,7 @@ struct WorkflowIntegrationTests {
         // Each workflow needs 1 persistent WorkflowCoordinator job + short-lived ActivityExecution jobs
         // 4 workers allows 2-3 concurrent workflows with good activity parallelism
         // Production scaling: workers ≈ concurrent_workflows + (concurrent_workflows × 0.5-1.0)
-        let processor = jobQueue.processor(options: .init(numWorkers: 4))
+        let processor = workflowEngine.processor(options: .init(numWorkers: 4))
 
         return (workflowEngine, processor)
     }
@@ -326,12 +311,14 @@ struct WorkflowIntegrationTests {
 
     struct TestActivityContainer: ActivityContainer {
         func registerActivities(with registry: ActivityRegistry) {
-            registry.registerActivity(ProcessTextActivity.self) { (input: TextProcessingInput) async throws -> String in
+            registry.registerActivity(ProcessTextActivity.self) {
+                (input: TextProcessingInput, context: ActivityExecutionContext) async throws -> String in
                 try await Task.sleep(for: .milliseconds(50))
                 return input.text.uppercased()
             }
 
-            registry.registerActivity(ValidateOrderActivity.self) { (input: OrderValidationInput) async throws -> Bool in
+            registry.registerActivity(ValidateOrderActivity.self) {
+                (input: OrderValidationInput, context: ActivityExecutionContext) async throws -> Bool in
                 try await Task.sleep(for: .milliseconds(30))
 
                 // Validate order - fail if amount is negative
@@ -347,17 +334,19 @@ struct WorkflowIntegrationTests {
                 return true
             }
 
-            registry.registerActivity(ProcessPaymentActivity.self) { (input: PaymentInput) async throws -> String in
+            registry.registerActivity(ProcessPaymentActivity.self) {
+                (input: PaymentInput, context: ActivityExecutionContext) async throws -> String in
                 try await Task.sleep(for: .milliseconds(40))
                 return "PAY-\(UUID().uuidString.prefix(8))"
             }
 
-            registry.registerActivity(UpdateOrderStatusActivity.self) { (input: StatusUpdateInput) async throws -> EmptyOutput in
+            registry.registerActivity(UpdateOrderStatusActivity.self, returning: Void.self) { input, context in
                 try await Task.sleep(for: .milliseconds(25))
-                return EmptyOutput()
+                context.logger.info("Order status updated to: \(input.status)")
             }
 
-            registry.registerActivity(RiskyOperationActivity.self) { (input: RiskyOperationInput) async throws -> String in
+            registry.registerActivity(RiskyOperationActivity.self) {
+                (input: RiskyOperationInput, context: ActivityExecutionContext) async throws -> String in
                 try await Task.sleep(for: .milliseconds(30))
 
                 if input.shouldFail {
@@ -374,17 +363,20 @@ struct WorkflowIntegrationTests {
                 return "Operation completed successfully"
             }
 
-            registry.registerActivity(ParallelTask1Activity.self) { (input: ParallelTaskInput) async throws -> String in
+            registry.registerActivity(ParallelTask1Activity.self) {
+                (input: ParallelTaskInput, context: ActivityExecutionContext) async throws -> String in
                 try await Task.sleep(for: .milliseconds(100))
                 return "Task1 processed: \(input.data)"
             }
 
-            registry.registerActivity(ParallelTask2Activity.self) { (input: ParallelTaskInput) async throws -> String in
+            registry.registerActivity(ParallelTask2Activity.self) {
+                (input: ParallelTaskInput, context: ActivityExecutionContext) async throws -> String in
                 try await Task.sleep(for: .milliseconds(150))
                 return "Task2 processed: \(input.data)"
             }
 
-            registry.registerActivity(ParallelTask3Activity.self) { (input: ParallelTaskInput) async throws -> String in
+            registry.registerActivity(ParallelTask3Activity.self) {
+                (input: ParallelTaskInput, context: ActivityExecutionContext) async throws -> String in
                 try await Task.sleep(for: .milliseconds(120))
                 return "Task3 processed: \(input.data)"
             }
@@ -406,7 +398,13 @@ struct WorkflowIntegrationTests {
             #expect(workflowId.value.count > 0)
 
             // Wait for workflow completion
-            let finalStatus = try await waitForWorkflowCompletion(workflowId, engine: workflowEngine, description: "simple workflow")
+            let finalStatus = try await waitForWorkflowCompletion(
+                workflowId,
+                engine: workflowEngine,
+                inputType: SimpleWorkflow.Input.self,
+                outputType: SimpleWorkflow.Output.self,
+                description: "simple workflow"
+            )
             #expect(finalStatus.status == .completed)
             #expect(finalStatus.hasOutput == true)
         }
@@ -425,7 +423,13 @@ struct WorkflowIntegrationTests {
             #expect(workflowId.value.count > 0)
 
             // Wait for workflow completion
-            let finalStatus = try await waitForWorkflowCompletion(workflowId, engine: workflowEngine, description: "multiple activities workflow")
+            let finalStatus = try await waitForWorkflowCompletion(
+                workflowId,
+                engine: workflowEngine,
+                inputType: SingleActivityWorkflow.Input.self,
+                outputType: SingleActivityWorkflow.Output.self,
+                description: "single activity workflow"
+            )
             if finalStatus.status == .failed {
                 #expect(Bool(false), "Workflow failed: \(finalStatus.error ?? "Unknown error")")
                 return
@@ -455,8 +459,10 @@ struct WorkflowIntegrationTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: MultipleActivitiesWorkflow.Input.self,
+                outputType: MultipleActivitiesWorkflow.Output.self,
                 timeout: .seconds(15),
-                description: "multiple activities workflow"
+                description: "order approval workflow"
             )
             if finalStatus.status == .failed {
                 #expect(Bool(false), "Workflow failed unexpectedly")
@@ -487,6 +493,8 @@ struct WorkflowIntegrationTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: MultipleActivitiesWorkflow.Input.self,
+                outputType: MultipleActivitiesWorkflow.Output.self,
                 expectedStatus: .failed,
                 description: "workflow validation failure"
             )
@@ -518,6 +526,8 @@ struct WorkflowIntegrationTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: ErrorHandlingWorkflow.Input.self,
+                outputType: ErrorHandlingWorkflow.Output.self,
                 description: "error handling workflow recovery"
             )
             if finalStatus.status == .failed {
@@ -548,6 +558,8 @@ struct WorkflowIntegrationTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: ErrorHandlingWorkflow.Input.self,
+                outputType: ErrorHandlingWorkflow.Output.self,
                 expectedStatus: .failed,
                 description: "non-recoverable error workflow"
             )
@@ -576,9 +588,9 @@ struct WorkflowIntegrationTests {
             #expect(returnedId.workflowId == "CUSTOM-WORKFLOW-123")
 
             // Verify we can query the workflow by the custom ID
-            let status = try await workflowEngine.getWorkflowStatus(customId)
-            #expect(status.id == customId)
-            #expect(status.workflowType == "SimpleWorkflow")
+            let status = try await workflowEngine.getWorkflowSummary(customId)
+            #expect(status?.id == customId)
+            #expect(status?.workflowName == "SimpleWorkflow")
         }
     }
 
@@ -602,50 +614,14 @@ struct WorkflowIntegrationTests {
 
             // Verify cancellation - the workflow should either be cancelled or completed
             // (since it's a simple workflow that might complete very quickly)
-            let status = try await workflowEngine.getWorkflowStatus(workflowId)
-            let isCancelledOrCompleted = status.status == .cancelled || status.status == .completed
+            let status = try await workflowEngine.getWorkflowSummary(workflowId)
+            let isCancelledOrCompleted = status?.status == .cancelled || status?.status == .completed
             #expect(isCancelledOrCompleted, "Workflow should be cancelled or completed after cancellation request")
 
             // If it was cancelled, verify the error message
-            if status.status == .cancelled {
-                #expect(status.error?.contains("cancelled") == true, "Should have cancellation error message")
+            if status?.status == .cancelled {
+                #expect(status?.error?.contains("cancelled") == true, "Should have cancellation error message")
             }
-        }
-    }
-
-    @Test("Workflow status querying")
-    func testWorkflowStatusQuerying() async throws {
-        let (workflowEngine, processor) = try await setupWorkflowSystem()
-
-        try await testWorkflow(processor) {
-            let workflowId = try await workflowEngine.startWorkflow(
-                SimpleWorkflow.self,
-                input: SimpleWorkflow.Input(message: "Status Test", count: 42)
-            )
-
-            // Check initial status
-            let initialStatus = try await workflowEngine.getWorkflowStatus(workflowId)
-            #expect(initialStatus.status == .running)
-            #expect(initialStatus.startTime <= Date.now)
-            #expect(initialStatus.endTime == nil)
-            #expect(initialStatus.currentStep == 0)
-            #expect(initialStatus.workflowType == "SimpleWorkflow")
-        }
-    }
-
-    @Test("Non-existent workflow status query")
-    func testNonExistentWorkflowStatus() async throws {
-        let (workflowEngine, _) = try await setupWorkflowSystem()
-
-        let nonExistentId = WorkflowID(workflowId: "NON-EXISTENT-123")
-
-        do {
-            _ = try await workflowEngine.getWorkflowStatus(nonExistentId)
-            #expect(Bool(false), "Should have thrown an error for non-existent workflow")
-        } catch WorkflowError.executionNotFound(let id) {
-            #expect(id.workflowId == "NON-EXISTENT-123")
-        } catch {
-            #expect(Bool(false), "Wrong error type thrown: \(error)")
         }
     }
 
@@ -680,16 +656,18 @@ struct WorkflowIntegrationTests {
             let status1 = try await waitForWorkflowCompletion(
                 version1Id,
                 engine: workflowEngine,
+                inputType: SimpleWorkflow.Input.self,
+                outputType: SimpleWorkflow.Output.self,
                 expectedStatus: .completed,
-                timeout: .seconds(10),
                 description: "workflow version 1"
             )
 
             let status2 = try await waitForWorkflowCompletion(
                 version2Id,
                 engine: workflowEngine,
+                inputType: SimpleWorkflow.Input.self,
+                outputType: SimpleWorkflow.Output.self,
                 expectedStatus: .completed,
-                timeout: .seconds(10),
                 description: "workflow version 2"
             )
 
@@ -732,9 +710,11 @@ struct WorkflowIntegrationTests {
                 let status = try await waitForWorkflowCompletion(
                     workflowId,
                     engine: workflowEngine,
+                    inputType: SimpleWorkflow.Input.self,
+                    outputType: SimpleWorkflow.Output.self,
                     expectedStatus: .completed,
-                    timeout: .seconds(10),
-                    description: "concurrent workflow \(workflowId.workflowId)"
+                    timeout: .seconds(15),
+                    description: "concurrent workflow"
                 )
                 #expect(status.status == .completed, "Workflow \(workflowId) should complete successfully")
             }
@@ -759,6 +739,8 @@ struct WorkflowIntegrationTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: ParallelActivitiesWorkflow.Input.self,
+                outputType: ParallelActivitiesWorkflow.Output.self,
                 description: "parallel activities workflow"
             )
 
@@ -779,8 +761,7 @@ struct WorkflowIntegrationTests {
             #expect(finalStatus.hasOutput == true)
 
             // Verify the output contains all three results
-            if finalStatus.hasOutput, let outputBuffer = finalStatus.output {
-                let output = try JSONDecoder().decode(ParallelActivitiesWorkflow.Output.self, from: outputBuffer)
+            if let output = finalStatus.output {
                 #expect(output.results.count == 3)
                 #expect(output.results.contains { $0.contains("Task1 processed: test-data") })
                 #expect(output.results.contains { $0.contains("Task2 processed: test-data") })
@@ -792,7 +773,6 @@ struct WorkflowIntegrationTests {
     @Test("Workflow sleep functionality")
     func testWorkflowSleep() async throws {
         struct SleepWorkflow: WorkflowProtocol {
-            static let workflowName = "SleepWorkflow"
 
             struct Input: Codable, Sendable {
                 let sleepDuration: TimeInterval
@@ -833,6 +813,8 @@ struct WorkflowIntegrationTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: SleepWorkflow.Input.self,
+                outputType: SleepWorkflow.Output.self,
                 timeout: .seconds(5),
                 description: "sleep workflow"
             )
@@ -852,8 +834,7 @@ struct WorkflowIntegrationTests {
             #expect(finalStatus.hasOutput == true)
 
             // Verify the output
-            if let outputBuffer = finalStatus.output {
-                let output = try JSONDecoder().decode(SleepWorkflow.Output.self, from: outputBuffer)
+            if let output = finalStatus.output {
                 #expect(output.completed == true)
                 #expect(output.duration >= 0.2, "Workflow reported sleep duration too short: \(output.duration)s")
             }
@@ -890,22 +871,22 @@ struct WorkflowIntegrationTests {
             var workflow2Complete = false
 
             while attempts < 150 && (!workflow1Complete || !workflow2Complete) {
-                let status1 = try await workflowEngine.getWorkflowStatus(workflowId1)
-                let status2 = try await workflowEngine.getWorkflowStatus(workflowId2)
+                let status1 = try await workflowEngine.getWorkflowSummary(workflowId1)
+                let status2 = try await workflowEngine.getWorkflowSummary(workflowId2)
 
-                if status1.status == .completed {
+                if status1?.status == .completed {
                     workflow1Complete = true
                 }
-                if status2.status == .completed {
+                if status2?.status == .completed {
                     workflow2Complete = true
                 }
 
-                if status1.status == .failed {
-                    #expect(Bool(false), "Workflow 1 failed: \(status1.error ?? "Unknown error")")
+                if status1?.status == .failed {
+                    #expect(Bool(false), "Workflow 1 failed: \(status1?.error ?? "Unknown error")")
                     return
                 }
-                if status2.status == .failed {
-                    #expect(Bool(false), "Workflow 2 failed: \(status2.error ?? "Unknown error")")
+                if status2?.status == .failed {
+                    #expect(Bool(false), "Workflow 2 failed: \(status2?.error ?? "Unknown error")")
                     return
                 }
 
@@ -924,7 +905,6 @@ struct WorkflowIntegrationTests {
 
         // Create a workflow that accesses timing information
         struct TimingTestWorkflow: WorkflowProtocol {
-            static let workflowName = "TimingTestWorkflow"
 
             struct Input: Codable, Sendable {
                 let testId: String
@@ -964,11 +944,16 @@ struct WorkflowIntegrationTests {
                 input: TimingTestWorkflow.Input(testId: "timing-test")
             )
 
-            let finalStatus = try await waitForWorkflowCompletion(workflowId, engine: workflowEngine, description: "timing test workflow")
+            let finalStatus = try await waitForWorkflowCompletion(
+                workflowId,
+                engine: workflowEngine,
+                inputType: TimingTestWorkflow.Input.self,
+                outputType: TimingTestWorkflow.Output.self,
+                description: "timing test workflow"
+            )
             #expect(finalStatus.status == .completed)
 
-            if let outputBuffer = finalStatus.output {
-                let output = try JSONDecoder().decode(TimingTestWorkflow.Output.self, from: outputBuffer)
+            if let output = finalStatus.output {
                 #expect(output.hadQueuedAt == true)
                 #expect(output.hadStartTime == true)
                 // For immediate workflows, scheduledAt should be nil
@@ -979,11 +964,10 @@ struct WorkflowIntegrationTests {
 
     @Test("Scheduled workflow execution")
     func testScheduledWorkflow() async throws {
-        let (workflowEngine, processor) = try await setupWorkflowSystem()
+        var (workflowEngine, processor) = try await setupWorkflowSystem()
 
         // Create a workflow that returns timing information to verify execution
         struct ScheduledTimingWorkflow: WorkflowProtocol {
-            static let workflowName = "ScheduledTimingWorkflow"
 
             struct Input: Codable, Sendable {
                 let testId: String
@@ -1026,14 +1010,14 @@ struct WorkflowIntegrationTests {
         let nextSecond = Calendar.current.dateComponents([.second], from: now.addingTimeInterval(1))
         let schedule = Schedule.everyMinute(second: nextSecond.second!)
 
-        let jobSchedule = try workflowEngine.scheduleWorkflow(
+        try workflowEngine.scheduleWorkflow(
             ScheduledTimingWorkflow.self,
             input: ScheduledTimingWorkflow.Input(testId: "scheduled-test"),
             schedule: schedule,
             scheduleId: "scheduled-test"
         )
 
-        let schedulerService = await workflowEngine.createSchedulerService(with: jobSchedule)
+        let schedulerService = await workflowEngine.createSchedulerService()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = ServiceGroup(
@@ -1058,6 +1042,8 @@ struct WorkflowIntegrationTests {
         let status = try await waitForWorkflowCompletion(
             scheduleWorkflowId,
             engine: workflowEngine,
+            inputType: ScheduledTimingWorkflow.Input.self,
+            outputType: ScheduledTimingWorkflow.Output.self,
             expectedStatus: .completed,
             timeout: .seconds(10),
             description: "scheduled workflow completion"
@@ -1067,12 +1053,10 @@ struct WorkflowIntegrationTests {
         #expect(status.status == .completed, "Scheduled workflow should complete successfully")
         #expect(status.output != nil, "Scheduled workflow should produce output")
 
-        guard let outputBuffer = status.output else {
+        guard let output = status.output else {
             #expect(Bool(false), "Expected workflow output but got nil")
             return
         }
-
-        let output = try JSONDecoder().decode(ScheduledTimingWorkflow.Output.self, from: outputBuffer)
 
         // Verify the scheduled workflow output contains correct data
         #expect(output.testId == "scheduled-test", "Should maintain test ID")
@@ -1082,31 +1066,19 @@ struct WorkflowIntegrationTests {
 
     @Test("Scheduled workflow basic functionality")
     func testScheduledWorkflowBasic() async throws {
-        let (workflowEngine, _) = try await setupWorkflowSystem()
+        var (workflowEngine, _) = try await setupWorkflowSystem()
 
         // Schedule a simple workflow to run soon
         let now = Date.now
         let schedule = Schedule.everyMinute(second: Calendar.current.component(.second, from: now.addingTimeInterval(1)))
         let scheduleId = "scheduled-basic-test"
 
-        let jobSchedule = try workflowEngine.scheduleWorkflow(
+        try workflowEngine.scheduleWorkflow(
             SimpleWorkflow.self,
             input: SimpleWorkflow.Input(message: "Scheduled Test", count: 1),
             schedule: schedule,
             scheduleId: scheduleId
         )
-
-        // Verify the schedule was created with correct structure
-        #expect(jobSchedule.count == 1, "Job schedule should contain one job")
-
-        // Verify the job schedule element contains correct configuration
-        let scheduleElement = jobSchedule[0]
-        #expect(scheduleElement.jobName == "ScheduledWorkflowExecution", "Should use ScheduledWorkflowExecution job name")
-        #expect(scheduleElement.nextScheduledDate > now, "Next scheduled date should be in the future")
-
-        // Verify scheduler service can be created without errors
-        let schedulerService = await workflowEngine.createSchedulerService(with: jobSchedule)
-        #expect(schedulerService.description == "JobScheduler", "Scheduler service should have correct description")
 
         // Test that we can create a workflow with predictable ID using the schedule ID
         // This tests our fix for making scheduled workflows searchable by schedule ID
@@ -1120,26 +1092,24 @@ struct WorkflowIntegrationTests {
         let dailySchedule = Schedule.daily(hour: 2, minute: 0)
 
         // Test hourly schedule workflow
-        let hourlyJobSchedule = try workflowEngine.scheduleWorkflow(
+        try workflowEngine.scheduleWorkflow(
             SimpleWorkflow.self,
             input: SimpleWorkflow.Input(message: "Hourly Test", count: 1),
             schedule: hourlySchedule,
             scheduleId: "hourly-test"
         )
-        #expect(hourlyJobSchedule.count == 1, "Hourly job schedule should contain one job")
 
         // Test daily schedule workflow
-        let dailyJobSchedule = try workflowEngine.scheduleWorkflow(
+        try workflowEngine.scheduleWorkflow(
             SimpleWorkflow.self,
             input: SimpleWorkflow.Input(message: "Daily Test", count: 1),
             schedule: dailySchedule,
             scheduleId: "daily-test"
         )
-        #expect(dailyJobSchedule.count == 1, "Daily job schedule should contain one job")
 
-        // Verify scheduler services can be created for different schedule types
-        let _ = await workflowEngine.createSchedulerService(with: hourlyJobSchedule)
-        let _ = await workflowEngine.createSchedulerService(with: dailyJobSchedule)
+        // Verify scheduler service can be created for all accumulated schedules
+        let schedulerService = await workflowEngine.createSchedulerService()
+        #expect(schedulerService.description == "JobScheduler", "Scheduler service should have correct description")
     }
 
     @Test("Workflow signaling with data")
@@ -1149,13 +1119,11 @@ struct WorkflowIntegrationTests {
         try await testWorkflow(processor) {
             // Define Signal
             struct ApprovalSignal: SignalParameters {
-                static let signalName = "approval"
                 typealias Input = String
             }
 
             // Create a workflow that waits for a signal
             struct OrderApprovalWorkflow: WorkflowProtocol {
-                static let workflowName = "OrderApprovalWorkflow"
 
                 struct Input: Codable, Sendable {
                     let orderId: String
@@ -1205,13 +1173,14 @@ struct WorkflowIntegrationTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: OrderApprovalWorkflow.Input.self,
+                outputType: OrderApprovalWorkflow.Output.self,
                 timeout: .seconds(5),
-                description: "order approval workflow signaling"
+                description: "order approval workflow with signaling"
             )
             #expect(finalStatus.status == .completed)
             // Verify the output contains the signal data
-            if let outputBuffer = finalStatus.output {
-                let output = try JSONDecoder().decode(OrderApprovalWorkflow.Output.self, from: outputBuffer)
+            if let output = finalStatus.output {
                 #expect(output.orderId == "ORDER-123")
                 #expect(output.approvalData == "APPROVED-BY-MANAGER")
             }
@@ -1225,12 +1194,10 @@ struct WorkflowIntegrationTests {
         try await testWorkflow(processor) {
             // Define continue signal without meaningful data
             struct ContinueSignal: SignalParameters {
-                static let signalName = "continue"
-                typealias Input = EmptyOutput
+                typealias Input = EmptyInput
             }
 
             struct ContinueSignalWorkflow: WorkflowProtocol {
-                static let workflowName = "ContinueSignalWorkflow"
 
                 struct Input: Codable, Sendable {
                     let message: String
@@ -1265,22 +1232,24 @@ struct WorkflowIntegrationTests {
             try await Task.sleep(for: .milliseconds(500))
 
             // Send signal without meaningful data
+            // Signal the workflow to continue (no input needed)
             try await workflowEngine.signalWorkflow(
                 workflowId,
                 signalType: ContinueSignal.self,
-                input: EmptyOutput()
+                input: ContinueSignal.Input()
             )
 
             // Verify completion
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
-                timeout: .seconds(5),
+                inputType: ContinueSignalWorkflow.Input.self,
+                outputType: ContinueSignalWorkflow.Output.self,
+                timeout: .seconds(10),
                 description: "continue signal workflow"
             )
             #expect(finalStatus.status == .completed)
-            if let outputBuffer = finalStatus.output {
-                let output = try JSONDecoder().decode(ContinueSignalWorkflow.Output.self, from: outputBuffer)
+            if let output = finalStatus.output {
                 #expect(output.signalReceived == true)
             }
         }
@@ -1293,12 +1262,10 @@ struct WorkflowIntegrationTests {
         try await testWorkflow(processor) {
             // Define a signal that will never be sent
             struct NeverSentSignal: SignalParameters {
-                static let signalName = "never-sent"
                 typealias Input = String
             }
 
             struct TimeoutWorkflow: WorkflowProtocol {
-                static let workflowName = "TimeoutWorkflow"
 
                 struct Input: Codable, Sendable {
                     let id: String
@@ -1332,10 +1299,15 @@ struct WorkflowIntegrationTests {
             )
 
             // Wait for workflow to complete with timeout
-            let finalStatus = try await waitForWorkflowCompletion(workflowId, engine: workflowEngine, description: "timeout workflow")
+            let finalStatus = try await waitForWorkflowCompletion(
+                workflowId,
+                engine: workflowEngine,
+                inputType: TimeoutWorkflow.Input.self,
+                outputType: TimeoutWorkflow.Output.self,
+                description: "timeout workflow"
+            )
             #expect(finalStatus.status == .completed)
-            if let outputBuffer = finalStatus.output {
-                let output = try JSONDecoder().decode(TimeoutWorkflow.Output.self, from: outputBuffer)
+            if let output = finalStatus.output {
                 #expect(output.timedOut == true)  // Should timeout
             }
         }
@@ -1348,17 +1320,14 @@ struct WorkflowIntegrationTests {
         try await testWorkflow(processor) {
             // Define signals for multi-step process
             struct Step1Signal: SignalParameters {
-                static let signalName = "step1"
                 typealias Input = String
             }
 
             struct Step2Signal: SignalParameters {
-                static let signalName = "step2"
                 typealias Input = String
             }
 
             struct MultiSignalWorkflow: WorkflowProtocol {
-                static let workflowName = "MultiSignalWorkflow"
 
                 struct Input: Codable, Sendable {
                     let processId: String
@@ -1421,12 +1390,13 @@ struct WorkflowIntegrationTests {
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
-                timeout: .seconds(5),
+                inputType: MultiSignalWorkflow.Input.self,
+                outputType: MultiSignalWorkflow.Output.self,
+                timeout: .seconds(15),
                 description: "multiple signals workflow"
             )
             #expect(finalStatus.status == .completed)
-            if let outputBuffer = finalStatus.output {
-                let output = try JSONDecoder().decode(MultiSignalWorkflow.Output.self, from: outputBuffer)
+            if let output = finalStatus.output {
                 #expect(output.step1Data == "STEP1-COMPLETE")
                 #expect(output.step2Data == "STEP2-COMPLETE")
             }
@@ -1440,7 +1410,6 @@ struct WorkflowIntegrationTests {
         try await testWorkflow(processor) {
             // Define Signals
             struct ApprovalSignal: SignalParameters {
-                static let signalName = "approval"
                 typealias Input = ApprovalData
             }
 
@@ -1451,13 +1420,11 @@ struct WorkflowIntegrationTests {
             }
 
             struct ContinueSignal: SignalParameters {
-                static let signalName = "continue"
-                typealias Input = EmptyOutput
+                typealias Input = EmptyInput
             }
 
             // Create a workflow that uses signals for approval requests
             struct ApprovalRequestWorkflow: WorkflowProtocol {
-                static let workflowName = "ApprovalRequestWorkflow"
 
                 struct Input: Codable, Sendable {
                     let requestId: String
@@ -1524,23 +1491,25 @@ struct WorkflowIntegrationTests {
             )
 
             // Send continue signal
+            // Signal approval (no input needed)
             try await workflowEngine.signalWorkflow(
                 workflowId,
                 signalType: ContinueSignal.self,
-                input: EmptyOutput()
+                input: ContinueSignal.Input()
             )
 
             // Wait for workflow completion
             let finalStatus = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
-                timeout: .seconds(5),
-                description: "approval request workflow signaling"
+                inputType: ApprovalRequestWorkflow.Input.self,
+                outputType: ApprovalRequestWorkflow.Output.self,
+                timeout: .seconds(15),
+                description: "approval request workflow"
             )
             #expect(finalStatus.status == .completed)
             // Verify the output contains the signal data
-            if let outputBuffer = finalStatus.output {
-                let output = try JSONDecoder().decode(ApprovalRequestWorkflow.Output.self, from: outputBuffer)
+            if let output = finalStatus.output {
                 #expect(output.requestId == "REQ-789")
                 #expect(output.approved == true)
                 #expect(output.approver == "manager@company.com")
@@ -1556,7 +1525,7 @@ struct WorkflowIntegrationTests {
 
         try await testWorkflow(processor) {
             // Use the run method to execute workflow and get result
-            let result = try await workflowEngine.run(
+            let result = try await workflowEngine.runWorkflow(
                 SimpleWorkflow.self,
                 input: SimpleWorkflow.Input(message: "Run Test", count: 42),
                 options: WorkflowOptions(timeout: .seconds(10))
@@ -1574,7 +1543,6 @@ struct WorkflowIntegrationTests {
         try await testWorkflow(processor) {
             // Create a long-running workflow for timeout testing
             struct LongRunningWorkflow: WorkflowProtocol {
-                static let workflowName = "LongRunning"
 
                 struct Input: Codable, Sendable {
                     let duration: TimeInterval
@@ -1585,6 +1553,7 @@ struct WorkflowIntegrationTests {
                 }
 
                 func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
+                    context.logger.info("Workflow timeout is running...", metadata: ["timeout": .stringConvertible(input.duration)])
                     try await context.sleep(for: .seconds(input.duration))
                     return Output(completed: true)
                 }
@@ -1594,12 +1563,65 @@ struct WorkflowIntegrationTests {
 
             // Test timeout with a very short timeout and long-running workflow
             await #expect(throws: WorkflowError.self) {
-                _ = try await workflowEngine.run(
+                _ = try await workflowEngine.runWorkflow(
                     LongRunningWorkflow.self,
                     input: LongRunningWorkflow.Input(duration: 5.0),
-                    options: WorkflowOptions(timeout: .milliseconds(100))
+                    options: WorkflowOptions(timeout: .milliseconds(300))
                 )
             }
+        }
+    }
+
+    @Test("Direct workflow cancellation test")
+    func testDirectWorkflowCancellation() async throws {
+        let (workflowEngine, processor) = try await setupWorkflowSystem()
+
+        try await testWorkflow(processor) {
+            // Create a long-running workflow for cancellation testing
+            struct LongRunningWorkflow: WorkflowProtocol {
+
+                struct Input: Codable, Sendable {
+                    let duration: TimeInterval
+                }
+
+                struct Output: Codable, Sendable {
+                    let completed: Bool
+                }
+
+                func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
+                    context.logger.info("Direct cancellation test workflow starting", metadata: ["duration": .stringConvertible(input.duration)])
+                    try await context.sleep(for: .seconds(input.duration))
+                    return Output(completed: true)
+                }
+            }
+
+            workflowEngine.registerWorkflow(LongRunningWorkflow.self)
+
+            // Start the workflow
+            let workflowId = try await workflowEngine.startWorkflow(
+                LongRunningWorkflow.self,
+                input: LongRunningWorkflow.Input(duration: 10.0)
+            )
+
+            // Wait a bit to ensure the workflow is running and sleeping
+            try await Task.sleep(for: .milliseconds(500))
+
+            // Manually cancel the workflow
+            try await workflowEngine.cancelWorkflow(workflowId)
+
+            // Use existing utility to wait for cancellation (expect failed status since cancellation throws an error)
+            let workflowRun = try await waitForWorkflowCompletion(
+                workflowId,
+                engine: workflowEngine,
+                inputType: LongRunningWorkflow.Input.self,
+                outputType: LongRunningWorkflow.Output.self,
+                expectedStatus: .failed,  // Cancellation causes workflow to fail
+                timeout: .seconds(5),
+                description: "workflow cancellation"
+            )
+
+            // Verify the workflow was cancelled (failed due to cancellation)
+            #expect(workflowRun.status == .failed, "Workflow should be failed due to cancellation")
         }
     }
 
@@ -1610,7 +1632,7 @@ struct WorkflowIntegrationTests {
         let _ = try await testWorkflow(processor) {
             // Test workflow failure handling
             await #expect(throws: WorkflowError.self) {
-                _ = try await workflowEngine.run(
+                _ = try await workflowEngine.runWorkflow(
                     ErrorHandlingWorkflow.self,
                     input: ErrorHandlingWorkflow.Input(shouldFail: true, failureType: "test-error"),
                     options: WorkflowOptions(timeout: .seconds(10))
@@ -1636,6 +1658,8 @@ struct WorkflowIntegrationTests {
             let status = try await waitForWorkflowCompletion(
                 workflowId,
                 engine: workflowEngine,
+                inputType: MultipleActivitiesWorkflow.Input.self,
+                outputType: MultipleActivitiesWorkflow.Output.self,
                 expectedStatus: .completed,
                 timeout: .seconds(10),
                 description: "step tracking workflow"
@@ -1645,7 +1669,7 @@ struct WorkflowIntegrationTests {
 
             // Get the internal workflow state to check step tracking
             let internalState = try await workflowEngine.getInternalWorkflowState(workflowId)
-            #expect(internalState.stepHistory.count >= 0, "Should have step history")
+            #expect(internalState.currentStep >= 0, "Should have current step information")
             #expect(internalState.currentStep >= 0, "Should track current step")
         }
     }

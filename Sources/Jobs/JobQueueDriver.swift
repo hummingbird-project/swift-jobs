@@ -88,8 +88,10 @@ public struct JobQueueResult<JobID: Sendable>: Sendable {
 
 /// Protocol for JobOptions
 public protocol JobOptionsProtocol: Sendable {
-    /// Initialize job options with default value
-    init()
+    /// Initialize job options with default value    
+    var delayUntil: Date { get }
+    
+    init(delayUntil: Date)
 }
 
 /// Options for retrying a job

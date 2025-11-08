@@ -9,7 +9,8 @@ let package = Package(
     name: "swift-jobs",
     platforms: [.macOS(.v15), .iOS(.v18), .tvOS(.v18)],
     products: [
-        .library(name: "Jobs", targets: ["Jobs"])
+        .library(name: "Jobs", targets: ["Jobs"]),
+        .library(name: "Workflows", targets: ["Workflows"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),

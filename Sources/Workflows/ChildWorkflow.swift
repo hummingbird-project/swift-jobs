@@ -26,21 +26,42 @@ import Foundation
 
 /// Options for child workflow execution
 public struct ChildWorkflowOptions: Codable, Sendable {
-    /// Maximum time the child workflow can run before timing out
-    public let timeout: Duration?
-    /// Whether to inherit parent workflow's timeout
-    public let inheritTimeout: Bool
+    /// Maximum time allowed for a single child workflow execution run
+    /// This timeout applies to individual workflow runs, measuring from workflow start to completion
+    /// If nil, individual runs use a default timeout or inherit from parent workflow constraints
+    public let runTimeout: Duration?
+
+    /// Maximum total time allowed for child workflow execution including all retries
+    /// This timeout encompasses the entire child workflow lifecycle from start to final completion
+    /// If nil, the child workflow can execute indefinitely within the parent workflow's constraints
+    public let executionTimeout: Duration?
+
+    /// Maximum time allowed for processing a single workflow task
+    /// This timeout controls how long a workflow task can take to process on a worker
+    /// If nil, uses the system default task timeout
+    public let taskTimeout: Duration?
+
     /// Custom child workflow ID prefix
     public let childWorkflowIdPrefix: String?
+    /// Child key identifier for this workflow run
+    public let childKey: String?
+    /// Child index if there are multiple child workflows
+    public let childIndex: Int?
 
     public init(
-        timeout: Duration? = nil,
-        inheritTimeout: Bool = false,
-        childWorkflowIdPrefix: String? = nil
+        runTimeout: Duration? = nil,
+        executionTimeout: Duration? = nil,
+        taskTimeout: Duration? = nil,
+        childWorkflowIdPrefix: String? = nil,
+        childKey: String? = nil,
+        childIndex: Int? = nil
     ) {
-        self.timeout = timeout
-        self.inheritTimeout = inheritTimeout
+        self.runTimeout = runTimeout
+        self.executionTimeout = executionTimeout
+        self.taskTimeout = taskTimeout
         self.childWorkflowIdPrefix = childWorkflowIdPrefix
+        self.childKey = childKey
+        self.childIndex = childIndex
     }
 }
 
@@ -63,79 +84,6 @@ public struct ChildWorkflowResult<Output: Codable & Sendable>: Sendable {
     }
 }
 
-// MARK: - Child Workflow Job Types
-
-/// Job that manages child workflow lifecycle
-internal struct ChildWorkflowCoordinatorJob: JobParameters {
-    public static let jobName = "ChildWorkflowCoordinator"
-
-    /// Parent workflow ID
-    public let parentWorkflowId: WorkflowID
-    /// Child workflow ID
-    public let childWorkflowId: WorkflowID
-    /// Child workflow type name
-    public let childWorkflowType: String
-    /// Serialized input for child workflow
-    public let childInput: ByteBuffer
-    /// Action to perform
-    public let action: ChildWorkflowAction
-    /// Child workflow options
-    public let options: ChildWorkflowOptions
-
-    public init(
-        parentWorkflowId: WorkflowID,
-        childWorkflowId: WorkflowID,
-        childWorkflowType: String,
-        childInput: ByteBuffer,
-        action: ChildWorkflowAction,
-        options: ChildWorkflowOptions = .init()
-    ) {
-        self.parentWorkflowId = parentWorkflowId
-        self.childWorkflowId = childWorkflowId
-        self.childWorkflowType = childWorkflowType
-        self.childInput = childInput
-        self.action = action
-        self.options = options
-    }
-}
-
-/// Actions for child workflow coordination
-public enum ChildWorkflowAction: String, Codable, Sendable {
-    case start
-    case monitor
-    case complete
-    case fail
-    case cancel
-}
-
-/// Information about child workflow relationship
-internal struct ChildWorkflowInfo: Codable, Sendable {
-    let parentWorkflowId: WorkflowID
-    let childWorkflowId: WorkflowID
-    let childWorkflowType: String
-    let startTime: Date
-    var endTime: Date?
-    var status: WorkflowStatus
-    var output: ByteBuffer?
-    var error: String?
-
-    init(
-        parentWorkflowId: WorkflowID,
-        childWorkflowId: WorkflowID,
-        childWorkflowType: String,
-        startTime: Date = .now
-    ) {
-        self.parentWorkflowId = parentWorkflowId
-        self.childWorkflowId = childWorkflowId
-        self.childWorkflowType = childWorkflowType
-        self.startTime = startTime
-        self.endTime = nil
-        self.status = .running
-        self.output = nil
-        self.error = nil
-    }
-}
-
 // MARK: - WorkflowExecutionContext Extension
 
 extension WorkflowExecutionContext {
@@ -148,7 +96,7 @@ extension WorkflowExecutionContext {
     ) async throws -> ChildWorkflowResult<W.Output> {
 
         // Generate deterministic child workflow ID
-        let inputBuffer = try JSONEncoder().encodeAsByteBuffer(input, allocator: ByteBufferAllocator())
+        let inputBuffer = try JSONEncoder().encodeAsByteBuffer(input, allocator: self.allocator)
         let inputHash = WorkflowUtilities.deterministicHash(buffer: inputBuffer, activityName: W.workflowName)
         let childWorkflowIdPrefix = options.childWorkflowIdPrefix ?? "child"
         // Generate deterministic run ID for replay safety
@@ -158,6 +106,26 @@ extension WorkflowExecutionContext {
             workflowId: "\(workflowId.workflowId):\(childWorkflowIdPrefix):\(W.workflowName):\(inputHash)",
             runId: deterministicRunId
         )
+
+        // Save the child workflow state via WorkflowRepository with proper parent relationship
+        let childInputBuffer = try workflowRegistry.encode(input)
+        let childExecution = WorkflowExecution(
+            id: childWorkflowId,
+            workflowName: W.workflowName,
+            inputData: childInputBuffer,
+            workflowState: nil,
+            status: .queued,
+            createdAt: .now,
+            queuedAt: .now,
+            parentId: workflowId,
+            parentStepRunId: WorkflowUtilities.deterministicHash(
+                string: "\(workflowId.value):step:\(currentStep)",
+                context: "step-run-id"
+            ),
+            childKey: options.childKey,
+            childIndex: options.childIndex
+        )
+        try await queueDriver.workflowRepository.createExecution(childExecution)
 
         logger.debug(
             "🚀 Starting child workflow",
@@ -169,427 +137,233 @@ extension WorkflowExecutionContext {
         )
 
         // Check if child workflow has already been started (replay safety)
-        let childInfoKey = "child_workflow:\(workflowId.value):\(childWorkflowId.value)"
-        if let existingInfoBuffer = try await metadataQueue.getMetadata(childInfoKey) {
-            let existingInfo = try JSONDecoder().decode(ChildWorkflowInfo.self, from: existingInfoBuffer)
-
-            logger.debug("Child workflow already exists, checking status")
+        // Use proper parent-child relationship instead of composite key
+        // Check if child workflow already exists
+        if let existingExecution = try? await queueDriver.workflowRepository.getExecution(childWorkflowId) {
+            logger.debug(
+                "Child workflow already exists, checking status",
+                metadata: [
+                    "childWorkflowId": .string(childWorkflowId.value),
+                    "existingStatus": .string(existingExecution.status.rawValue),
+                    "createdAt": .stringConvertible(existingExecution.createdAt),
+                ]
+            )
 
             // If already completed, return cached result
-            if existingInfo.status == WorkflowStatus.completed, let output = existingInfo.output {
-                let result = try JSONDecoder().decode(W.Output.self, from: output)
-                let duration = existingInfo.endTime?.timeIntervalSince(existingInfo.startTime) ?? 0
-                return ChildWorkflowResult(
-                    childWorkflowId: childWorkflowId,
-                    output: result,
-                    duration: duration,
-                    completed: true
-                )
-            }
-
-            // If failed, throw error
-            if existingInfo.status == WorkflowStatus.failed {
-                throw WorkflowError.workflowFailed(existingInfo.error ?? "Child workflow failed")
-            }
-
-            // If still running, wait for completion
-            return try await waitForChildWorkflowCompletion(
-                childWorkflowId: childWorkflowId,
-                childWorkflowType: W.workflowName,
-                outputType: W.Output.self
-            )
-        }
-
-        // Create child workflow info
-        let childInfo = ChildWorkflowInfo(
-            parentWorkflowId: workflowId,
-            childWorkflowId: childWorkflowId,
-            childWorkflowType: W.workflowName
-        )
-
-        // Store child workflow relationship
-        let childInfoBuffer = try JSONEncoder().encodeAsByteBuffer(
-            childInfo,
-            allocator: ByteBufferAllocator()
-        )
-        try await metadataQueue.setMetadata(key: childInfoKey, value: childInfoBuffer)
-
-        // Create child workflow coordinator job
-        let coordinatorJob = ChildWorkflowCoordinatorJob(
-            parentWorkflowId: workflowId,
-            childWorkflowId: childWorkflowId,
-            childWorkflowType: W.workflowName,
-            childInput: inputBuffer,
-            action: .start,
-            options: options
-        )
-
-        // Push coordinator job to queue (non-blocking)
-        let jobId = try await jobQueue.push(coordinatorJob)
-
-        logger.debug("✅ Pushed child workflow coordinator job", metadata: ["jobId": .stringConvertible(jobId)])
-
-        // Wait for child workflow completion (like activities do)
-        return try await waitForChildWorkflowCompletion(
-            childWorkflowId: childWorkflowId,
-            childWorkflowType: W.workflowName,
-            outputType: W.Output.self
-        )
-    }
-
-    /// Execute multiple child workflows in parallel
-    public func executeChildWorkflowsInParallel<W: WorkflowProtocol>(
-        _ workflowType: W.Type,
-        inputs: [W.Input],
-        options: ChildWorkflowOptions = .init()
-    ) async throws -> [ChildWorkflowResult<W.Output>] {
-
-        try await withThrowingTaskGroup(of: ChildWorkflowResult<W.Output>.self) { group in
-            for (index, input) in inputs.enumerated() {
-                group.addTask {
-                    // Use index to ensure unique child workflow IDs
-                    let childOptions = ChildWorkflowOptions(
-                        timeout: options.timeout,
-                        inheritTimeout: options.inheritTimeout,
-                        childWorkflowIdPrefix: "\(options.childWorkflowIdPrefix ?? "parallel")_\(index)"
-                    )
-
-                    return try await self.executeChildWorkflow(
-                        workflowType,
-                        input: input,
-                        options: childOptions
-                    )
-                }
-            }
-
-            var results: [ChildWorkflowResult<W.Output>] = []
-            for try await result in group {
-                results.append(result)
-            }
-            return results
-        }
-    }
-
-    /// Cancel a running child workflow
-    public func cancelChildWorkflow(_ childWorkflowId: WorkflowID) async throws {
-        logger.debug("Cancelling child workflow")
-
-        // Create cancellation coordinator job
-        let coordinatorJob = ChildWorkflowCoordinatorJob(
-            parentWorkflowId: workflowId,
-            childWorkflowId: childWorkflowId,
-            childWorkflowType: "",  // Not needed for cancellation
-            childInput: ByteBuffer(bytes: []),
-            action: .cancel
-        )
-
-        _ = try await jobQueue.push(coordinatorJob)
-    }
-
-    /// Get the status of a child workflow
-    public func getChildWorkflowStatus(_ childWorkflowId: WorkflowID) async throws -> WorkflowExecutionStatus? {
-        // Check if we have child workflow info
-        let childInfoKey = "child_workflow:\(workflowId.value):\(childWorkflowId.value)"
-        guard let childInfoBuffer = try await metadataQueue.getMetadata(childInfoKey) else {
-            return nil
-        }
-
-        let childInfo = try JSONDecoder().decode(ChildWorkflowInfo.self, from: childInfoBuffer)
-
-        let workflowState = WorkflowState(
-            id: childWorkflowId,
-            workflowType: childInfo.childWorkflowType,
-            input: ByteBuffer(),
-            status: childInfo.status,
-            queuedAt: childInfo.startTime,
-            scheduledAt: nil,
-            startTime: childInfo.startTime,
-            currentStep: 0
-        )
-        return WorkflowExecutionStatus(from: workflowState)
-    }
-
-    // MARK: - Private Helper Methods
-
-    private func waitForChildWorkflowCompletion<Output: Codable & Sendable>(
-        childWorkflowId: WorkflowID,
-        childWorkflowType: String,
-        outputType: Output.Type
-    ) async throws -> ChildWorkflowResult<Output> {
-
-        logger.debug(
-            "⏳ Parent waiting for child workflow completion",
-            metadata: [
-                "parentWorkflowId": .string(workflowId.value),
-                "childWorkflowId": .string(childWorkflowId.value),
-            ]
-        )
-
-        let childInfoKey = "child_workflow:\(workflowId.value):\(childWorkflowId.value)"
-        let maxWaitTime: TimeInterval = 30  // 30 seconds for debugging
-        let startWaitTime = Date()
-        var pollCount = 0
-
-        while Date().timeIntervalSince(startWaitTime) < maxWaitTime {
-            pollCount += 1
-
-            // Check child workflow status
-            guard let childInfoBuffer = try await metadataQueue.getMetadata(childInfoKey) else {
-                logger.error("❌ Child workflow info not found during polling", metadata: ["key": .string(childInfoKey)])
-                throw WorkflowError.executionNotFound(childWorkflowId)
-            }
-
-            let childInfo = try JSONDecoder().decode(ChildWorkflowInfo.self, from: childInfoBuffer)
-
-            if pollCount % 10 == 0 {  // Log every 10 polls (1 second)
-                logger.debug(
-                    "🔄 Polling child workflow status (poll #\(pollCount))",
-                    metadata: [
-                        "childWorkflowId": .string(childWorkflowId.value),
-                        "status": .string(childInfo.status.rawValue),
-                        "waitTime": .stringConvertible(Date().timeIntervalSince(startWaitTime)),
-                    ]
-                )
-            }
-
-            switch childInfo.status {
-            case .completed:
-                logger.debug("🎉 Child workflow completed successfully!")
-                guard let outputBuffer = childInfo.output else {
-                    throw WorkflowError.noOutput(childWorkflowId)
-                }
-
-                let output = try JSONDecoder().decode(Output.self, from: outputBuffer)
-                let duration = childInfo.endTime?.timeIntervalSince(childInfo.startTime) ?? 0
-
+            if existingExecution.status == .completed, let resultBuffer = existingExecution.result {
+                let output = try workflowRegistry.decode(resultBuffer, as: W.Output.self)
+                let duration = existingExecution.completedAt?.timeIntervalSince(existingExecution.startedAt ?? existingExecution.createdAt) ?? 0
                 return ChildWorkflowResult(
                     childWorkflowId: childWorkflowId,
                     output: output,
                     duration: duration,
                     completed: true
                 )
-
-            case .failed:
-                logger.error("❌ Child workflow failed: \(childInfo.error ?? "Unknown error")")
-                throw WorkflowError.workflowFailed(childInfo.error ?? "Child workflow failed")
-
-            case .cancelled:
-                logger.error("🚫 Child workflow was cancelled")
-                throw WorkflowError.workflowCancelled(childWorkflowId)
-
-            case .running:
-                // Continue waiting
-                try await Task.sleep(for: .milliseconds(100))
             }
+
+            // If failed, throw error
+            if existingExecution.status == .failed {
+                throw WorkflowError.workflowFailed(existingExecution.error ?? "Child workflow failed")
+            }
+
+            // If already running, wait for completion
+            if existingExecution.status == .running {
+                return try await waitForChildWorkflowCompletion(
+                    childWorkflowId: childWorkflowId,
+                    childWorkflowType: W.workflowName,
+                    inputType: W.Input.self,
+                    outputType: W.Output.self,
+                    options: options
+                )
+            }
+
+            // If queued, we need to start it by pushing the coordinator job
+            // Fall through to push the coordinator job below
         }
 
-        logger.error("⏰ Child workflow timed out after \(maxWaitTime) seconds")
-        throw WorkflowError.timeout(childWorkflowId, Duration.seconds(Int64(maxWaitTime)))
-    }
-}
-
-// MARK: - WorkflowEngine Extension
-
-extension WorkflowEngine {
-
-    /// Register child workflow coordinator job processor
-    public func registerChildWorkflowCoordinator() {
-        jobQueue.registerJob(parameters: ChildWorkflowCoordinatorJob.self) { job, context in
-            try await self.handleChildWorkflowCoordination(job, context: context)
-        }
-    }
-
-    /// Handle child workflow coordination
-    private func handleChildWorkflowCoordination(
-        _ job: ChildWorkflowCoordinatorJob,
-        context: JobExecutionContext
-    ) async throws {
-
-        switch job.action {
-        case .start:
-            try await startChildWorkflow(job, context: context)
-
-        case .monitor:
-            try await monitorChildWorkflow(job, context: context)
-
-        case .cancel:
-            try await cancelChildWorkflow(job, context: context)
-
-        case .complete, .fail:
-            // These are handled by the monitoring system
-            break
-        }
-    }
-
-    private func startChildWorkflow(
-        _ job: ChildWorkflowCoordinatorJob,
-        context: JobExecutionContext
-    ) async throws {
-
-        logger.debug(
-            "🔄 Starting child workflow",
-            metadata: [
-                "parentWorkflowId": .string(job.parentWorkflowId.value),
-                "childWorkflowId": .string(job.childWorkflowId.value),
-                "childWorkflowType": .string(job.childWorkflowType),
-            ]
-        )
-
-        // Create child workflow state first
-        let childWorkflowState = WorkflowState(
-            id: job.childWorkflowId,
-            workflowType: job.childWorkflowType,
-            input: job.childInput,
-            status: .running,
-            queuedAt: context.queuedAt,
-            scheduledAt: context.nextScheduledAt,
-            startTime: .now
-        )
-
-        // Store child workflow state
-        let stateBuffer = try JSONEncoder().encodeAsByteBuffer(
-            childWorkflowState,
-            allocator: ByteBufferAllocator()
-        )
-
-        try await jobQueue.queue.setMetadata(
-            key: "workflow:\(job.childWorkflowId.value)",
-            value: stateBuffer
-        )
-
-        logger.debug("✅ Created child workflow state")
-
-        // Start the child workflow using existing infrastructure
-        let childCoordinatorJob = WorkflowCoordinatorJob(
-            workflowId: job.childWorkflowId,
-            workflowType: job.childWorkflowType,
+        // Create workflow coordinator job directly (skip the extra layer)
+        let coordinatorJob = WorkflowCoordinatorJob(
+            workflowId: childWorkflowId,
+            workflowType: W.workflowName,
             action: .start,
             stepIndex: 0
         )
 
-        let childJobId = try await jobQueue.push(childCoordinatorJob)
-        logger.debug("✅ Pushed child workflow coordinator job", metadata: ["jobId": .stringConvertible(childJobId)])
-
-        // Schedule monitoring job with delay to let child start
-        let monitorJob = ChildWorkflowCoordinatorJob(
-            parentWorkflowId: job.parentWorkflowId,
-            childWorkflowId: job.childWorkflowId,
-            childWorkflowType: job.childWorkflowType,
-            childInput: job.childInput,
-            action: .monitor
-        )
-
-        let monitorJobId = try await jobQueue.push(monitorJob)
-        logger.debug("✅ Pushed monitor job", metadata: ["monitorJobId": .stringConvertible(monitorJobId)])
-    }
-
-    private func monitorChildWorkflow(
-        _ job: ChildWorkflowCoordinatorJob,
-        context: JobExecutionContext
-    ) async throws {
-
         logger.debug(
-            "👀 Monitoring child workflow",
+            "📤 About to push child workflow coordinator job",
             metadata: [
-                "parentWorkflowId": .string(job.parentWorkflowId.value),
-                "childWorkflowId": .string(job.childWorkflowId.value),
+                "childWorkflowId": .string(childWorkflowId.value),
+                "childWorkflowType": .string(W.workflowName),
+                "parentWorkflowId": .string(workflowId.value),
             ]
         )
 
-        // Get child workflow status
-        do {
-            let childState = try await getInternalWorkflowState(job.childWorkflowId)
-
-            logger.debug(
-                "📊 Child workflow status",
-                metadata: [
-                    "childWorkflowId": .string(job.childWorkflowId.value),
-                    "status": .string(childState.status.rawValue),
-                ]
-            )
-
-            // Update child workflow info with current status
-            let childInfoKey = "child_workflow:\(job.parentWorkflowId.value):\(job.childWorkflowId.value)"
-            guard let childInfoBuffer = try await jobQueue.queue.getMetadata(childInfoKey) else {
-                logger.error("❌ Child workflow info not found", metadata: ["key": .string(childInfoKey)])
-                return
-            }
-
-            var childInfo = try JSONDecoder().decode(ChildWorkflowInfo.self, from: childInfoBuffer)
-            childInfo.status = childState.status
-            childInfo.endTime = childState.endTime
-            childInfo.output = childState.output
-            childInfo.error = childState.error
-
-            // Save updated child info
-            let updatedInfoBuffer = try JSONEncoder().encodeAsByteBuffer(
-                childInfo,
-                allocator: ByteBufferAllocator()
-            )
-            try await jobQueue.queue.setMetadata(key: childInfoKey, value: updatedInfoBuffer)
-
-            // If still running, schedule another monitoring check
-            if childState.status == .running {
-                logger.info("⏳ Child still running, scheduling next monitor check")
-                let nextMonitorJob = ChildWorkflowCoordinatorJob(
-                    parentWorkflowId: job.parentWorkflowId,
-                    childWorkflowId: job.childWorkflowId,
-                    childWorkflowType: job.childWorkflowType,
-                    childInput: job.childInput,
-                    action: .monitor
-                )
-
-                _ = try await jobQueue.push(nextMonitorJob)
-            } else {
-                logger.info("🎯 Child workflow completed with status: \(childState.status.rawValue)")
-            }
-        } catch {
-            logger.error("❌ Error monitoring child workflow: \(error)")
-
-            // Mark child workflow as failed
-            let childInfoKey = "child_workflow:\(job.parentWorkflowId.value):\(job.childWorkflowId.value)"
-            if let childInfoBuffer = try await jobQueue.queue.getMetadata(childInfoKey) {
-                var childInfo = try JSONDecoder().decode(ChildWorkflowInfo.self, from: childInfoBuffer)
-                childInfo.status = .failed
-                childInfo.endTime = .now
-                childInfo.error = error.localizedDescription
-
-                let updatedInfoBuffer = try JSONEncoder().encodeAsByteBuffer(
-                    childInfo,
-                    allocator: ByteBufferAllocator()
-                )
-                try await jobQueue.queue.setMetadata(key: childInfoKey, value: updatedInfoBuffer)
-            }
-        }
-    }
-
-    private func cancelChildWorkflow(
-        _ job: ChildWorkflowCoordinatorJob,
-        context: JobExecutionContext
-    ) async throws {
+        // Push coordinator job to queue (non-blocking)
+        let jobId = try await pushJob(coordinatorJob)
 
         logger.debug(
-            "Cancelling child workflow",
+            "✅ Successfully pushed child workflow coordinator job",
             metadata: [
-                "childWorkflowId": .string(job.childWorkflowId.value)
+                "jobId": .stringConvertible(jobId),
+                "childWorkflowId": .string(childWorkflowId.value),
+                "childWorkflowType": .string(W.workflowName),
             ]
         )
 
-        // Cancel the child workflow
-        try await cancelWorkflow(job.childWorkflowId)
+        // Wait for child workflow completion (like activities do)
+        return try await waitForChildWorkflowCompletion(
+            childWorkflowId: childWorkflowId,
+            childWorkflowType: W.workflowName,
+            inputType: W.Input.self,
+            outputType: W.Output.self,
+            options: options
+        )
+    }
 
-        // Update child workflow info
-        let childInfoKey = "child_workflow:\(job.parentWorkflowId.value):\(job.childWorkflowId.value)"
-        if let childInfoBuffer = try await jobQueue.queue.getMetadata(childInfoKey) {
-            var childInfo = try JSONDecoder().decode(ChildWorkflowInfo.self, from: childInfoBuffer)
-            childInfo.status = .cancelled
-            childInfo.endTime = .now
+    /// Cancel a running child workflow
+    public func cancelChildWorkflow(_ childWorkflowId: WorkflowID) async throws {
+        logger.debug("Cancelling child workflow")
 
-            let updatedInfoBuffer = try JSONEncoder().encodeAsByteBuffer(
-                childInfo,
-                allocator: ByteBufferAllocator()
-            )
-            try await jobQueue.queue.setMetadata(key: childInfoKey, value: updatedInfoBuffer)
+        // Create cancellation coordinator job directly
+        let coordinatorJob = WorkflowCoordinatorJob(
+            workflowId: childWorkflowId,
+            workflowType: "",  // Not needed for cancellation
+            action: .cancel,
+            stepIndex: 0
+        )
+
+        _ = try await pushJob(coordinatorJob)
+    }
+
+    /// Get the status of a child workflow
+    func getChildWorkflowStatus<Input: Codable & Sendable, Output: Codable & Sendable>(
+        _ childWorkflowId: WorkflowID,
+        inputType: Input.Type,
+        outputType: Output.Type
+    ) async throws -> WorkflowExecutionStatus<Input, Output>? {
+        // Get execution from repository
+        guard let execution = try await queueDriver.workflowRepository.getExecution(childWorkflowId) else {
+            return nil
         }
+
+        // Decode input and output from ByteBuffers using registry
+        let input = try workflowRegistry.decode(execution.inputData, as: Input.self)
+        let output = try execution.result.map { try workflowRegistry.decode($0, as: Output.self) }
+
+        // Convert WorkflowExecution to WorkflowExecutionStatus
+        var workflowState = WorkflowState<Input, Output>(
+            id: execution.id,
+            workflowType: execution.workflowName,
+            input: input,
+            status: execution.status,
+            queuedAt: execution.queuedAt,
+            scheduledAt: nil,
+            startTime: execution.startedAt ?? execution.createdAt,
+            currentStep: execution.currentStep
+        )
+
+        // Set additional properties
+        workflowState.output = output
+        workflowState.error = execution.error
+        workflowState.endTime = execution.completedAt
+
+        return WorkflowExecutionStatus(from: workflowState)
+    }
+
+    // MARK: - Private Helper Methods
+
+    private func waitForChildWorkflowCompletion<Input: Codable & Sendable, Output: Codable & Sendable>(
+        childWorkflowId: WorkflowID,
+        childWorkflowType: String,
+        inputType: Input.Type,
+        outputType: Output.Type,
+        options: ChildWorkflowOptions
+    ) async throws -> ChildWorkflowResult<Output> {
+
+        logger.debug(
+            "⏳ Parent waiting for child workflow completion (event-driven)",
+            metadata: [
+                "parentWorkflowId": .string(workflowId.value),
+                "childWorkflowId": .string(childWorkflowId.value),
+            ]
+        )
+
+        // Create completion stream for event-driven waiting
+        let (stream, continuation) = ChildWorkflowCompletionStream.makeStream(childWorkflowId: childWorkflowId.value)
+
+        // Register the continuation in the global registry so the middleware can complete it
+        ChildWorkflowRegistry.shared.register(childWorkflowId: childWorkflowId, continuation: continuation)
+
+        let startWaitTime = Date()
+
+        // Calculate timeout from options
+        let timeoutTask: Task<Void, Never>?
+        if let runTimeout = options.runTimeout {
+            let timeoutSeconds =
+                TimeInterval(runTimeout.components.seconds) + (TimeInterval(runTimeout.components.attoseconds) / 1_000_000_000_000_000_000)
+            timeoutTask = Task {
+                try? await Task.sleep(for: .seconds(timeoutSeconds))
+                ChildWorkflowRegistry.shared.failWorkflow(
+                    childWorkflowId: childWorkflowId,
+                    error: WorkflowError.workflowTimedOut
+                )
+            }
+        } else if let executionTimeout = options.executionTimeout {
+            let timeoutSeconds =
+                TimeInterval(executionTimeout.components.seconds)
+                + (TimeInterval(executionTimeout.components.attoseconds) / 1_000_000_000_000_000_000)
+            timeoutTask = Task {
+                try? await Task.sleep(for: .seconds(timeoutSeconds))
+                ChildWorkflowRegistry.shared.failWorkflow(
+                    childWorkflowId: childWorkflowId,
+                    error: WorkflowError.workflowTimedOut
+                )
+            }
+        } else {
+            timeoutTask = nil
+        }
+
+        defer {
+            // Cancel timeout task and cleanup registry
+            timeoutTask?.cancel()
+            ChildWorkflowRegistry.shared.cancelWorkflow(childWorkflowId: childWorkflowId)
+        }
+
+        // Wait for child workflow completion via event stream
+        for try await result in stream {
+            switch result {
+            case .success(let outputBuffer):
+                logger.debug(
+                    "🎉 Child workflow completed successfully! (event-driven)",
+                    metadata: [
+                        "childWorkflowId": .string(childWorkflowId.value),
+                        "waitTime": .stringConvertible(Date().timeIntervalSince(startWaitTime)),
+                    ]
+                )
+
+                // Decode the output from ByteBuffer
+                let output = try JSONDecoder().decode(Output.self, from: outputBuffer)
+
+                return ChildWorkflowResult(
+                    childWorkflowId: childWorkflowId,
+                    output: output,
+                    duration: Date().timeIntervalSince(startWaitTime),
+                    completed: true
+                )
+
+            case .failure(let error):
+                logger.error(
+                    "❌ Child workflow failed (event-driven)",
+                    metadata: [
+                        "childWorkflowId": .string(childWorkflowId.value),
+                        "error": .string(error.localizedDescription),
+                    ]
+                )
+                throw error
+            }
+        }
+
+        // This should never be reached due to the stream design
+        throw WorkflowError.workflowFailed("Child workflow stream ended unexpectedly")
     }
 }
