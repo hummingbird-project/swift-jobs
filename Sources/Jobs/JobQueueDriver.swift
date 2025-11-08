@@ -90,7 +90,7 @@ public struct JobQueueResult<JobID: Sendable>: Sendable {
 public protocol JobOptionsProtocol: Sendable {
     /// Initialize job options with default value    
     var delayUntil: Date { get }
-    
+
     init(delayUntil: Date)
 }
 
