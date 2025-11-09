@@ -150,17 +150,6 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await queue.removeFairnessWeightOverride(key: key)
     }
 
-    /// Record job execution for fairness tracking
-    public func recordJobExecution(fairnessKey: String?, executionTimeMs: Int64, fairnessWeight: Double) async throws {
-        let executionTime = Double(executionTimeMs) / 1000.0  // Convert ms to seconds
-        await queue.recordJobExecution(fairnessKey: fairnessKey, executionTime: executionTime, weight: fairnessWeight)
-    }
-
-    /// Record job execution for fairness tracking (backwards compatibility)
-    public func recordJobExecution(jobID: JobID, executionTime: TimeInterval, fairnessKey: String?, fairnessWeight: Double) async {
-        await queue.recordJobExecution(fairnessKey: fairnessKey, executionTime: executionTime, weight: fairnessWeight)
-    }
-
     public func failed(jobID: JobID, error: any Error) async throws {
         if await self.queue.clearAndReturnPendingJob(jobID: jobID) != nil {
             self.onFailedJob(jobID, error)
