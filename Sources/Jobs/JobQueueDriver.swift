@@ -103,6 +103,26 @@ public protocol JobOptionsProtocol: Sendable {
     init(fairnessKey: String?, fairnessWeight: Double)
 }
 
+/// Protocol for job queue drivers that support dynamic fairness weight overrides
+public protocol FairnessCapableJobQueue {
+    /// Set a dynamic weight override for a fairness key
+    /// - Parameters:
+    ///   - key: Fairness key to override
+    ///   - weight: New weight value (higher = more resources)
+    func setFairnessWeightOverride(key: String, weight: Double) async throws
+
+    /// Remove a dynamic weight override for a fairness key
+    /// - Parameter key: Fairness key to restore to default weight
+    func removeFairnessWeightOverride(key: String) async throws
+
+    /// Record job execution for fairness tracking (optional - some implementations handle this automatically)
+    /// - Parameters:
+    ///   - fairnessKey: Fairness key for resource allocation
+    ///   - executionTimeMs: Job execution time in milliseconds
+    ///   - fairnessWeight: Fairness weight for this job type
+    func recordJobExecution(fairnessKey: String?, executionTimeMs: Int64, fairnessWeight: Double) async throws
+}
+
 /// Options for retrying a job
 public struct JobRetryOptions {
     /// When to execute the job

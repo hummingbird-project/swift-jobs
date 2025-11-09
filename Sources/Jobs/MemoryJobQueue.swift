@@ -22,7 +22,7 @@ import Foundation
 #endif
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
-public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJobQueue {
+public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJobQueue, FairnessCapableJobQueue {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
     /// Job options
@@ -140,19 +140,25 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.clearPendingJob(jobID: jobID)
     }
 
-    /// Record job execution for fairness tracking
-    func recordJobExecution(jobID: JobID, executionTime: TimeInterval, fairnessKey: String?, fairnessWeight: Double) async {
-        await queue.recordJobExecution(fairnessKey: fairnessKey, executionTime: executionTime, weight: fairnessWeight)
-    }
-
     /// Set a dynamic weight override for a fairness key
-    func setFairnessWeightOverride(key: String, weight: Double) async {
+    public func setFairnessWeightOverride(key: String, weight: Double) async throws {
         await queue.setFairnessWeightOverride(key: key, weight: weight)
     }
 
     /// Remove a dynamic weight override for a fairness key
-    func removeFairnessWeightOverride(key: String) async {
+    public func removeFairnessWeightOverride(key: String) async throws {
         await queue.removeFairnessWeightOverride(key: key)
+    }
+
+    /// Record job execution for fairness tracking
+    public func recordJobExecution(fairnessKey: String?, executionTimeMs: Int64, fairnessWeight: Double) async throws {
+        let executionTime = Double(executionTimeMs) / 1000.0  // Convert ms to seconds
+        await queue.recordJobExecution(fairnessKey: fairnessKey, executionTime: executionTime, weight: fairnessWeight)
+    }
+
+    /// Record job execution for fairness tracking (backwards compatibility)
+    public func recordJobExecution(jobID: JobID, executionTime: TimeInterval, fairnessKey: String?, fairnessWeight: Double) async {
+        await queue.recordJobExecution(fairnessKey: fairnessKey, executionTime: executionTime, weight: fairnessWeight)
     }
 
     public func failed(jobID: JobID, error: any Error) async throws {
