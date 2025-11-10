@@ -28,7 +28,7 @@ Job queue for processing workloads asynchronously across multiple nodes.
 ```swift
 // create job queue stored in local memory, that can run four jobs concurrently
 let jobQueue = JobQueue(
-    .memory, 
+    .memory,
     logger: logger
 )
 // Define email job parameters. Its job name has to be unique
@@ -41,15 +41,15 @@ struct SendEmailJobParameters: JobParameters {
 // Register jobs with job queue
 jobQueue.registerJob(parameters: SendEmailJobParameters.self) { parameters, context in
     try await myEmailService.sendEmail(
-        to: parameters.to, 
-        subject: parameters.subject, 
+        to: parameters.to,
+        subject: parameters.subject,
         body: parameters.body
     )
 }
 // Push instance of job onto queue
 jobQueue.push(SendEmailJobParameters(
-    to: "Ellen", 
-    subject:"Hello", 
+    to: "Ellen",
+    subject:"Hello",
     body: "Hi there!"
 ))
 ```
@@ -84,58 +84,54 @@ Workflows provide a way to coordinate multiple jobs with complex execution patte
 ```swift
 // Define activity parameters
 struct ValidateOrderActivity: ActivityParameters {
-    static let activityName = "ValidateOrder"
-    
+
     struct Input: Codable, Sendable {
         let orderId: String
         let customerId: String
         let amount: Double
     }
-    
+
     struct Output: Codable, Sendable {
         let result: Bool
     }
 }
 
 struct ProcessPaymentActivity: ActivityParameters {
-    static let activityName = "ProcessPayment"
-    
+
     struct Input: Codable, Sendable {
         let customerId: String
         let amount: Double
     }
-    
+
     struct Output: Codable, Sendable {
         let paymentId: String
     }
 }
 
 struct UpdateOrderStatusActivity: ActivityParameters {
-    static let activityName = "UpdateOrderStatus"
-    
+
     struct Input: Codable, Sendable {
         let orderId: String
         let status: String
     }
-    
+
     struct Output: Codable, Sendable {}
 }
 
 // Define a workflow that processes orders
 struct OrderProcessingWorkflow: WorkflowProtocol {
-    static let workflowName = "OrderProcessing"
-    
+
     struct Input: Codable, Sendable {
         let orderId: String
         let customerId: String
         let amount: Double
     }
-    
+
     struct Output: Codable, Sendable {
         let orderId: String
         let paymentId: String
     }
-    
+
     func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
         // Step 1: Validate the order
         let isValid = try await context.executeActivity(
@@ -146,11 +142,11 @@ struct OrderProcessingWorkflow: WorkflowProtocol {
                 amount: input.amount
             )
         )
-        
+
         guard isValid.result else {
             throw WorkflowError.validationFailed("Invalid order")
         }
-        
+
         // Step 2: Process payment
         let payment = try await context.executeActivity(
             ProcessPaymentActivity.self,
@@ -159,7 +155,7 @@ struct OrderProcessingWorkflow: WorkflowProtocol {
                 amount: input.amount
             )
         )
-        
+
         // Step 3: Update order status
         try await context.executeActivity(
             UpdateOrderStatusActivity.self,
@@ -168,7 +164,7 @@ struct OrderProcessingWorkflow: WorkflowProtocol {
                 status: "completed"
             )
         )
-        
+
         return Output(
             orderId: input.orderId,
             paymentId: payment.paymentId
@@ -183,12 +179,12 @@ struct OrderActivityContainer: ActivityContainer {
             // Validation logic here
             return ValidateOrderActivity.Output(result: true)
         }
-        
+
         registry.registerActivity(ProcessPaymentActivity.self) { input in
             // Payment processing logic here
             return ProcessPaymentActivity.Output(paymentId: UUID().uuidString)
         }
-        
+
         registry.registerActivity(UpdateOrderStatusActivity.self) { input in
             // Status update logic here
             return UpdateOrderStatusActivity.Output()
@@ -211,7 +207,7 @@ let workflowId = try await workflowEngine.startWorkflow(
     OrderProcessingWorkflow.self,
     input: OrderProcessingWorkflow.Input(
         orderId: "ORDER-123",
-        customerId: "CUSTOMER-456", 
+        customerId: "CUSTOMER-456",
         amount: 99.99
     )
 )

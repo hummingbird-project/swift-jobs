@@ -330,8 +330,8 @@ public struct ActivityExecutionJob: JobParameters {
     public let inputBuffer: ByteBuffer
     /// Timeout for activity execution
     public let timeout: Duration?
-    /// Retry policy type name
-    public let retryPolicyType: String?
+    /// Retry policy for this activity
+    public let retryPolicy: StepRetryPolicy?
     /// Workflow type for continuation after activity completion
     public let workflowType: String
     /// Current step index for continuation
@@ -343,7 +343,7 @@ public struct ActivityExecutionJob: JobParameters {
         activityName: String,
         input: Input,
         timeout: Duration? = nil,
-        retryPolicyType: String? = nil,
+        retryPolicy: StepRetryPolicy? = nil,
         workflowType: String,
         stepIndex: Int
     ) throws {
@@ -352,7 +352,7 @@ public struct ActivityExecutionJob: JobParameters {
         self.activityName = activityName
         self.inputBuffer = try JSONEncoder().encodeAsByteBuffer(input, allocator: ByteBufferAllocator())
         self.timeout = timeout
-        self.retryPolicyType = retryPolicyType
+        self.retryPolicy = retryPolicy
         self.workflowType = workflowType
         self.stepIndex = stepIndex
     }
@@ -374,11 +374,14 @@ public struct ActivityErrorInfo: Codable, Sendable {
     public let errorType: String
     /// Whether this error represents cancellation
     public let isCancellation: Bool
+    /// Whether this error should not be retried
+    public let isNonRetryable: Bool
 
-    public init(message: String, errorType: String, isCancellation: Bool = false) {
+    public init(message: String, errorType: String, isCancellation: Bool = false, isNonRetryable: Bool = false) {
         self.message = message
         self.errorType = errorType
         self.isCancellation = isCancellation
+        self.isNonRetryable = isNonRetryable
     }
 
     /// Create from Swift Error
@@ -386,5 +389,12 @@ public struct ActivityErrorInfo: Codable, Sendable {
         self.message = error.localizedDescription
         self.errorType = String(describing: type(of: error))
         self.isCancellation = error is CancellationError || error is WorkflowCancelledFailure
+
+        // Check if error is non-retryable
+        if let appError = error as? ApplicationError {
+            self.isNonRetryable = appError.isNonRetryable
+        } else {
+            self.isNonRetryable = false
+        }
     }
 }

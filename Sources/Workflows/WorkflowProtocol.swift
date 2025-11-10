@@ -130,6 +130,24 @@ public enum WorkflowError: Error {
     case invalidActivityOutput
 }
 
+/// Application error for workflow/activity execution
+public struct ApplicationError: Error, Sendable {
+    public let message: String
+    public let type: String?
+    public let isNonRetryable: Bool
+
+    public init(message: String, type: String? = nil, isNonRetryable: Bool = false) {
+        self.message = message
+        self.type = type
+        self.isNonRetryable = isNonRetryable
+    }
+
+    /// Creates a non-retryable failure
+    public static func newNonRetryableFailure(_ message: String, type: String) -> ApplicationError {
+        ApplicationError(message: message, type: type, isNonRetryable: true)
+    }
+}
+
 /// Error thrown when workflow or activity is cancelled
 public struct WorkflowCancelledFailure: Error, Sendable {
     public let message: String

@@ -274,7 +274,10 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
     }
 
     private func registerWorkflowCoordinator() {
-        jobQueue.registerJob(parameters: WorkflowCoordinatorJob.self) { params, context in
+        jobQueue.registerJob(
+            parameters: WorkflowCoordinatorJob.self,
+            retryStrategy: StepRetryPolicy.default.strategy
+        ) { params, context in
             try await self.handleWorkflowCoordination(params, context: context)
         }
     }
@@ -315,13 +318,20 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
 
     private func registerScheduledWorkflowJob() {
         // Register handler for scheduled workflow jobs
-        jobQueue.registerJob(parameters: ScheduledWorkflowExecutionJob.self) { params, context in
+        jobQueue.registerJob(
+            parameters: ScheduledWorkflowExecutionJob.self,
+            retryStrategy: StepRetryPolicy.default.strategy
+        ) { params, context in
             try await self.handleScheduledWorkflowExecution(params, context: context)
         }
     }
 
     private func registerActivityExecutor() {
-        jobQueue.registerJob(parameters: ActivityExecutionJob.self) { params, context in
+        // Register activity executor with context-aware retry strategy
+        jobQueue.registerJob(
+            parameters: ActivityExecutionJob.self,
+            retryStrategy: ContextAwareActivityRetryStrategy()
+        ) { params, context in
             try await self.handleActivityExecution(params, context: context)
         }
     }
@@ -1042,72 +1052,65 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         _ job: ActivityExecutionJob,
         context: JobExecutionContext
     ) async throws {
-        context.logger.debug(
-            "⚡ Executing activity",
-            metadata: [
-                "activityName": .string(job.activityName),
-                "activityId": .string(job.activityId.value),
-                "workflowId": .string(job.workflowId.value),
-            ]
-        )
-
-        do {
-            let activityContext = ActivityExecutionContext(
-                activityJob: job,
-                jobContext: context,
-                jobId: context.jobID
-            )
-
-            let resultBuffer = try await internalRegistry.executeActivity(
-                name: job.activityName,
-                inputBuffer: job.inputBuffer,
-                context: activityContext
-            )
-
-            // Store activity result as ByteBuffer directly to avoid double encoding
-            let activityResult = ActivityResult<ByteBuffer>.success(resultBuffer)
-            try await jobQueue.queue.workflowRepository.saveResult(job.activityId, result: activityResult)
-
+        // Set task-local context for retry strategy access
+        try await ActivityExecutionJob.$current.withValue(job) {
             context.logger.debug(
-                "✅ Activity completed successfully",
+                "⚡ Executing activity",
                 metadata: [
-                    "activityId": .string(job.activityId.value),
                     "activityName": .string(job.activityName),
-                ]
-            )
-
-            // Activity completion is handled by ActivityCallbackMiddleware
-            // which notifies the workflow via waitForActivity() mechanism
-
-        } catch {
-            // Store activity failure using repository with proper error information
-            let errorInfo = ActivityErrorInfo(from: error)
-            let failureResult = ActivityResult<ByteBuffer>.failure(errorInfo)
-            try await jobQueue.queue.workflowRepository.saveResult(job.activityId, result: failureResult)
-
-            context.logger.error(
-                "Activity execution failed",
-                metadata: [
                     "activityId": .string(job.activityId.value),
-                    "activityName": .string(job.activityName),
-                    "error": .string(error.localizedDescription),
-                ]
-            )
-
-            // Activity failure is handled by ActivityCallbackMiddleware
-            // which notifies the workflow via waitForActivity() mechanism
-
-            context.logger.debug(
-                "Triggered workflow continuation after activity failure",
-                metadata: [
                     "workflowId": .string(job.workflowId.value),
-                    "stepIndex": .stringConvertible(job.stepIndex + 1),
                 ]
             )
 
-            // Don't throw - let the ActivityCallbackMiddleware handle workflow notification
-            // Throwing here causes the job queue to retry the activity job
-        }
+            do {
+                let activityContext = ActivityExecutionContext(
+                    activityJob: job,
+                    jobContext: context,
+                    jobId: context.jobID
+                )
+
+                let resultBuffer = try await internalRegistry.executeActivity(
+                    name: job.activityName,
+                    inputBuffer: job.inputBuffer,
+                    context: activityContext
+                )
+
+                // Store activity result as ByteBuffer directly to avoid double encoding
+                let activityResult = ActivityResult<ByteBuffer>.success(resultBuffer)
+                try await jobQueue.queue.workflowRepository.saveResult(job.activityId, result: activityResult)
+
+                context.logger.debug(
+                    "✅ Activity completed successfully",
+                    metadata: [
+                        "activityId": .string(job.activityId.value),
+                        "activityName": .string(job.activityName),
+                    ]
+                )
+
+                // Activity completion is handled by ActivityCallbackMiddleware
+                // which notifies the workflow via waitForActivity() mechanism
+
+            } catch {
+                // Store activity failure using repository with proper error information
+                let errorInfo = ActivityErrorInfo(from: error)
+                let failureResult = ActivityResult<ByteBuffer>.failure(errorInfo)
+                try await jobQueue.queue.workflowRepository.saveResult(job.activityId, result: failureResult)
+
+                context.logger.error(
+                    "Activity execution failed",
+                    metadata: [
+                        "activityId": .string(job.activityId.value),
+                        "activityName": .string(job.activityName),
+                        "attempt": .stringConvertible(context.attempt),
+                        "error": .string(error.localizedDescription),
+                    ]
+                )
+
+                // Re-throw to let job queue handle retry logic
+                throw error
+            }
+        }  // Close task-local context
     }
 
     /// Register DelayJob for workflow sleep functionality
@@ -1457,4 +1460,39 @@ private final class WorkflowCompletionMiddleware: JobMiddleware {
 /// Extension to make the engine discoverable
 extension WorkflowEngine: CustomStringConvertible {
     public var description: String { "WorkflowEngine<\(String(describing: Queue.self))>" }
+}
+
+/// Context-aware retry strategy that accesses job parameters through task-local storage
+private struct ContextAwareActivityRetryStrategy: JobRetryStrategy {
+    func shouldRetry(attempt: Int, error: Error) -> Bool {
+        // Try to access current ActivityExecutionJob through task-local context
+        if let currentJob = ActivityExecutionJob.current {
+            let retryPolicy = currentJob.retryPolicy ?? StepRetryPolicy.default
+            let strategy = retryPolicy.strategy
+            return strategy.shouldRetry(attempt: attempt, error: error)
+        }
+
+        // Fallback to default workflow-aware strategy
+        let defaultStrategy = StepRetryPolicy.default.strategy
+        return defaultStrategy.shouldRetry(attempt: attempt, error: error)
+    }
+
+    func calculateBackoff(attempt: Int) -> Duration {
+        // Try to access current ActivityExecutionJob through task-local context
+        if let currentJob = ActivityExecutionJob.current {
+            let retryPolicy = currentJob.retryPolicy ?? StepRetryPolicy.default
+            let strategy = retryPolicy.strategy
+            return strategy.calculateBackoff(attempt: attempt)
+        }
+
+        // Fallback to default workflow-aware strategy
+        let defaultStrategy = StepRetryPolicy.default.strategy
+        return defaultStrategy.calculateBackoff(attempt: attempt)
+    }
+}
+
+/// Extension to support task-local access to current ActivityExecutionJob
+extension ActivityExecutionJob {
+    @TaskLocal
+    static var current: ActivityExecutionJob?
 }

@@ -256,14 +256,6 @@ public final class WorkflowExecutionContext: Sendable {
             ]
         )
 
-        // Get retry policy type name if provided
-        let retryPolicyType: String?
-        if let retryPolicy = options.retryPolicy {
-            retryPolicyType = String(describing: type(of: retryPolicy))
-        } else {
-            retryPolicyType = nil
-        }
-
         // Check if this activity already completed (replay safety)
         if let result = try await queueDriver.getResult(ActivityID(activityId), resultType: Output.self) {
             switch result {
@@ -311,7 +303,7 @@ public final class WorkflowExecutionContext: Sendable {
             activityName: activityName,
             input: input,
             timeout: options.startToCloseTimeout,
-            retryPolicyType: retryPolicyType,
+            retryPolicy: options.retryPolicy,
             workflowType: workflowType,
             stepIndex: currentStepIndex
         )

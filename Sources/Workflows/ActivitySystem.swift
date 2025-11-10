@@ -83,7 +83,7 @@ public struct ActivityOptions: Sendable {
     /// Maximum time the activity can run before timing out
     public let startToCloseTimeout: Duration?
     /// Retry policy for failed activities
-    public let retryPolicy: (any JobRetryStrategy)?
+    public let retryPolicy: StepRetryPolicy?
     /// How to handle cancellation of this activity
     public let cancellationType: ActivityCancellationType
     /// Heartbeat timeout for cancellation detection
@@ -91,7 +91,7 @@ public struct ActivityOptions: Sendable {
 
     public init(
         startToCloseTimeout: Duration? = nil,
-        retryPolicy: (any JobRetryStrategy)? = nil,
+        retryPolicy: StepRetryPolicy? = nil,
         cancellationType: ActivityCancellationType = .TRY_CANCEL,
         heartbeatTimeout: Duration? = nil
     ) {
