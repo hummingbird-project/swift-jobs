@@ -37,32 +37,36 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         public let fairnessWeight: Double
 
         /// Requirement from `JobOptionsProtocol`
-        public init() {
-            self.delayUntil = Date.now
+        /// - Parameters:
+        ///   - delayUntil: When to execute the job
+        public init(delayUntil: Date = Date.now) {
+            self.delayUntil = delayUntil
             self.priority = 1
             self.fairnessKey = nil
             self.fairnessWeight = 1.0
         }
-
-        public init(delayUntil: Date?) {
-            self.delayUntil = delayUntil ?? Date.now
-            self.priority = 1
-            self.fairnessKey = nil
-            self.fairnessWeight = 1.0
-        }
-
+        /// Requirement from `JobOptionsProtocol`
+        /// - Parameters:
+        ///   - delayUntil: When to execute the job
+        ///   - priority: Priority level (higher number = higher priority)
+        ///   - fairnessKey: Fairness key for resource allocation (optional)
+        ///   - fairnessWeight: Fairness weight for this job type (higher = more resources)
         public init(
-            delayUntil: Date? = nil,
+            delayUntil: Date = Date.now,
             priority: Int = 1,
             fairnessKey: String? = nil,
             fairnessWeight: Double = 1.0
         ) {
-            self.delayUntil = delayUntil ?? Date.now
+            self.delayUntil = delayUntil
             self.priority = Swift.max(1, priority)
             self.fairnessKey = fairnessKey
             self.fairnessWeight = Swift.max(0.1, fairnessWeight)
         }
 
+        /// Requirement from `JobOptionsProtocol`
+        /// - Parameters:
+        ///   - fairnessKey: Fairness key for resource allocation (optional)
+        ///   - fairnessWeight: Fairness weight for this job type (higher = more resources)
         public init(fairnessKey: String?, fairnessWeight: Double) {
             self.fairnessKey = fairnessKey
             self.fairnessWeight = fairnessWeight
@@ -71,6 +75,11 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
 
         /// Create job options with fairness key and weight
+        /// - Parameters:
+        ///   - key: Fairness key for resource allocation (optional)
+        ///   - weight: Fairness weight for this job type (higher = more resources)
+        ///   - priority: Priority of the job (higher = more resources)
+        ///   - delayUntil: Date to delay the job until (optional)
         public static func fairness(
             key: String,
             weight: Double = 1.0,

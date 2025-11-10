@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import ExtrasBase64
 import Logging
 import NIOCore
 import ServiceLifecycle
@@ -292,10 +293,10 @@ public struct JobSchedule: MutableCollection, Sendable {
             ///   - schedulerLock: Define how scheduler lock should be acquired if at all. If you have multiple scheduler
             ///       processes you should set this to acquire a lock so one scheduler can be defined the primary
             public init(
-                jobOptions: Driver.JobOptions = .init(),
+                jobOptions: Driver.JobOptions = .init(delayUntil: .now),
                 schedulerLock: ExclusiveLock = .ignore
             ) {
-                self.jobOptions = .init()
+                self.jobOptions = jobOptions
                 self.schedulerLock = schedulerLock
             }
         }
@@ -314,7 +315,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         /// Run Job scheduler
         public func run() async throws {
             let bytes: [UInt8] = (0..<16).map { _ in UInt8.random(in: 0...255) }
-            let lockID = ByteBuffer(string: String(base64Encoding: bytes))
+            let lockID = ByteBuffer(string: Base64.encodeToString(bytes: bytes))
 
             try await self.jobQueue.queue.waitUntilReady()
 
