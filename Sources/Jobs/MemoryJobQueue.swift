@@ -74,6 +74,18 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             self.delayUntil = Date.now
         }
 
+        /// Requirement from `JobOptionsProtocol`
+        /// - Parameters:
+        ///   - fairnessKey: Fairness key for resource allocation (optional)
+        ///   - fairnessWeight: Fairness weight for this job type (higher = more resources)
+        ///   - delayUntil: Date to delay the job until (optional)
+        public init(fairnessKey: String?, fairnessWeight: Double, delayUntil: Date) {
+            self.fairnessKey = fairnessKey
+            self.fairnessWeight = fairnessWeight
+            self.priority = 1
+            self.delayUntil = delayUntil
+        }
+
         /// Create job options with fairness key and weight
         /// - Parameters:
         ///   - key: Fairness key for resource allocation (optional)
@@ -84,7 +96,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             key: String,
             weight: Double = 1.0,
             priority: Int = 1,
-            delayUntil: Date? = nil
+            delayUntil: Date = Date.now
         ) -> JobOptions {
             JobOptions(
                 delayUntil: delayUntil,

@@ -714,7 +714,7 @@ struct FairnessTests {
 
 extension MemoryQueue.JobOptions {
     /// Create job options with priority only
-    static func priority(_ priority: Int, delayUntil: Date? = nil) -> MemoryQueue.JobOptions {
+    static func priority(_ priority: Int, delayUntil: Date = Date.now) -> MemoryQueue.JobOptions {
         MemoryQueue.JobOptions(delayUntil: delayUntil, priority: priority)
     }
 }
