@@ -191,7 +191,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
     /// Get fairness statistics for monitoring
     /// Returns a dictionary mapping fairness keys to their fairness statistics
-    public func getFairnessStats() async -> [String: FairnessStats] {
+    public func getFairnessStats() async throws -> [String: FairnessStats] {
         await queue.getFairnessStats()
     }
 

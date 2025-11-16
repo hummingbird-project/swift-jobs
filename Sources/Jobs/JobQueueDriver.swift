@@ -126,7 +126,7 @@ public protocol FairnessCapableJobQueue {
 
     /// Get fairness statistics for monitoring
     /// - Returns: A dictionary mapping fairness keys to their fairness statistics
-    func getFairnessStats() async -> [String: FairnessStats]
+    func getFairnessStats() async throws -> [String: FairnessStats]
 }
 
 /// Fairness statistics for a specific fairness key
