@@ -112,40 +112,174 @@ public protocol DelayUntilJobOptionsProtocol: Sendable {
     init(delayUntil: Date)
 }
 
-/// Protocol for job queue drivers that support dynamic fairness weight overrides
+/// Protocol for job queue drivers that support stride scheduling with dynamic fairness controls.
+///
+/// ## Overview
+///
+/// This protocol extends basic job queue functionality with fairness capabilities,
+/// allowing for proportional resource allocation across different tenants or job types.
+/// Implementations use stride scheduling algorithms to ensure fair execution while
+/// supporting runtime weight adjustments.
+///
+/// ## Fairness Model
+///
+/// - **Fairness Keys**: String identifiers that group jobs for fair scheduling
+/// - **Weights**: Numerical values that determine relative execution frequency
+/// - **Pass Values**: Internal scheduling tokens assigned to jobs for ordering
+/// - **Virtual Time**: Per-key counters that track fairness progression
+///
+/// ## Weight Override System
+///
+/// The protocol supports dynamic weight adjustments that take effect immediately
+/// for new jobs while preserving fairness guarantees for jobs already in the queue.
+///
+/// ## Example Usage
+///
+/// ```swift
+/// // Set up weight overrides for different tenant priorities
+/// try await queue.setFairnessWeightOverride(key: "premium-tenant", weight: 10.0)
+/// try await queue.setFairnessWeightOverride(key: "standard-tenant", weight: 1.0)
+///
+/// // Monitor fairness distribution
+/// let stats = try await queue.getFairnessStats()
+/// for (key, stat) in stats {
+///     print("\(key): weight=\(stat.weight), virtualTime=\(stat.virtualTime)")
+/// }
+///
+/// // Remove overrides to restore default behavior
+/// try await queue.removeFairnessWeightOverride(key: "premium-tenant")
+/// ```
 public protocol FairnessCapableJobQueue {
-    /// Set a dynamic weight override for a fairness key
+    /// Sets a dynamic weight override for a fairness key.
+    ///
+    /// This method allows runtime adjustment of job execution frequency for a specific
+    /// fairness key without requiring service restarts. Higher weights result in more
+    /// frequent execution opportunities through smaller stride values.
+    ///
+    /// ## Behavior
+    /// - Takes effect immediately for newly enqueued jobs
+    /// - Existing jobs in the queue maintain their original pass values
+    /// - Overrides persist until explicitly removed
+    /// - Multiple calls with the same key update the existing override
+    ///
+    /// ## Weight Guidelines
+    /// - Must be positive (typically > 0.001)
+    /// - Relative ratios matter more than absolute values
+    /// - 2.0 vs 1.0 provides roughly 2:1 execution ratio
+    /// - Very large ratios may cause starvation concerns
+    ///
     /// - Parameters:
-    ///   - key: Fairness key to override
-    ///   - weight: New weight value (higher = more resources)
+    ///   - key: The fairness key to override
+    ///   - weight: The new weight value (higher = more frequent execution)
+    /// - Throws: Implementation-specific errors for invalid keys or weights
     func setFairnessWeightOverride(key: String, weight: Double) async throws
 
-    /// Remove a dynamic weight override for a fairness key
-    /// - Parameter key: Fairness key to restore to default weight
+    /// Removes a dynamic weight override for a fairness key.
+    ///
+    /// This method restores the fairness key to use default weights from job options
+    /// rather than any active override. The change affects newly enqueued jobs
+    /// immediately while preserving existing jobs' scheduling positions.
+    ///
+    /// ## Behavior
+    /// - Takes effect immediately for newly enqueued jobs
+    /// - No-op if no override exists for the specified key
+    /// - Existing jobs in the queue keep their original pass values
+    /// - Restores job-level `fairnessWeight` as the authoritative source
+    ///
+    /// - Parameter key: The fairness key to restore to default behavior
+    /// - Throws: Implementation-specific errors for invalid keys
     func removeFairnessWeightOverride(key: String) async throws
 
-    /// Get fairness statistics for monitoring
-    /// - Returns: A dictionary mapping fairness keys to their fairness statistics
+    /// Gets current fairness statistics for monitoring and debugging.
+    ///
+    /// This method provides visibility into the stride scheduling system's current
+    /// state, including virtual time progression, effective weights, and job counts
+    /// per fairness key.
+    ///
+    /// ## Use Cases
+    /// - **Monitoring**: Track fairness distribution across tenants
+    /// - **Debugging**: Investigate unexpected job execution patterns
+    /// - **Capacity Planning**: Analyze load distribution and bottlenecks
+    /// - **Override Verification**: Confirm weight override effects
+    /// - **Alerting**: Detect fairness imbalances or starvation conditions
+    ///
+    /// ## Data Freshness
+    /// Statistics reflect the current database state and may lag slightly behind
+    /// the most recent job enqueuing/execution activity depending on implementation.
+    ///
+    /// - Returns: A dictionary mapping active fairness keys to their current statistics
+    /// - Note: Only includes fairness keys that have been recently active
+    /// - Throws: Implementation-specific errors for database access issues
     func getFairnessStats() async throws -> [String: FairnessStats]
 }
 
-/// Fairness statistics for a specific fairness key
+/// Statistics for monitoring stride scheduling fairness per fairness key.
+///
+/// ## Overview
+///
+/// This structure provides insight into the current state of the stride scheduling
+/// algorithm for a specific fairness key, including virtual time progression,
+/// effective weights, and optional execution metrics.
+///
+/// ## Virtual Time Interpretation
+///
+/// Virtual time represents the scheduling "position" for a fairness key:
+/// - Lower values indicate higher priority (jobs get selected sooner)
+/// - Values advance by stride amounts: `stride = 1000 / max(weight, 0.001)`
+/// - Keys with higher weights have slower virtual time progression
+/// - Used to calculate pass values for newly enqueued jobs
+///
+/// ## Weight Sources
+///
+/// The effective weight reflects the final weight used for scheduling:
+/// - Database overrides (from `setFairnessWeightOverride`) take precedence
+/// - Falls back to job-level `fairnessWeight` values
+/// - Minimum weight is typically clamped to prevent division by zero
+///
+/// ## Usage Example
+///
+/// ```swift
+/// let stats = try await queue.getFairnessStats()
+/// for (key, stat) in stats {
+///     let ratio = stat.weight / 1.0  // Compare to baseline weight
+///     print("\(key): \(ratio)x priority, virtual_time=\(stat.virtualTime)")
+/// }
+/// ```
 public struct FairnessStats: Sendable, Codable {
-    /// Current virtual time for this fairness key
+    /// Current virtual time for this fairness key.
+    ///
+    /// This value represents the scheduling position and is used to assign
+    /// pass values to newly enqueued jobs. Lower values result in higher
+    /// priority job placement.
     public let virtualTime: Double
-    /// Current weight for this fairness key
+
+    /// Effective weight currently being used for this fairness key.
+    ///
+    /// This reflects the final weight after considering any active database
+    /// overrides. Higher weights result in more frequent job execution through
+    /// smaller stride values in the scheduling algorithm.
     public let weight: Double
-    /// Number of jobs executed (optional, for future extension)
+
+    /// Number of jobs for this fairness key (implementation-specific).
+    ///
+    /// This field's meaning varies by implementation:
+    /// - May represent pending jobs currently in the queue
+    /// - May represent total jobs executed historically
+    /// - May be `nil` if not tracked by the implementation
     public let executionCount: Int?
-    /// Average wait time for jobs with this fairness key (optional, for future extension)
+
+    /// Average wait time for jobs with this fairness key.
+    ///
+    /// This field represents the average time jobs spend waiting in the queue
+    /// before execution. May be `nil` if not tracked by the implementation.
     public let averageWaitTime: TimeInterval?
 
-    /// Initialize FairnessStats
+    /// Creates fairness statistics for a specific fairness key.
     /// - Parameters:
     ///   - virtualTime: Current virtual time for this fairness key
-    ///   - weight: Current weight for this fairness key
-    ///   - executionCount: Number of jobs executed (optional)
-    ///   - averageWaitTime: Average wait time for jobs (optional)
+    ///   - weight: Current effective weight for this fairness key
+    ///   - executionCount: Number of jobs executed (optional, for future extension)
+    ///   - averageWaitTime: Average wait time for jobs (optional, for future extension)
     public init(
         virtualTime: Double,
         weight: Double,
