@@ -87,9 +87,10 @@ public struct JobQueueResult<JobID: Sendable>: Sendable {
 }
 
 /// Core JobOptions
-public typealias CoreJobOptions = JobOptionsProtocol & FairnessJobOptionProtocol
+public typealias CoreJobOptions = DelayUntilJobOptionsProtocol & FairnessJobOptionsProtocol
 
-public protocol FairnessJobOptionProtocol {
+/// Protocol for FairnessJobOptions
+public protocol FairnessJobOptionsProtocol {
     /// Fairness key for resource allocation (optional)
     var fairnessKey: String? { get }
     /// Fairness weight for this job type (higher = more resources)
@@ -101,8 +102,8 @@ public protocol FairnessJobOptionProtocol {
     init(fairnessKey: String?, fairnessWeight: Double)
 }
 
-/// Protocol for JobOptions
-public protocol JobOptionsProtocol: Sendable {
+/// Protocol for DelayUntilJobOptions
+public protocol DelayUntilJobOptionsProtocol: Sendable {
     /// When to execute the job
     var delayUntil: Date { get }
     /// Initialize JobOptionsProtocol
@@ -122,6 +123,40 @@ public protocol FairnessCapableJobQueue {
     /// Remove a dynamic weight override for a fairness key
     /// - Parameter key: Fairness key to restore to default weight
     func removeFairnessWeightOverride(key: String) async throws
+
+    /// Get fairness statistics for monitoring
+    /// - Returns: A dictionary mapping fairness keys to their fairness statistics
+    func getFairnessStats() async -> [String: FairnessStats]
+}
+
+/// Fairness statistics for a specific fairness key
+public struct FairnessStats: Sendable, Codable {
+    /// Current virtual time for this fairness key
+    public let virtualTime: Double
+    /// Current weight for this fairness key
+    public let weight: Double
+    /// Number of jobs executed (optional, for future extension)
+    public let executionCount: Int?
+    /// Average wait time for jobs with this fairness key (optional, for future extension)
+    public let averageWaitTime: TimeInterval?
+
+    /// Initialize FairnessStats
+    /// - Parameters:
+    ///   - virtualTime: Current virtual time for this fairness key
+    ///   - weight: Current weight for this fairness key
+    ///   - executionCount: Number of jobs executed (optional)
+    ///   - averageWaitTime: Average wait time for jobs (optional)
+    public init(
+        virtualTime: Double,
+        weight: Double,
+        executionCount: Int? = nil,
+        averageWaitTime: TimeInterval? = nil
+    ) {
+        self.virtualTime = virtualTime
+        self.weight = weight
+        self.executionCount = executionCount
+        self.averageWaitTime = averageWaitTime
+    }
 }
 
 /// Options for retrying a job
