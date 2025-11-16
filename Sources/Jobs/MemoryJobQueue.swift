@@ -26,7 +26,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
     /// Job options
-    public struct JobOptions: JobOptionsProtocol {
+    public struct JobOptions: CoreJobOptions {
         /// When to execute the job
         public let delayUntil: Date
         /// Priority level (higher number = higher priority)

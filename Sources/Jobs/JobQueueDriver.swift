@@ -26,7 +26,7 @@ import Foundation
 /// Defines how to push and pop job data off a queue
 public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueueResult<JobID> {
     associatedtype JobID: CustomStringConvertible & Sendable
-    associatedtype JobOptions: JobOptionsProtocol
+    associatedtype JobOptions: CoreJobOptions
 
     /// Wait until job queue is ready
     func waitUntilReady() async throws
@@ -86,32 +86,29 @@ public struct JobQueueResult<JobID: Sendable>: Sendable {
     }
 }
 
-/// Protocol for JobOptions
-public protocol JobOptionsProtocol: Sendable {
-    /// When to execute the job
-    var delayUntil: Date { get }
+/// Core JobOptions
+public typealias CoreJobOptions = JobOptionsProtocol & FairnessJobOptionProtocol
+
+public protocol FairnessJobOptionProtocol {
     /// Fairness key for resource allocation (optional)
     var fairnessKey: String? { get }
     /// Fairness weight for this job type (higher = more resources)
     var fairnessWeight: Double { get }
-
-    /// Initialize JobOptionsProtocol
-    /// - Parameters:
-    ///   - delayUntil: When to execute the job
-    init(delayUntil: Date)
-
     /// Required protocol initializer for JobOptionsProtocol compliance
     /// - Parameters:
     ///   - fairnessKey: Fairness key for resource allocation (optional)
     ///   - fairnessWeight: Fairness weight for this job type
     init(fairnessKey: String?, fairnessWeight: Double)
+}
 
-    /// Required protocol initializer for JobOptionsProtocol compliance
+/// Protocol for JobOptions
+public protocol JobOptionsProtocol: Sendable {
+    /// When to execute the job
+    var delayUntil: Date { get }
+    /// Initialize JobOptionsProtocol
     /// - Parameters:
-    ///   - fairnessKey: Fairness key for resource allocation (optional)
-    ///   - fairnessWeight: Fairness weight for this job type
     ///   - delayUntil: When to execute the job
-    init(fairnessKey: String?, fairnessWeight: Double, delayUntil: Date)
+    init(delayUntil: Date)
 }
 
 /// Protocol for job queue drivers that support dynamic fairness weight overrides
