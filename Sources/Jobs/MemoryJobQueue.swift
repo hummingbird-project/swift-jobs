@@ -172,7 +172,9 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     }
 
     public func failed(jobID: JobID, error: any Error) async throws {
-        if await self.queue.clearAndReturnPendingJob(jobID: jobID) != nil {
+        if await self.queue.getPendingJob(jobID: jobID) != nil {
+            // Track completion for failed jobs too
+            await self.queue.clearPendingJob(jobID: jobID)
             self.onFailedJob(jobID, error)
         }
     }
@@ -212,10 +214,32 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             private var weightOverrides: [String: Double] = [:]
             private var nextJobID: Int = 0
 
+            // Execution tracking for statistics
+            private var executionCountByKey: [String: Int] = [:]
+            private var totalWaitTimeByKey: [String: TimeInterval] = [:]
+            private var jobStartTimes: [JobID: Date] = [:]
+
             mutating func recordExecution(fairnessKey: String?, executionTime: TimeInterval, weight: Double = 1.0) {
                 // Update weight tracking - virtual time is updated when job is selected
                 let key = fairnessKey ?? "default"
                 updateWeight(fairnessKey: key, weight: weight)
+
+                // Track execution count
+                executionCountByKey[key, default: 0] += 1
+            }
+
+            // Track job start time for wait time calculation
+            mutating func recordJobStart(jobId: JobID, fairnessKey: String?) {
+                jobStartTimes[jobId] = Date()
+            }
+
+            // Track job completion and calculate wait time
+            mutating func recordJobCompletion(jobId: JobID, fairnessKey: String?) {
+                guard let startTime = jobStartTimes.removeValue(forKey: jobId) else { return }
+
+                let key = fairnessKey ?? "default"
+                let waitTime = Date().timeIntervalSince(startTime)
+                totalWaitTimeByKey[key, default: 0] += waitTime
             }
 
             mutating func updateWeight(fairnessKey: String, weight: Double) {
@@ -284,6 +308,9 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                 globalVirtualTime = 0
                 weightOverrides.removeAll()
                 nextJobID = 0
+                executionCountByKey.removeAll()
+                totalWaitTimeByKey.removeAll()
+                jobStartTimes.removeAll()
             }
 
             // Get fairness statistics for monitoring
@@ -291,7 +318,25 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                 var stats: [String: FairnessStats] = [:]
                 for (key, virtualTime) in virtualTimeByKey {
                     let weight = weightOverrides[key] ?? 1.0
-                    stats[key] = FairnessStats(virtualTime: virtualTime, weight: weight)
+                    let executionCount = executionCountByKey[key]
+
+                    // Calculate average wait time
+                    let averageWaitTime: TimeInterval?
+                    if let totalWaitTime = totalWaitTimeByKey[key],
+                        let execCount = executionCount,
+                        execCount > 0
+                    {
+                        averageWaitTime = totalWaitTime / Double(execCount)
+                    } else {
+                        averageWaitTime = nil
+                    }
+
+                    stats[key] = FairnessStats(
+                        virtualTime: virtualTime,
+                        weight: weight,
+                        executionCount: executionCount,
+                        averageWaitTime: averageWaitTime
+                    )
                 }
                 return stats
             }
@@ -303,7 +348,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
 
         var queue: Deque<(job: QueuedJob, options: JobOptions)>
-        var pendingJobs: [JobID: ByteBuffer]
+        var pendingJobs: [JobID: (buffer: ByteBuffer, fairnessKey: String?)]
         var metadata: [String: (data: ByteBuffer, expires: Date)]
         var isStopped: Bool
         var strideScheduler = StrideScheduler()
@@ -327,7 +372,10 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
 
         func clearPendingJob(jobID: JobID) {
-            self.pendingJobs[jobID] = nil
+            if let pendingJob = self.pendingJobs.removeValue(forKey: jobID) {
+                // Track job completion for statistics
+                strideScheduler.recordJobCompletion(jobId: jobID, fairnessKey: pendingJob.fairnessKey)
+            }
         }
 
         func recordJobExecution(fairnessKey: String?, executionTime: TimeInterval, weight: Double = 1.0) {
@@ -356,23 +404,24 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func pauseJob(jobID: JobID) {
             let job = self.queue.first(where: { $0.job.id == jobID })
-            self.pendingJobs[jobID] = job?.job.jobBuffer
+            if let job = job {
+                self.pendingJobs[jobID] = (buffer: job.job.jobBuffer, fairnessKey: job.options.fairnessKey)
+            }
             self.queue.removeAll(where: { $0.job.id == jobID })
         }
 
         func resumeJob(jobID: JobID) {
-            if let jobBuffer = self.pendingJobs[jobID] {
-                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init()))
+            if let pendingJob = self.pendingJobs[jobID] {
+                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: pendingJob.buffer), options: .init()))
             } else {
                 print("Warning: attempted to resume job \(jobID) which is not pending")
             }
             self.clearPendingJob(jobID: jobID)
         }
 
-        func clearAndReturnPendingJob(jobID: JobID) -> ByteBuffer? {
+        func getPendingJob(jobID: JobID) -> ByteBuffer? {
             let instance = self.pendingJobs[jobID]
-            self.pendingJobs[jobID] = nil
-            return instance
+            return instance?.buffer
         }
 
         func next() async throws -> QueuedJob? {
@@ -400,13 +449,20 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                 }
 
                 let request = queue.remove(at: index)
-                self.pendingJobs[request.job.id] = request.job.jobBuffer
+                self.pendingJobs[request.job.id] = (
+                    buffer: request.job.jobBuffer,
+                    fairnessKey: request.options.fairnessKey
+                )
 
                 // Update fairness tracking when job starts execution
                 if let fairnessKey = request.options.fairnessKey {
                     strideScheduler.updateWeight(fairnessKey: fairnessKey, weight: request.options.fairnessWeight)
                     // Advance virtual time for this key since we're selecting this job
                     self.advanceVirtualTime(for: fairnessKey, weight: request.options.fairnessWeight)
+                    // Track job start time
+                    strideScheduler.recordJobStart(jobId: request.job.id, fairnessKey: fairnessKey)
+                } else {
+                    strideScheduler.recordJobStart(jobId: request.job.id, fairnessKey: nil)
                 }
 
                 return request.job

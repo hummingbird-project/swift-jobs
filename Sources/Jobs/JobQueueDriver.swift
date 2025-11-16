@@ -278,8 +278,8 @@ public struct FairnessStats: Sendable, Codable {
     /// - Parameters:
     ///   - virtualTime: Current virtual time for this fairness key
     ///   - weight: Current effective weight for this fairness key
-    ///   - executionCount: Number of jobs executed (optional, for future extension)
-    ///   - averageWaitTime: Average wait time for jobs (optional, for future extension)
+    ///   - executionCount: Number of jobs for this fairness key
+    ///   - averageWaitTime: Average wait time for jobs with this fairness key
     public init(
         virtualTime: Double,
         weight: Double,
