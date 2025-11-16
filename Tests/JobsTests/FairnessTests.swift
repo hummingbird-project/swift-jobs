@@ -683,7 +683,7 @@ struct FairnessTests {
             expectation.trigger()
         }
 
-        try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 1))) {
+        try await testJobQueue(jobQueue.processor()) {
             // Set weight overrides to test API functionality
             try await jobQueue.queue.setFairnessWeightOverride(key: "override-tenant", weight: 20.0)
 
@@ -730,7 +730,7 @@ struct FairnessTests {
             expectation.trigger()
         }
 
-        try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 1))) {
+        try await testJobQueue(jobQueue.processor()) {
             // Test extreme weight ratios to verify override system handles large differences
             try await jobQueue.queue.setFairnessWeightOverride(key: "vip-tenant", weight: 100.0)
 
@@ -777,7 +777,7 @@ struct FairnessTests {
             expectation.trigger()
         }
 
-        try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 1))) {
+        try await testJobQueue(jobQueue.processor()) {
             // Test graduated weight differences to verify weight recording and scheduling
             // Submit multiple rounds to see stride scheduler effects accumulate
             for round in 1...3 {
