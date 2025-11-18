@@ -675,7 +675,7 @@ struct FairnessTests {
     @Test func testDynamicWeightOverrideAPI() async throws {
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         let expectation = TestExpectation()
-        let executionOrder = Mutex<[String]>([])
+        let executionOrder: Mutex<[String]> = .init([])
 
         jobQueue.registerJob(parameters: TestJob.self) { job, context in
             try await Task.sleep(for: .milliseconds(5))
@@ -722,7 +722,7 @@ struct FairnessTests {
     @Test func testWeightOverridesWithExtremeRatios() async throws {
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         let expectation = TestExpectation()
-        let executionOrder = Mutex<[String]>([])
+        let executionOrder: Mutex<[String]> = .init([])
 
         jobQueue.registerJob(parameters: TestJob.self) { job, context in
             try await Task.sleep(for: .milliseconds(5))
@@ -769,7 +769,7 @@ struct FairnessTests {
     @Test func testWeightBasedExecutionOrdering() async throws {
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         let expectation = TestExpectation()
-        let executionOrder = Mutex<[String]>([])
+        let executionOrder: Mutex<[String]> = .init([])
 
         jobQueue.registerJob(parameters: TestJob.self) { job, context in
             try await Task.sleep(for: .milliseconds(5))
