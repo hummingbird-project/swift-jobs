@@ -21,7 +21,7 @@ import ServiceLifecycle
 /// Creates test client, runs test function abd ensures everything is
 /// shutdown correctly
 public func testJobQueue<Value>(
-    _ jobQueue: Service,
+    _ jobQueue: some Service,
     _ test: () async throws -> Value
 ) async throws -> Value {
     try await withThrowingTaskGroup(of: Void.self) { group in

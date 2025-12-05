@@ -578,6 +578,9 @@ struct JobsTests {
                 try await serviceGroup.run()
             }
 
+            // Wait a moment to ensure the processor starts and processes the unpause job (30)
+            try await Task.sleep(for: .milliseconds(100))
+
             try await jobQueue.resumeJob(jobID: pausableJob)
             try await expectation.wait(count: 2)
             await serviceGroup.triggerGracefulShutdown()

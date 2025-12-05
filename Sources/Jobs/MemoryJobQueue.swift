@@ -2,7 +2,7 @@
 //
 // This source file is part of the Hummingbird server framework project
 //
-// Copyright (c) 2021-2024 the Hummingbird authors
+// Copyright (c) 2021-2025 the Hummingbird authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -22,22 +22,88 @@ import Foundation
 #endif
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
-public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJobQueue {
+public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJobQueue, FairnessCapableJobQueue {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
     /// Job options
-    public struct JobOptions: JobOptionsProtocol {
+    public struct JobOptions: CoreJobOptions {
         /// When to execute the job
         public let delayUntil: Date
+        /// Priority level (higher number = higher priority)
+        public let priority: Int
+        /// Fairness key for resource allocation (optional)
+        public let fairnessKey: String?
+        /// Fairness weight for this job type (higher = more resources)
+        public let fairnessWeight: Double
+
         /// Requirement from `JobOptionsProtocol`
-        public init() {
-            self.delayUntil = Date.now
+        /// - Parameters:
+        ///   - delayUntil: When to execute the job
+        public init(delayUntil: Date = Date.now) {
+            self.delayUntil = delayUntil
+            self.priority = 1
+            self.fairnessKey = nil
+            self.fairnessWeight = 1.0
         }
         /// Requirement from `JobOptionsProtocol`
         /// - Parameters:
         ///   - delayUntil: When to execute the job
-        public init(delayUntil: Date = .now) {
+        ///   - priority: Priority level (higher number = higher priority)
+        ///   - fairnessKey: Fairness key for resource allocation (optional)
+        ///   - fairnessWeight: Fairness weight for this job type (higher = more resources)
+        public init(
+            delayUntil: Date = Date.now,
+            priority: Int = 1,
+            fairnessKey: String? = nil,
+            fairnessWeight: Double = 1.0
+        ) {
             self.delayUntil = delayUntil
+            self.priority = Swift.max(1, priority)
+            self.fairnessKey = fairnessKey
+            self.fairnessWeight = Swift.max(0.1, fairnessWeight)
+        }
+
+        /// Requirement from `JobOptionsProtocol`
+        /// - Parameters:
+        ///   - fairnessKey: Fairness key for resource allocation (optional)
+        ///   - fairnessWeight: Fairness weight for this job type (higher = more resources)
+        public init(fairnessKey: String?, fairnessWeight: Double) {
+            self.fairnessKey = fairnessKey
+            self.fairnessWeight = fairnessWeight
+            self.priority = 1
+            self.delayUntil = Date.now
+        }
+
+        /// Requirement from `JobOptionsProtocol`
+        /// - Parameters:
+        ///   - fairnessKey: Fairness key for resource allocation (optional)
+        ///   - fairnessWeight: Fairness weight for this job type (higher = more resources)
+        ///   - delayUntil: Date to delay the job until (optional)
+        public init(fairnessKey: String?, fairnessWeight: Double, delayUntil: Date) {
+            self.fairnessKey = fairnessKey
+            self.fairnessWeight = fairnessWeight
+            self.priority = 1
+            self.delayUntil = delayUntil
+        }
+
+        /// Create job options with fairness key and weight
+        /// - Parameters:
+        ///   - key: Fairness key for resource allocation (optional)
+        ///   - weight: Fairness weight for this job type (higher = more resources)
+        ///   - priority: Priority of the job (higher = more resources)
+        ///   - delayUntil: Date to delay the job until (optional)
+        public static func fairness(
+            key: String,
+            weight: Double = 1.0,
+            priority: Int = 1,
+            delayUntil: Date = Date.now
+        ) -> JobOptions {
+            JobOptions(
+                delayUntil: delayUntil,
+                priority: priority,
+                fairnessKey: key,
+                fairnessWeight: weight
+            )
         }
     }
 
@@ -95,8 +161,20 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.clearPendingJob(jobID: jobID)
     }
 
+    /// Set a dynamic weight override for a fairness key
+    public func setFairnessWeightOverride(key: String, weight: Double) async throws {
+        await queue.setFairnessWeightOverride(key: key, weight: weight)
+    }
+
+    /// Remove a dynamic weight override for a fairness key
+    public func removeFairnessWeightOverride(key: String) async throws {
+        await queue.removeFairnessWeightOverride(key: key)
+    }
+
     public func failed(jobID: JobID, error: any Error) async throws {
-        if await self.queue.clearAndReturnPendingJob(jobID: jobID) != nil {
+        if await self.queue.getPendingJob(jobID: jobID) != nil {
+            // Track completion for failed jobs too
+            await self.queue.clearPendingJob(jobID: jobID)
             self.onFailedJob(jobID, error)
         }
     }
@@ -113,16 +191,167 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.pauseJob(jobID: jobID)
     }
 
+    /// Get fairness statistics for monitoring
+    /// Returns a dictionary mapping fairness keys to their fairness statistics
+    public func getFairnessStats() async throws -> [String: FairnessStats] {
+        await queue.getFairnessStats()
+    }
+
     /// Internal actor managing the job queue
     fileprivate actor Internal {
         struct QueuedJob: Sendable {
             let id: JobID
             let jobBuffer: ByteBuffer
         }
+
+        /// Stride scheduling implementation for fair resource allocation
+        struct StrideScheduler {
+            private static let strideFactor: Double = 1000.0
+            private static let minWeight: Double = 0.001
+
+            private var virtualTimeByKey: [String: Double] = [:]
+            private var globalVirtualTime: Double = 0
+            private var weightOverrides: [String: Double] = [:]
+            private var nextJobID: Int = 0
+
+            // Execution tracking for statistics
+            private var executionCountByKey: [String: Int] = [:]
+            private var totalWaitTimeByKey: [String: TimeInterval] = [:]
+            private var jobStartTimes: [JobID: Date] = [:]
+
+            mutating func recordExecution(fairnessKey: String?, executionTime: TimeInterval, weight: Double = 1.0) {
+                // Update weight tracking - virtual time is updated when job is selected
+                let key = fairnessKey ?? "default"
+                updateWeight(fairnessKey: key, weight: weight)
+
+                // Track execution count
+                executionCountByKey[key, default: 0] += 1
+            }
+
+            // Track job start time for wait time calculation
+            mutating func recordJobStart(jobId: JobID, fairnessKey: String?) {
+                jobStartTimes[jobId] = Date()
+            }
+
+            // Track job completion and calculate wait time
+            mutating func recordJobCompletion(jobId: JobID, fairnessKey: String?) {
+                guard let startTime = jobStartTimes.removeValue(forKey: jobId) else { return }
+
+                let key = fairnessKey ?? "default"
+                let waitTime = Date().timeIntervalSince(startTime)
+                totalWaitTimeByKey[key, default: 0] += waitTime
+            }
+
+            mutating func updateWeight(fairnessKey: String, weight: Double) {
+                // Store weight for this fairness key
+                weightOverrides[fairnessKey] = weight
+            }
+
+            mutating func setFairnessWeightOverride(key: String, weight: Double) {
+                weightOverrides[key] = weight
+            }
+
+            mutating func removeFairnessWeightOverride(key: String) {
+                weightOverrides.removeValue(forKey: key)
+            }
+
+            func getVirtualTime(for fairnessKey: String?, weight: Double) -> Double {
+                let key = fairnessKey ?? "default"
+
+                // Return existing virtual time, or global virtual time for new fairness keys
+                return virtualTimeByKey[key, default: globalVirtualTime]
+            }
+
+            mutating func advanceVirtualTime(for fairnessKey: String?, weight: Double) {
+                let key = fairnessKey ?? "default"
+
+                // Get effective weight with overrides
+                let effectiveWeight = getEffectiveWeight(key: key, baseWeight: weight)
+
+                // Calculate stride (higher weight = lower stride = more frequent execution)
+                let stride = Self.strideFactor / Swift.max(effectiveWeight, Self.minWeight)
+
+                // Get current virtual time for this key, or start at global virtual time
+                let currentVirtualTime = virtualTimeByKey[key, default: globalVirtualTime]
+
+                // Advance virtual time for next job from this key
+                virtualTimeByKey[key] = currentVirtualTime + stride
+
+                // Update global virtual time to track progress (allows new fairness keys to join fairly)
+                if !virtualTimeByKey.isEmpty {
+                    let minVirtualTime = virtualTimeByKey.values.min() ?? globalVirtualTime
+                    if minVirtualTime > globalVirtualTime {
+                        globalVirtualTime = minVirtualTime
+                    }
+                }
+            }
+
+            mutating func getNextJobID() -> Int {
+                nextJobID += 1
+                return nextJobID
+            }
+
+            // Update global virtual time to prevent fairness keys from falling behind
+            mutating func updateGlobalVirtualTime() {
+                if !virtualTimeByKey.isEmpty {
+                    globalVirtualTime = virtualTimeByKey.values.min() ?? globalVirtualTime
+                }
+            }
+
+            private func getEffectiveWeight(key: String, baseWeight: Double) -> Double {
+                weightOverrides[key] ?? Swift.max(baseWeight, Self.minWeight)
+            }
+
+            // Reset state - mainly for testing
+            mutating func reset() {
+                virtualTimeByKey.removeAll()
+                globalVirtualTime = 0
+                weightOverrides.removeAll()
+                nextJobID = 0
+                executionCountByKey.removeAll()
+                totalWaitTimeByKey.removeAll()
+                jobStartTimes.removeAll()
+            }
+
+            // Get fairness statistics for monitoring
+            func getFairnessStats() -> [String: FairnessStats] {
+                var stats: [String: FairnessStats] = [:]
+                for (key, virtualTime) in virtualTimeByKey {
+                    let weight = weightOverrides[key] ?? 1.0
+                    let executionCount = executionCountByKey[key]
+
+                    // Calculate average wait time
+                    let averageWaitTime: TimeInterval?
+                    if let totalWaitTime = totalWaitTimeByKey[key],
+                        let execCount = executionCount,
+                        execCount > 0
+                    {
+                        averageWaitTime = totalWaitTime / Double(execCount)
+                    } else {
+                        averageWaitTime = nil
+                    }
+
+                    stats[key] = FairnessStats(
+                        virtualTime: virtualTime,
+                        weight: weight,
+                        executionCount: executionCount,
+                        averageWaitTime: averageWaitTime
+                    )
+                }
+                return stats
+            }
+
+            // Get current global virtual time
+            func getCurrentGlobalVirtualTime() -> Double {
+                globalVirtualTime
+            }
+        }
+
         var queue: Deque<(job: QueuedJob, options: JobOptions)>
-        var pendingJobs: [JobID: ByteBuffer]
+        var pendingJobs: [JobID: (buffer: ByteBuffer, fairnessKey: String?)]
         var metadata: [String: (data: ByteBuffer, expires: Date)]
         var isStopped: Bool
+        var strideScheduler = StrideScheduler()
 
         init() {
             self.queue = .init()
@@ -143,7 +372,30 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
 
         func clearPendingJob(jobID: JobID) {
-            self.pendingJobs[jobID] = nil
+            if let pendingJob = self.pendingJobs.removeValue(forKey: jobID) {
+                // Track job completion for statistics
+                strideScheduler.recordJobCompletion(jobId: jobID, fairnessKey: pendingJob.fairnessKey)
+            }
+        }
+
+        func recordJobExecution(fairnessKey: String?, executionTime: TimeInterval, weight: Double = 1.0) {
+            strideScheduler.recordExecution(fairnessKey: fairnessKey, executionTime: executionTime, weight: weight)
+        }
+
+        func getFairnessStats() -> [String: FairnessStats] {
+            strideScheduler.getFairnessStats()
+        }
+
+        func setFairnessWeightOverride(key: String, weight: Double) {
+            strideScheduler.setFairnessWeightOverride(key: key, weight: weight)
+        }
+
+        func removeFairnessWeightOverride(key: String) {
+            strideScheduler.removeFairnessWeightOverride(key: key)
+        }
+
+        func advanceVirtualTime(for fairnessKey: String?, weight: Double) {
+            strideScheduler.advanceVirtualTime(for: fairnessKey, weight: weight)
         }
 
         func cancelJob(jobID: JobID) {
@@ -152,23 +404,24 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func pauseJob(jobID: JobID) {
             let job = self.queue.first(where: { $0.job.id == jobID })
-            self.pendingJobs[jobID] = job?.job.jobBuffer
+            if let job = job {
+                self.pendingJobs[jobID] = (buffer: job.job.jobBuffer, fairnessKey: job.options.fairnessKey)
+            }
             self.queue.removeAll(where: { $0.job.id == jobID })
         }
 
         func resumeJob(jobID: JobID) {
-            if let jobBuffer = self.pendingJobs[jobID] {
-                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init()))
+            if let pendingJob = self.pendingJobs[jobID] {
+                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: pendingJob.buffer), options: .init()))
             } else {
                 print("Warning: attempted to resume job \(jobID) which is not pending")
             }
             self.clearPendingJob(jobID: jobID)
         }
 
-        func clearAndReturnPendingJob(jobID: JobID) -> ByteBuffer? {
+        func getPendingJob(jobID: JobID) -> ByteBuffer? {
             let instance = self.pendingJobs[jobID]
-            self.pendingJobs[jobID] = nil
-            return instance
+            return instance?.buffer
         }
 
         func next() async throws -> QueuedJob? {
@@ -177,20 +430,83 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                 if self.isStopped {
                     return nil
                 }
-                if let request = queue.popFirst() {
-                    if request.options.delayUntil > Date.now {
-                        self.queue.append(request)
-                        maxTimesToLoop -= 1
-                        if maxTimesToLoop > 0 {
-                            continue
-                        }
-                    } else {
-                        self.pendingJobs[request.job.id] = request.job.jobBuffer
-                        return request.job
-                    }
+
+                // Find the best job based on priority and fairness
+                guard !queue.isEmpty else {
+                    try await Task.sleep(for: .milliseconds(100))
+                    continue
                 }
-                try await Task.sleep(for: .milliseconds(100))
+
+                let bestJobIndex = findBestJobIndex()
+                guard let index = bestJobIndex else {
+                    // All jobs are delayed, wait and try again
+                    try await Task.sleep(for: .milliseconds(100))
+                    maxTimesToLoop -= 1
+                    if maxTimesToLoop <= 0 {
+                        maxTimesToLoop = self.queue.count
+                    }
+                    continue
+                }
+
+                let request = queue.remove(at: index)
+                self.pendingJobs[request.job.id] = (
+                    buffer: request.job.jobBuffer,
+                    fairnessKey: request.options.fairnessKey
+                )
+
+                // Update fairness tracking when job starts execution
+                if let fairnessKey = request.options.fairnessKey {
+                    strideScheduler.updateWeight(fairnessKey: fairnessKey, weight: request.options.fairnessWeight)
+                    // Advance virtual time for this key since we're selecting this job
+                    self.advanceVirtualTime(for: fairnessKey, weight: request.options.fairnessWeight)
+                    // Track job start time
+                    strideScheduler.recordJobStart(jobId: request.job.id, fairnessKey: fairnessKey)
+                } else {
+                    strideScheduler.recordJobStart(jobId: request.job.id, fairnessKey: nil)
+                }
+
+                return request.job
             }
+        }
+
+        /// Find the index of the best job to execute based on priority, fairness, and timing
+        /// Priority takes precedence, fairness applies within same priority level
+        private func findBestJobIndex() -> Int? {
+            let now = Date.now
+            var bestIndex: Int? = nil
+            var bestPriority = Int.min
+            var bestVirtualTime = Double.infinity
+            var bestJobID = Int.max
+
+            for (index, request) in queue.enumerated() {
+                // Skip jobs that aren't ready yet
+                guard request.options.delayUntil <= now else { continue }
+
+                let priority = request.options.priority
+
+                // Get virtual time for fairness (only matters within same priority)
+                let fairnessVirtualTime = strideScheduler.getVirtualTime(
+                    for: request.options.fairnessKey,
+                    weight: request.options.fairnessWeight
+                )
+
+                // Use deterministic hashing for consistent tie-breaking
+                let jobID = DeterministicHasher.hash(request.job.id.uuidString)
+
+                // Selection criteria: priority first, then fairness, then deterministic tie-breaking
+                let isBetter =
+                    priority > bestPriority || (priority == bestPriority && fairnessVirtualTime < bestVirtualTime)
+                    || (priority == bestPriority && fairnessVirtualTime == bestVirtualTime && jobID < bestJobID)
+
+                if isBetter {
+                    bestPriority = priority
+                    bestVirtualTime = fairnessVirtualTime
+                    bestJobID = jobID
+                    bestIndex = index
+                }
+            }
+
+            return bestIndex
         }
 
         func stop() {
