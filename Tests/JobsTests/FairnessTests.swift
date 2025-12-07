@@ -53,31 +53,29 @@ struct FairnessTests {
 
     // MARK: - Test Results Tracking
 
-    struct ExecutionTracker: Sendable, ~Copyable {
-        private let _executionOrder = Mutex<[String]>([])
-        private let _executionTimes = Mutex<[String: TimeInterval]>([:])
-        private let _tenantTimes = Mutex<[String: TimeInterval]>([:])
+    actor ExecutionTracker {
+        private var _executionOrder: [String] = []
+        private var _executionTimes: [String: TimeInterval] = [:]
+        private var _tenantTimes: [String: TimeInterval] = [:]
 
         func recordExecution(_ jobId: String, tenantId: String, executionTime: TimeInterval) {
-            _executionOrder.withLock { $0.append(jobId) }
-            _executionTimes.withLock { $0[jobId] = executionTime }
-            _tenantTimes.withLock { times in
-                times[tenantId, default: 0] += executionTime
-            }
+            _executionOrder.append(jobId)
+            _executionTimes[jobId] = executionTime
+            _tenantTimes[tenantId, default: 0] += executionTime
         }
 
         var executionOrder: [String] {
-            _executionOrder.withLock { Array($0) }
+            get async { _executionOrder }
         }
 
         var tenantTimes: [String: TimeInterval] {
-            _tenantTimes.withLock { $0 }
+            get async { _tenantTimes }
         }
 
         func clear() {
-            _executionOrder.withLock { $0.removeAll() }
-            _executionTimes.withLock { $0.removeAll() }
-            _tenantTimes.withLock { $0.removeAll() }
+            _executionOrder.removeAll()
+            _executionTimes.removeAll()
+            _tenantTimes.removeAll()
         }
     }
 
@@ -92,7 +90,7 @@ struct FairnessTests {
             let startTime = Date()
             try await Task.sleep(for: .milliseconds(10))
             let executionTime = Date().timeIntervalSince(startTime)
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
             expectation.trigger()
         }
 
@@ -113,7 +111,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 3)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 3)
             #expect(order[0] == "high-1")  // Highest priority first
             #expect(order[1] == "normal-1")  // Medium priority second
@@ -130,7 +128,7 @@ struct FairnessTests {
             let startTime = Date()
             try await Task.sleep(for: .milliseconds(20))
             let executionTime = Date().timeIntervalSince(startTime)
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
             expectation.trigger()
         }
 
@@ -151,7 +149,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 3)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 3)
 
             // High priority jobs should execute before low priority, regardless of tenant
@@ -171,7 +169,7 @@ struct FairnessTests {
             let startTime = Date()
             try await Task.sleep(for: .milliseconds(10))
             let executionTime = Date().timeIntervalSince(startTime)
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
             expectation.trigger()
         }
 
@@ -198,7 +196,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 8)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 8)
 
             // Verify fairness: small tenant jobs should be interspersed with big tenant jobs
@@ -225,7 +223,7 @@ struct FairnessTests {
             let startTime = Date()
             try await Task.sleep(for: .milliseconds(1))  // Minimal sleep for consistent timing
             let executionTime = Date().timeIntervalSince(startTime)
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
             expectation.trigger()
         }
 
@@ -291,7 +289,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: jobCounter)
 
-            let executionOrder = tracker.executionOrder
+            let executionOrder = await tracker.executionOrder
 
             // Calculate unfairness metric (when each tenant gets first execution opportunity)
             let unfairness = calculateUnfairness(executionOrder: executionOrder)
@@ -348,7 +346,7 @@ struct FairnessTests {
         let jobQueue = JobQueue(.memory, logger: Logger(label: "FairnessTests"))
 
         jobQueue.registerJob(parameters: TestJob.self) { job, context in
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: 0.01)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: 0.01)
             expectation.trigger()
         }
 
@@ -371,7 +369,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 3)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 3)
 
             // All edge cases should execute without crashing
@@ -392,7 +390,7 @@ struct FairnessTests {
             let startTime = Date()
             try await Task.sleep(for: .milliseconds(10))
             let executionTime = Date().timeIntervalSince(startTime)
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
             expectation.trigger()
         }
 
@@ -413,7 +411,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 2)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 2)
             #expect(order[0] == "immediate")  // Executes first because delayed job isn't ready
         }
@@ -430,7 +428,7 @@ struct FairnessTests {
             let startTime = Date()
             try await Task.sleep(for: .milliseconds(10))
             let executionTime = Date().timeIntervalSince(startTime)
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
             expectation.trigger()
         }
 
@@ -453,7 +451,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 3)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 3)
             #expect(order[0] == "priority-only")  // Highest priority should execute first
         }
@@ -467,7 +465,7 @@ struct FairnessTests {
         let jobQueue = JobQueue(.memory, logger: Logger(label: "FairnessTests"))
 
         jobQueue.registerJob(parameters: TestJob.self) { job, context in
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: 0.01)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: 0.01)
             expectation.trigger()
         }
 
@@ -479,7 +477,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 1)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 1)
             #expect(order[0] == "test-1")
         }
@@ -491,7 +489,7 @@ struct FairnessTests {
         let jobQueue = JobQueue(.memory, logger: Logger(label: "FairnessTests"))
 
         jobQueue.registerJob(parameters: TestJob.self) { job, context in
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: 0.01)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: 0.01)
             expectation.trigger()
         }
 
@@ -503,7 +501,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 1)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 1)
             #expect(order[0] == "test-1")
         }
@@ -527,7 +525,7 @@ struct FairnessTests {
                 }
             try await Task.sleep(for: .milliseconds(workloadTime))
             let executionTime = Date().timeIntervalSince(startTime)
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
             expectation.trigger()
         }
 
@@ -558,8 +556,8 @@ struct FairnessTests {
 
             try await expectation.wait(count: 6)
 
-            let order = tracker.executionOrder
-            let tenantTimes = tracker.tenantTimes
+            let order = await tracker.executionOrder
+            let tenantTimes = await tracker.tenantTimes
 
             #expect(order.count == 6)
             #expect(tenantTimes.count == 3)
@@ -588,7 +586,7 @@ struct FairnessTests {
             let startTime = Date()
             try await Task.sleep(for: .milliseconds(5))  // Shorter sleep for faster test
             let executionTime = Date().timeIntervalSince(startTime)
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
             expectation.trigger()
         }
 
@@ -611,7 +609,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 12)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 12)
 
             // Test the core fairness guarantee: both tenants get to execute jobs
@@ -641,7 +639,7 @@ struct FairnessTests {
             let startTime = Date()
             try await Task.sleep(for: .milliseconds(5))  // Very fast jobs
             let executionTime = Date().timeIntervalSince(startTime)
-            tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: executionTime)
             expectation.trigger()
         }
 
@@ -664,7 +662,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 23)
 
-            let order = tracker.executionOrder
+            let order = await tracker.executionOrder
             #expect(order.count == 23)
 
             let smallBizJobs = order.filter { $0.contains("small-biz") }
