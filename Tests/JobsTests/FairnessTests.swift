@@ -673,11 +673,11 @@ struct FairnessTests {
     @Test func testDynamicWeightOverrideAPI() async throws {
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         let expectation = TestExpectation()
-        let executionOrder: Mutex<[String]> = .init([])
+        let tracker = ExecutionTracker()
 
         jobQueue.registerJob(parameters: TestJob.self) { job, context in
             try await Task.sleep(for: .milliseconds(5))
-            executionOrder.withLock { $0.append(job.id) }
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: 0.005)
             expectation.trigger()
         }
 
@@ -700,7 +700,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 12)
 
-            let order = executionOrder.withLock { $0 }
+            let order = await tracker.executionOrder
             let overrideJobs = order.filter { $0.contains("override") }
             let baseJobs = order.filter { $0.contains("base") }
 
@@ -720,11 +720,11 @@ struct FairnessTests {
     @Test func testWeightOverridesWithExtremeRatios() async throws {
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         let expectation = TestExpectation()
-        let executionOrder: Mutex<[String]> = .init([])
+        let tracker = ExecutionTracker()
 
         jobQueue.registerJob(parameters: TestJob.self) { job, context in
             try await Task.sleep(for: .milliseconds(5))
-            executionOrder.withLock { $0.append(job.id) }
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: 0.005)
             expectation.trigger()
         }
 
@@ -747,7 +747,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 8)
 
-            let order = executionOrder.withLock { $0 }
+            let order = await tracker.executionOrder
             let vipJobs = order.filter { $0.contains("vip") }
             let regularJobs = order.filter { $0.contains("regular") }
 
@@ -767,11 +767,11 @@ struct FairnessTests {
     @Test func testWeightBasedExecutionOrdering() async throws {
         let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests"))
         let expectation = TestExpectation()
-        let executionOrder: Mutex<[String]> = .init([])
+        let tracker = ExecutionTracker()
 
         jobQueue.registerJob(parameters: TestJob.self) { job, context in
             try await Task.sleep(for: .milliseconds(5))
-            executionOrder.withLock { $0.append(job.id) }
+            await tracker.recordExecution(job.id, tenantId: job.tenantId, executionTime: 0.005)
             expectation.trigger()
         }
 
@@ -798,7 +798,7 @@ struct FairnessTests {
 
             try await expectation.wait(count: 9)
 
-            let order = executionOrder.withLock { $0 }
+            let order = await tracker.executionOrder
 
             // Test anti-starvation: stride scheduler prevents complete starvation of any tenant
             let weight1Jobs = order.filter { $0.hasPrefix("weight1-") }
