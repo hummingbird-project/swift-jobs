@@ -53,7 +53,7 @@ struct FairnessTests {
 
     // MARK: - Test Results Tracking
 
-    final class ExecutionTracker: Sendable {
+    struct ExecutionTracker: Sendable, ~Copyable {
         private let _executionOrder = Mutex<[String]>([])
         private let _executionTimes = Mutex<[String: TimeInterval]>([:])
         private let _tenantTimes = Mutex<[String: TimeInterval]>([:])

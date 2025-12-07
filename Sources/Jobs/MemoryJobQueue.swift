@@ -202,6 +202,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         struct QueuedJob: Sendable {
             let id: JobID
             let jobBuffer: ByteBuffer
+            let passValue: Int64
         }
 
         /// Stride scheduling implementation for fair resource allocation
@@ -362,13 +363,15 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func push(_ jobBuffer: ByteBuffer, options: JobOptions) throws -> JobID {
             let id = JobID()
-            self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer), options: options))
+            let passValue = calculatePassValue(for: options)
+            self.queue.append((job: QueuedJob(id: id, jobBuffer: jobBuffer, passValue: passValue), options: options))
             return id
         }
 
         func retry(_ id: JobID, buffer: ByteBuffer, options: JobOptions) throws {
             self.clearPendingJob(jobID: id)
-            let _ = self.queue.append((job: QueuedJob(id: id, jobBuffer: buffer), options: options))
+            let passValue = calculatePassValue(for: options)
+            let _ = self.queue.append((job: QueuedJob(id: id, jobBuffer: buffer, passValue: passValue), options: options))
         }
 
         func clearPendingJob(jobID: JobID) {
@@ -412,7 +415,10 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func resumeJob(jobID: JobID) {
             if let pendingJob = self.pendingJobs[jobID] {
-                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: pendingJob.buffer), options: .init()))
+                // Create options for resumed job
+                let resumeOptions = JobOptions(fairnessKey: pendingJob.fairnessKey, fairnessWeight: 1.0)
+                let passValue = calculatePassValue(for: resumeOptions)
+                self.queue.append((job: QueuedJob(id: jobID, jobBuffer: pendingJob.buffer, passValue: passValue), options: .init()))
             } else {
                 print("Warning: attempted to resume job \(jobID) which is not pending")
             }
@@ -457,9 +463,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                 // Update fairness tracking when job starts execution
                 if let fairnessKey = request.options.fairnessKey {
                     strideScheduler.updateWeight(fairnessKey: fairnessKey, weight: request.options.fairnessWeight)
-                    // Advance virtual time for this key since we're selecting this job
-                    self.advanceVirtualTime(for: fairnessKey, weight: request.options.fairnessWeight)
-                    // Track job start time
+                    // Track job start time (pass value was already calculated when job was queued)
                     strideScheduler.recordJobStart(jobId: request.job.id, fairnessKey: fairnessKey)
                 } else {
                     strideScheduler.recordJobStart(jobId: request.job.id, fairnessKey: nil)
@@ -475,7 +479,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             let now = Date.now
             var bestIndex: Int? = nil
             var bestPriority = Int.min
-            var bestVirtualTime = Double.infinity
+            var bestPassValue = Int64.max
             var bestJobID = Int.max
 
             for (index, request) in queue.enumerated() {
@@ -484,29 +488,85 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
                 let priority = request.options.priority
 
-                // Get virtual time for fairness (only matters within same priority)
-                let fairnessVirtualTime = strideScheduler.getVirtualTime(
-                    for: request.options.fairnessKey,
-                    weight: request.options.fairnessWeight
-                )
+                // Use stored pass value (calculated when job was queued)
+                let passValue = request.job.passValue
 
                 // Use deterministic hashing for consistent tie-breaking
                 let jobID = DeterministicHasher.hash(request.job.id.uuidString)
 
-                // Selection criteria: priority first, then fairness, then deterministic tie-breaking
-                let isBetter =
-                    priority > bestPriority || (priority == bestPriority && fairnessVirtualTime < bestVirtualTime)
-                    || (priority == bestPriority && fairnessVirtualTime == bestVirtualTime && jobID < bestJobID)
+                // Selection criteria: priority DESC, pass ASC, job_id ASC (same as PostgreSQL)
+                let isBetter: Bool
+                if priority > bestPriority {
+                    isBetter = true
+                } else if priority < bestPriority {
+                    isBetter = false
+                } else {
+                    // Same priority - use pass value (lower pass = better)
+                    if passValue < bestPassValue {
+                        isBetter = true
+                    } else if passValue > bestPassValue {
+                        isBetter = false
+                    } else {
+                        // Same pass value - use deterministic tie-breaking
+                        isBetter = jobID < bestJobID
+                    }
+                }
 
                 if isBetter {
                     bestPriority = priority
-                    bestVirtualTime = fairnessVirtualTime
+                    bestPassValue = passValue
                     bestJobID = jobID
                     bestIndex = index
                 }
             }
 
             return bestIndex
+        }
+
+        /// Calculate pass value for a job using stride scheduling (like PostgreSQL implementation)
+        private func calculatePassValue(for options: JobOptions) -> Int64 {
+            guard let fairnessKey = options.fairnessKey else {
+                // Jobs without fairness key get pass = 0 (highest priority within their priority level)
+                return 0
+            }
+
+            // Get base pass from minimum pass in queue (like PostgreSQL)
+            let basePass = getMinimumPassValue()
+
+            // Update weight and get current virtual time
+            strideScheduler.updateWeight(fairnessKey: fairnessKey, weight: options.fairnessWeight)
+            let currentVirtualTime = strideScheduler.getVirtualTime(for: fairnessKey, weight: options.fairnessWeight)
+
+            // Calculate stride increment
+            let strideFactor: Double = 1000.0
+            let minWeight: Double = 0.001
+            let effectiveWeight = Swift.max(options.fairnessWeight, minWeight)
+            let increment = Int64(strideFactor / effectiveWeight)
+
+            // Use max of basePass and calculated virtual time + increment
+            let passValue = Swift.max(basePass, Int64(currentVirtualTime * 1000.0) + increment)
+
+            // Advance virtual time for next job
+            strideScheduler.advanceVirtualTime(for: fairnessKey, weight: options.fairnessWeight)
+
+            return passValue
+        }
+
+        /// Get the minimum pass value from jobs in the queue (like PostgreSQL implementation)
+        private func getMinimumPassValue() -> Int64 {
+            let now = Date.now
+            var minPass: Int64 = 0
+
+            for (_, request) in queue.enumerated() {
+                // Only consider jobs that are ready to run
+                guard request.options.delayUntil <= now else { continue }
+
+                if minPass == 0 || request.job.passValue < minPass {
+                    minPass = request.job.passValue
+                }
+            }
+
+            return minPass
         }
 
         func stop() {
