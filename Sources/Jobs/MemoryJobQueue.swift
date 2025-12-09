@@ -480,7 +480,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             var bestIndex: Int? = nil
             var bestPriority = Int.min
             var bestPassValue = Int64.max
-            var bestJobID = Int.max
+            var bestJobID = UInt64.max
 
             for (index, request) in queue.enumerated() {
                 // Skip jobs that aren't ready yet
@@ -541,7 +541,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             let strideFactor: Double = 1000.0
             let minWeight: Double = 0.001
             let effectiveWeight = Swift.max(options.fairnessWeight, minWeight)
-            let increment = Int64(strideFactor / effectiveWeight)
+            let increment = Swift.max(1, Int64(strideFactor / effectiveWeight))
 
             // Use max of basePass and calculated virtual time + increment
             let passValue = Swift.max(basePass, Int64(currentVirtualTime * 1000.0) + increment)

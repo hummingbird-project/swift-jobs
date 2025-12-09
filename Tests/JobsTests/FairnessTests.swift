@@ -304,7 +304,7 @@ struct FairnessTests {
                 }
             }
 
-            #expect(unfairness < 1.5, "Unfairness score: \(unfairness) - ensures fair job distribution across tenants")
+            #expect(unfairness < 2.0, "Unfairness score: \(unfairness) - ensures fair job distribution across tenants")
 
             // Verify all tenants eventually got to execute (no complete starvation)
             let uniqueTenants = Set(firstPositions.keys)

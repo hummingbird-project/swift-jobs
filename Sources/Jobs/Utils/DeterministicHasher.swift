@@ -12,6 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+import NIOCore
+import NIOFoundationCompat
+
 #if canImport(FoundationEssentials)
 import FoundationEssentials
 #else
@@ -29,15 +32,16 @@ import Foundation
 /// - Distributed system coordination
 public struct DeterministicHasher {
 
-    /// Simple deterministic hash function based on the djb2 algorithm
+    /// Deterministic hash function based on the FNV-1a algorithm
     ///
     /// This function provides consistent hash values across app restarts and is suitable
     /// for non-cryptographic purposes where deterministic behavior is required.
     ///
     /// ## Algorithm Details
-    /// Uses the djb2 hash algorithm (Dan J. Bernstein, 1991) which is:
-    /// - Fast and simple
-    /// - Good distribution for typical string inputs
+    /// Uses the FNV-1a hash algorithm (Fowler-Noll-Vo, 1991) which is:
+    /// - Fast and efficient
+    /// - Excellent distribution and avalanche properties
+    /// - 64-bit output drastically reduces collision probability
     /// - Deterministic across platforms and runs
     /// - Not cryptographically secure (use CryptoKit for security-sensitive hashing)
     ///
@@ -48,13 +52,113 @@ public struct DeterministicHasher {
     /// ```
     ///
     /// - Parameter string: The string to hash
-    /// - Returns: A positive integer hash value that remains consistent across runs
-    public static func hash(_ string: String) -> Int {
-        var hash: UInt32 = 5381
+    /// - Returns: A deterministic hash value that remains consistent across runs
+    public static func hash(_ string: String) -> UInt64 {
+        hash(initialHash: 14_695_981_039_346_656_037, string)
+    }
+
+    /// Hash a string with an initial hash value for composable hashing
+    ///
+    /// - Parameters:
+    ///   - initialHash: Initial hash value to start from
+    ///   - string: The string to hash
+    /// - Returns: A deterministic hash value that remains consistent across runs
+    public static func hash(initialHash: UInt64, _ string: String) -> UInt64 {
+        // FNV-1a 64-bit constants
+        let fnvPrime: UInt64 = 1_099_511_628_211
+
+        var hash = initialHash
         for byte in string.utf8 {
-            hash = ((hash << 5) &+ hash) &+ UInt32(byte)
+            hash ^= UInt64(byte)
+            hash = hash &* fnvPrime
         }
-        return Int(hash & 0x7FFF_FFFF)  // Ensure positive result
+        return hash
+    }
+
+    /// Hash a collection of bytes deterministically
+    ///
+    /// Uses the FNV-1a hash algorithm to generate deterministic hash values
+    /// from binary data. This allows working directly with encoded data
+    /// without string conversion assumptions.
+    ///
+    /// - Parameter bytes: The bytes to hash
+    /// - Returns: A deterministic hash value that remains consistent across runs
+    public static func hashBytes<Bytes: Collection>(_ bytes: Bytes) -> UInt64 where Bytes.Element == UInt8 {
+        hashBytes(initialHash: 14_695_981_039_346_656_037, bytes)
+    }
+
+    /// Hash a collection of bytes with an initial hash value for composable hashing
+    ///
+    /// - Parameters:
+    ///   - initialHash: Initial hash value to start from
+    ///   - bytes: The bytes to hash
+    /// - Returns: A deterministic hash value that remains consistent across runs
+    public static func hashBytes<Bytes: Collection>(initialHash: UInt64, _ bytes: Bytes) -> UInt64 where Bytes.Element == UInt8 {
+        // FNV-1a 64-bit constants
+        let fnvPrime: UInt64 = 1_099_511_628_211
+
+        var hash = initialHash
+        for byte in bytes {
+            hash ^= UInt64(byte)
+            hash = hash &* fnvPrime
+        }
+        return hash
+    }
+
+    /// Hash exactly three byte sequences efficiently (specialized version for better performance)
+    ///
+    /// Optimized version for the common case of hashing exactly three sequences
+    /// (jobName + separator + parameters) without type erasure overhead.
+    ///
+    /// - Parameters:
+    ///   - seq1: First byte sequence
+    ///   - seq2: Second byte sequence
+    ///   - seq3: Third byte sequence
+    /// - Returns: A deterministic hash value that remains consistent across runs
+    private static func hashThreeSequences<S1: Collection, S2: Collection, S3: Collection>(
+        _ seq1: S1,
+        _ seq2: S2,
+        _ seq3: S3
+    ) -> UInt64
+    where S1.Element == UInt8, S2.Element == UInt8, S3.Element == UInt8 {
+        hashThreeSequences(initialHash: 14_695_981_039_346_656_037, seq1, seq2, seq3)
+    }
+
+    /// Hash exactly three byte sequences with an initial hash value for composable hashing
+    ///
+    /// - Parameters:
+    ///   - initialHash: Initial hash value to start from
+    ///   - seq1: First byte sequence
+    ///   - seq2: Second byte sequence
+    ///   - seq3: Third byte sequence
+    /// - Returns: A deterministic hash value that remains consistent across runs
+    private static func hashThreeSequences<S1: Collection, S2: Collection, S3: Collection>(
+        initialHash: UInt64,
+        _ seq1: S1,
+        _ seq2: S2,
+        _ seq3: S3
+    ) -> UInt64
+    where S1.Element == UInt8, S2.Element == UInt8, S3.Element == UInt8 {
+        // FNV-1a 64-bit constants
+        let fnvPrime: UInt64 = 1_099_511_628_211
+
+        var hash = initialHash
+
+        // Hash all sequences in order without intermediate allocations
+        for byte in seq1 {
+            hash ^= UInt64(byte)
+            hash = hash &* fnvPrime
+        }
+        for byte in seq2 {
+            hash ^= UInt64(byte)
+            hash = hash &* fnvPrime
+        }
+        for byte in seq3 {
+            hash ^= UInt64(byte)
+            hash = hash &* fnvPrime
+        }
+
+        return hash
     }
 
     /// Hash a UUID string deterministically
@@ -62,8 +166,8 @@ public struct DeterministicHasher {
     /// Convenience method for hashing UUID strings, commonly used for job IDs.
     ///
     /// - Parameter uuid: The UUID to hash
-    /// - Returns: A positive integer hash value that remains consistent across runs
-    public static func hash(_ uuid: UUID) -> Int {
+    /// - Returns: A deterministic hash value that remains consistent across runs
+    public static func hash(_ uuid: UUID) -> UInt64 {
         hash(uuid.uuidString)
     }
 
@@ -72,8 +176,8 @@ public struct DeterministicHasher {
     /// Hashes the UTF-8 string representation of the data.
     ///
     /// - Parameter data: The data to hash
-    /// - Returns: A positive integer hash value that remains consistent across runs
-    public static func hash<T: CustomStringConvertible>(_ data: T) -> Int {
+    /// - Returns: A deterministic hash value that remains consistent across runs
+    public static func hash<T: CustomStringConvertible>(_ data: T) -> UInt64 {
         hash(data.description)
     }
 
@@ -120,11 +224,14 @@ public struct DeterministicHasher {
     public static func uniqueJobHash<T: Codable>(jobName: String, parameters: T) throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]  // Ensure consistent key ordering
-        let data = try encoder.encode(parameters)
-        let paramString = String(data: data, encoding: .utf8) ?? ""
+        let parametersBuffer = try encoder.encodeAsByteBuffer(parameters, allocator: ByteBufferAllocator())
 
-        let combinedString = "\(jobName)|\(paramString)"
-        let hashValue = hash(combinedString)
+        // Efficiently hash three byte sequences without intermediate allocations
+        let hashValue = hashThreeSequences(
+            jobName.utf8,
+            "|".utf8,
+            parametersBuffer.readableBytesView
+        )
         return "\(jobName)-\(hashValue)"
     }
 
