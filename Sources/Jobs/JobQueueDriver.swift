@@ -52,11 +52,15 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     func stop() async
     /// shutdown queue
     func shutdownGracefully() async
+    /// worker ID
+    var workerID: String { get }
 }
 
 extension JobQueueDriver {
-    // default version of waitUntilReady doing nothing
+    /// default version of waitUntilReady doing nothing
     public func waitUntilReady() async throws {}
+    /// default version of worker ID is to return the string version of a UUID
+    public var workerID: String { UUID().uuidString }
 }
 
 extension JobQueueDriver {

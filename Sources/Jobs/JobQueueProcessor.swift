@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import ExtrasBase64
 import Logging
 import NIOCore
 import ServiceLifecycle
@@ -87,6 +88,14 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
                         try await Task.sleep(for: self.options.gracefulShutdownTimeout)
                         self.logger.debug("Graceful shutdown timeout occurred.")
                     }
+
+                    // if queue supports metadata
+                    if case .acquire(let every, let holdFor) = self.options.workerActiveLock.value,
+                        let metadataDriver = self.queue as? JobMetadataDriver
+                    {
+                        metadataDriver.updateActiveLock(&group, every: every, holdFor: holdFor, workerID: self.queue.workerID)
+                    }
+
                     // wait on first child task to return. If the first task to return is the queue handler then
                     // cancel timeout task. If the first child task to return is the timeout task then cancel the
                     // job queue handler
@@ -239,6 +248,53 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
             }
         }
     }
+
+}
+
+extension JobMetadataDriver {
+    func updateActiveLock(
+        _ group: inout ThrowingTaskGroup<Void, any Error>,
+        every: TimeInterval,
+        holdFor: TimeInterval,
+        workerID: String
+    ) {
+        let bytes: [UInt8] = (0..<16).map { _ in UInt8.random(in: 0...255) }
+        let lockID = ByteBuffer(string: Base64.encodeToString(bytes: bytes))
+
+        group.addTask {
+            _ = await self.acquireLock(workerID: workerID, lockID: lockID, expiresIn: holdFor)
+            do {
+                while !Task.isCancelled {
+                    try await Task.sleep(for: .seconds(every))
+                    _ = await self.acquireLock(workerID: workerID, lockID: lockID, expiresIn: holdFor)
+                }
+            } catch {}
+            await self.releaseLock(workerID: workerID, lockID: lockID)
+        }
+    }
+
+    private func acquireLock(workerID: String, lockID: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
+        do {
+            return try await self.acquireLock(
+                key: .jobWorkerActiveLock(workerID: workerID),
+                id: lockID,
+                expiresIn: expiresIn
+            )
+        } catch {
+            return false
+        }
+    }
+
+    private func releaseLock(workerID: String, lockID: ByteBuffer) async {
+        do {
+            try await self.releaseLock(
+                key: .jobWorkerActiveLock(workerID: workerID),
+                id: lockID
+            )
+        } catch {
+            return
+        }
+    }
 }
 
 extension JobQueueProcessor: CustomStringConvertible {
@@ -259,4 +315,8 @@ extension TimeInterval {
     init(duration: Duration) {
         self = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1_000_000_000_000_000_000
     }
+}
+
+extension JobMetadataKey where Value == ByteBuffer {
+    static func jobWorkerActiveLock(workerID: String) -> Self { "\(workerID).worker" }
 }

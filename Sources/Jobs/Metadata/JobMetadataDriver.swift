@@ -20,7 +20,7 @@ import FoundationEssentials
 import Foundation
 #endif
 
-public protocol JobMetadataDriver {
+public protocol JobMetadataDriver: Sendable {
     /// Get JobQueue metadata
     ///
     /// - Parameter key: Metadata key

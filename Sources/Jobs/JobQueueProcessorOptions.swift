@@ -12,12 +12,39 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
+
 /// JobQueueHandler Options
 public struct JobQueueProcessorOptions: Sendable {
+    /// Defines how often if at all a lock should be acquired
+    public struct ExclusiveLock: Sendable {
+        enum Value: Sendable {
+            case inactive
+            case acquire(every: TimeInterval, for: TimeInterval)
+        }
+        let value: Value
+        /// Don't try to acquire worker lock
+        public static var inactive: Self { .init(value: .inactive) }
+        /// Acquire lock
+        /// - Parameters:
+        ///   - every: Frequency of acquiring the lock
+        ///   - for: How long the lock should be acquired for
+        public static func acquire(every: Duration, for: Duration) -> Self {
+            precondition(`for` > every, "The time between acquiring each lock shoud be less then the time you acquire the lock for.")
+            return .init(value: .acquire(every: .init(duration: every), for: .init(duration: `for`)))
+        }
+    }
+
     /// Number of concurrent jobs being processed at one time
     public var numWorkers: Int
     /// Timeout after graceful shutdown has been triggered, before jobs are cancelled
     public var gracefulShutdownTimeout: Duration
+    /// worker active lock configuration
+    public var workerActiveLock: ExclusiveLock
 
     /// Initialize a JobQueueProcessorOptions
     ///
@@ -30,5 +57,6 @@ public struct JobQueueProcessorOptions: Sendable {
     ) {
         self.numWorkers = numWorkers
         self.gracefulShutdownTimeout = gracefulShutdownTimeout
+        self.workerActiveLock = .acquire(every: .milliseconds(300000), for: .milliseconds(450000))
     }
 }

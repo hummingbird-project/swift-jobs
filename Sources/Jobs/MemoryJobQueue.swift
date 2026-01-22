@@ -113,6 +113,8 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.pauseJob(jobID: jobID)
     }
 
+    public var workerID: UUID? { UUID() }
+
     /// Internal actor managing the job queue
     fileprivate actor Internal {
         struct QueuedJob: Sendable {
