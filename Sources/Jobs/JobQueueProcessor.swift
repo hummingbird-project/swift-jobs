@@ -271,7 +271,9 @@ extension JobMetadataDriver {
                 }
             } catch {}
             // release lock
-            try? await self.releaseLock(key: .jobWorkerActiveLock(workerID: workerID), id: lockID)
+            _ = await Task {
+                try? await self.releaseLock(key: .jobWorkerActiveLock(workerID: workerID), id: lockID)
+            }.result
         }
     }
 }
@@ -297,5 +299,5 @@ extension TimeInterval {
 }
 
 extension JobMetadataKey where Value == ByteBuffer {
-    static func jobWorkerActiveLock(workerID: String) -> Self { "\(workerID).worker" }
+    static func jobWorkerActiveLock(workerID: String) -> Self { "worker.\(workerID)" }
 }
