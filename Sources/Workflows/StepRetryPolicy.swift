@@ -147,7 +147,7 @@ public struct WorkflowAwareJobRetryStrategy: JobRetryStrategy {
                 return false  // Validation errors are non-retryable
             case .unknownWorkflowType, .unknownActivity:
                 return false  // Configuration errors are non-retryable
-            case .workflowCancelled:
+            case .workflowCancelled:  // TODO: fix me, this should be an Application error
                 return false  // Cancelled operations shouldn't retry
             default:
                 break  // Other workflow errors can be retried based on user policy

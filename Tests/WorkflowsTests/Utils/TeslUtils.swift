@@ -57,7 +57,7 @@ public func waitForWorkflowCompletion<Input: Codable & Sendable, Output: Codable
     let expectation = TestExpectation()
 
     let pollingTask = Task {
-        while !Task.isCancelled {
+        while !Task.isCancelled || Task.isShuttingDownGracefully {
             do {
                 guard let status = try await engine.getWorkflowSummary(workflowId) else { return }
                 if status.status == expectedStatus {

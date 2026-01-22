@@ -161,7 +161,7 @@ struct WorkflowIntegrationTests {
                     RiskyOperationActivity.self,
                     input: RiskyOperationInput(shouldFail: input.shouldFail, failureType: input.failureType),
                     options: ActivityOptions(
-                        startToCloseTimeout: .seconds(10),
+                        startToCloseTimeout: .milliseconds(200),
                         retryPolicy: .exponentialJitter(maxAttempts: 3)
                     )
                 )
@@ -302,7 +302,7 @@ struct WorkflowIntegrationTests {
         // Each workflow needs 1 persistent WorkflowCoordinator job + short-lived ActivityExecution jobs
         // 4 workers allows 2-3 concurrent workflows with good activity parallelism
         // Production scaling: workers ≈ concurrent_workflows + (concurrent_workflows × 0.5-1.0)
-        let processor = workflowEngine.processor(options: .init(numWorkers: 4))
+        let processor = workflowEngine.processor(options: .init(numWorkers: 4))  // with 4 workers we should not block -->
 
         return (workflowEngine, processor)
     }
@@ -347,16 +347,17 @@ struct WorkflowIntegrationTests {
 
             registry.registerActivity(RiskyOperationActivity.self) {
                 (input: RiskyOperationInput, context: ActivityExecutionContext) async throws -> String in
-                try await Task.sleep(for: .milliseconds(30))
+                try await Task.sleep(for: .milliseconds(10))
 
                 if input.shouldFail {
                     switch input.failureType {
                     case "recoverable":
-                        throw WorkflowTestError.recoverableError
+                        throw ApplicationError(message: "WorkflowTestError.recoverableError", isNonRetryable: false)  //WorkflowTestError.recoverableError
                     case "nonRecoverable":
-                        throw WorkflowTestError.nonRecoverableError
+                        throw ApplicationError(message: "WorkflowTestError.nonRecoverableError", isNonRetryable: true)  //WorkflowTestError.nonRecoverableError
                     default:
-                        throw WorkflowTestError.recoverableError
+                        // throw WorkflowTestError.recoverableError
+                        throw ApplicationError(message: "WorkflowTestError.recoverableError", isNonRetryable: true)  //WorkflowTestError.nonRecoverableError
                     }
                 }
 
@@ -1635,7 +1636,7 @@ struct WorkflowIntegrationTests {
                 _ = try await workflowEngine.runWorkflow(
                     ErrorHandlingWorkflow.self,
                     input: ErrorHandlingWorkflow.Input(shouldFail: true, failureType: "test-error"),
-                    options: WorkflowOptions(timeout: .seconds(10))
+                    options: WorkflowOptions(timeout: .milliseconds(100))
                 )
             }
         }
