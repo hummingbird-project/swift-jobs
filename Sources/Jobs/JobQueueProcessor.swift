@@ -258,41 +258,20 @@ extension JobMetadataDriver {
         holdFor: TimeInterval,
         workerID: String
     ) {
-        let bytes: [UInt8] = (0..<16).map { _ in UInt8.random(in: 0...255) }
-        let lockID = ByteBuffer(string: Base64.encodeToString(bytes: bytes))
-
         group.addTask {
-            _ = await self.acquireLock(workerID: workerID, lockID: lockID, expiresIn: holdFor)
+            let bytes: [UInt8] = (0..<16).map { _ in UInt8.random(in: 0...255) }
+            let lockID = ByteBuffer(string: Base64.encodeToString(bytes: bytes))
+
+            // acquire lock and then keep acquiring the lock at regular intervals
+            _ = try? await self.acquireLock(key: .jobWorkerActiveLock(workerID: workerID), id: lockID, expiresIn: holdFor)
             do {
                 while !Task.isCancelled {
                     try await Task.sleep(for: .seconds(every))
-                    _ = await self.acquireLock(workerID: workerID, lockID: lockID, expiresIn: holdFor)
+                    _ = try? await self.acquireLock(key: .jobWorkerActiveLock(workerID: workerID), id: lockID, expiresIn: holdFor)
                 }
             } catch {}
-            await self.releaseLock(workerID: workerID, lockID: lockID)
-        }
-    }
-
-    private func acquireLock(workerID: String, lockID: ByteBuffer, expiresIn: TimeInterval) async -> Bool {
-        do {
-            return try await self.acquireLock(
-                key: .jobWorkerActiveLock(workerID: workerID),
-                id: lockID,
-                expiresIn: expiresIn
-            )
-        } catch {
-            return false
-        }
-    }
-
-    private func releaseLock(workerID: String, lockID: ByteBuffer) async {
-        do {
-            try await self.releaseLock(
-                key: .jobWorkerActiveLock(workerID: workerID),
-                id: lockID
-            )
-        } catch {
-            return
+            // release lock
+            try? await self.releaseLock(key: .jobWorkerActiveLock(workerID: workerID), id: lockID)
         }
     }
 }
