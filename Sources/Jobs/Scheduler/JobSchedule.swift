@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import ExtrasBase64
 import Logging
 import NIOCore
 import ServiceLifecycle
@@ -314,7 +315,7 @@ public struct JobSchedule: MutableCollection, Sendable {
         /// Run Job scheduler
         public func run() async throws {
             let bytes: [UInt8] = (0..<16).map { _ in UInt8.random(in: 0...255) }
-            let lockID = ByteBuffer(bytes: bytes)
+            let lockID = ByteBuffer(string: Base64.encodeToString(bytes: bytes))
 
             try await self.jobQueue.queue.waitUntilReady()
 
