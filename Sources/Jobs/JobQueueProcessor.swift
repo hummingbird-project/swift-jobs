@@ -159,14 +159,30 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
         // Note: We use an unstructured Task tied to this scope so it cancels automatically
         let heartbeatTask = Task {
             // Only run heartbeat if the job has a lease duration set in its options
-            guard let lease = job.leaseDuration else { return }
+            guard let lease = job.leaseDuration else {
+                logger.debug("No lease duration for job, skipping heartbeat", metadata: ["jobID": .stringConvertible(jobID)])
+                return
+            }
+
+            let heartbeatInterval = lease / 2
+            logger.debug(
+                "Starting heartbeat task",
+                metadata: [
+                    "jobID": .stringConvertible(jobID),
+                    "workerID": .stringConvertible(self.workerID),
+                    "lease": "\(lease)",
+                    "heartbeatInterval": "\(heartbeatInterval)",
+                ]
+            )
 
             while !Task.isCancelled {
                 // Heartbeat at half the lease interval to ensure overlap
-                try await Task.sleep(for: lease / 2)
+                try await Task.sleep(for: heartbeatInterval)
 
+                logger.debug("Sending heartbeat", metadata: ["jobID": .stringConvertible(jobID), "workerID": .stringConvertible(self.workerID)])
                 // This requires adding `recordHeartbeat` to the JobQueueDriver protocol
                 try await self.queue.recordHeartbeat(jobID: jobID, workerID: self.workerID)
+                logger.debug("Heartbeat sent", metadata: ["jobID": .stringConvertible(jobID), "workerID": .stringConvertible(self.workerID)])
             }
         }
         /// Ensure heartbeat stops when job ends

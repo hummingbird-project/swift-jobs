@@ -666,17 +666,22 @@ struct JobsTests {
 
         let deadWorkerID = UUID()
 
-        // Register job handler
-        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
+        // Register job handler with lease duration to enable heartbeat functionality
+        let jobDefinition = JobDefinition(
+            name: JobName<TestParameters>("testJobRescue"),
+            parameters: TestParameters.self,
+            leaseDuration: .milliseconds(500)  // For heartbeats every 250ms during job execution
+        ) { parameters, context in
             #expect(parameters.value == 42)
             context.logger.info("Job successfully rescued and executed", metadata: ["value": "\(parameters.value)"])
             expectation.trigger()
         }
+        jobQueue.registerJob(jobDefinition)
 
-        // Push a job with lease duration (required for orphan detection)
+        // Push a job with lease duration (required for orphan detection and recovery)
         let jobID = try await jobQueue.push(
             TestParameters(value: 42),
-            options: MemoryQueue.JobOptions(leaseDuration: .seconds(1))
+            options: MemoryQueue.JobOptions(leaseDuration: .seconds(2))  // For orphan detection timeout
         )
 
         // Simulate Worker A picking up the job and then dying/crashing
