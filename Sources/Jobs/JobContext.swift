@@ -34,6 +34,8 @@ public struct JobExecutionContext: Sendable {
     /// Attempt number for this job.
     /// Starts at 1 and increments for every retry until max
     public let attempt: Int
+    /// ID of current worker running this job
+    public let workerID: UUID
 }
 
 /// context for job being pushed to queue

@@ -70,7 +70,7 @@ struct JobMiddlewareTests {
             let nextScheduledAt: Date? = nil
             let traceContext: [String: String]? = nil
             let timeout: Duration? = nil
-
+            let leaseDuration: Duration? = nil
             func execute(context: JobExecutionContext) async throws {}
         }
         let observer1 = TestJobMiddleware()
@@ -94,7 +94,8 @@ struct JobMiddlewareTests {
                 logger: .init(label: "Test"),
                 queuedAt: job.queuedAt,
                 nextScheduledAt: job.nextScheduledAt,
-                attempt: job.attempt
+                attempt: job.attempt,
+                workerID: .init()
             )
         ) { _, _ in }
         #expect(observer1.handled == true)
@@ -120,6 +121,7 @@ struct JobMiddlewareTests {
                 let traceContext: [String: String]? = nil
                 var nextScheduledAt: Date? = nil
                 let timeout: Duration? = nil
+                let leaseDuration: Duration? = nil
 
                 func execute(context: JobExecutionContext) async throws {}
             }
@@ -145,7 +147,8 @@ struct JobMiddlewareTests {
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt,
-                    attempt: job.attempt
+                    attempt: job.attempt,
+                    workerID: .init()
                 )
             ) { _, _ in }
             #expect(middleware1.handled == first)
@@ -172,6 +175,7 @@ struct JobMiddlewareTests {
                 let traceContext: [String: String]? = nil
                 let nextScheduledAt: Date? = Date.now
                 let timeout: Duration? = nil
+                let leaseDuration: Duration? = nil
 
                 func execute(context: JobExecutionContext) async throws {}
             }
@@ -202,7 +206,8 @@ struct JobMiddlewareTests {
                     logger: .init(label: "Test"),
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt,
-                    attempt: job.attempt
+                    attempt: job.attempt,
+                    workerID: .init()
                 )
             ) { _, _ in }
             #expect(middleware1.handled == first)

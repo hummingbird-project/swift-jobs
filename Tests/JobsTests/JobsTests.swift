@@ -15,6 +15,7 @@
 import Atomics
 import Foundation
 import Logging
+import NIOCore
 import ServiceLifecycle
 import Synchronization
 import Testing
@@ -639,5 +640,233 @@ struct JobsTests {
             try await expectation.wait()
         }
         #expect(failedJobCount.load(ordering: .relaxed) == 1)
+    }
+
+    /// Test job rescue functionality where jobs orphaned by one worker are rescued by another worker
+    ///
+    /// This test validates the critical job rescue scenario:
+    /// 1. Worker A picks up a job with a lease duration and starts processing
+    /// 2. Worker A crashes/dies while processing (simulated by expired heartbeat)
+    /// 3. Worker B starts up and detects the orphaned job
+    /// 4. Worker B rescues the job and processes it successfully
+    ///
+    /// This ensures job reliability in distributed systems where workers can fail.
+    @Test func testJobRescue() async throws {
+        struct TestParameters: JobParameters, Equatable {
+            static let jobName = "testJobRescue"
+            let value: Int
+        }
+
+        let expectation = TestExpectation()
+        let logger = Logger(label: "JobsTests")
+
+        // Setup shared memory driver for multi-worker scenario
+        let memoryDriver = MemoryQueue()
+        let jobQueue = JobQueue(memoryDriver, logger: logger)
+
+        let deadWorkerID = UUID()
+
+        // Register job handler
+        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
+            #expect(parameters.value == 42)
+            context.logger.info("Job successfully rescued and executed", metadata: ["value": "\(parameters.value)"])
+            expectation.trigger()
+        }
+
+        // Push a job with lease duration (required for orphan detection)
+        let jobID = try await jobQueue.push(
+            TestParameters(value: 42),
+            options: MemoryQueue.JobOptions(leaseDuration: .seconds(1))
+        )
+
+        // Simulate Worker A picking up the job and then dying/crashing
+        try await memoryDriver.queue.simulateJobPickupAndWorkerDeath(jobID: jobID, workerID: deadWorkerID)
+
+        // Now start a new worker processor that should rescue the orphaned job
+        try await testJobQueue(jobQueue.processor()) {
+            // The processor will automatically call recoverOrphanedJobs(currentWorkerID:) on startup
+            // and should find the job orphaned by the dead worker
+
+            // Verify the rescue was successful by waiting for job execution
+            try await expectation.wait(count: 1, timeout: .seconds(5))
+        }
+    }
+
+    /// Test worker restart scenario where jobs from dead workers are recovered by new workers
+    ///
+    /// This test validates the critical scenario where:
+    /// 1. Worker A is processing jobs with fresh heartbeats
+    /// 2. Worker A process restarts and gets a new worker ID
+    /// 3. New worker starts up and should recover jobs from old Worker A even though heartbeats are fresh
+    /// 4. Without proper currentWorkerID logic, these jobs would get stuck forever
+    @Test func testJobRescueAfterWorkerRestart() async throws {
+        struct TestParameters: JobParameters, Equatable {
+            static let jobName = "testJobRescueAfterWorkerRestart"
+            let value: Int
+        }
+
+        let expectation = TestExpectation()
+        let logger = Logger(label: "JobsTests")
+
+        let memoryDriver = MemoryQueue()
+        let jobQueue = JobQueue(memoryDriver, logger: logger)
+
+        let oldWorkerID = UUID()
+        let newWorkerID = UUID()
+
+        // Register job handler
+        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
+            #expect(parameters.value == 123)
+            context.logger.info("Job rescued after worker restart", metadata: ["value": "\(parameters.value)"])
+            expectation.trigger()
+        }
+
+        // Push a job with lease duration
+        let jobID = try await jobQueue.push(
+            TestParameters(value: 123),
+            options: MemoryQueue.JobOptions(leaseDuration: .seconds(10))
+        )
+
+        // Simulate job being picked up by old worker with FRESH heartbeat (not expired)
+        try await memoryDriver.queue.simulateJobPickupWithFreshHeartbeat(jobID: jobID, workerID: oldWorkerID)
+
+        // Now simulate worker restart - new worker process starts up with different ID
+        try await testJobQueue(jobQueue.processor()) {
+            // Set the new worker ID - different from old worker
+            await memoryDriver.setWorkerID(newWorkerID)
+
+            // Manually test the recovery with explicit worker ID
+            let recoveredJobs = try await memoryDriver.queue.recoverOrphanedJobs(excludingWorkerID: newWorkerID)
+
+            // Should recover the job even though heartbeat is fresh because worker ID is different
+            #expect(recoveredJobs.count == 1)
+            #expect(recoveredJobs.contains(jobID))
+
+            // Wait for the rescued job to be processed
+            try await expectation.wait(count: 1, timeout: .seconds(5))
+        }
+    }
+
+    /// Test database restart scenario where same worker reconnects but loses in-memory job state
+    ///
+    /// This test validates the scenario where:
+    /// 1. Worker is processing jobs
+    /// 2. Database restarts but worker maintains same ID and reconnects quickly
+    /// 3. Jobs still have fresh heartbeats and same worker ID
+    /// 4. Worker has lost in-memory state of what jobs it was processing
+    /// 5. Recovery should handle this based on lease expiration timeout
+    @Test func testJobRescueAfterDatabaseRestart() async throws {
+        struct TestParameters: JobParameters, Equatable {
+            static let jobName = "testJobRescueAfterDatabaseRestart"
+            let value: Int
+        }
+
+        let expectation = TestExpectation()
+        let logger = Logger(label: "JobsTests")
+
+        let memoryDriver = MemoryQueue()
+        let jobQueue = JobQueue(memoryDriver, logger: logger)
+
+        let workerID = UUID()
+
+        // Register job handler
+        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
+            #expect(parameters.value == 456)
+            context.logger.info("Job recovered after database restart", metadata: ["value": "\(parameters.value)"])
+            expectation.trigger()
+        }
+
+        // Push a job with SHORT lease duration to test expiration-based recovery
+        let jobID = try await jobQueue.push(
+            TestParameters(value: 456),
+            options: MemoryQueue.JobOptions(leaseDuration: .milliseconds(100))  // Very short lease
+        )
+
+        // Simulate job being picked up by worker, then database restart
+        // Worker maintains same ID but loses in-memory state
+        try await memoryDriver.queue.simulateJobPickupWithExpiredLease(jobID: jobID, workerID: workerID)
+
+        // Worker reconnects with same ID after database restart
+        try await testJobQueue(jobQueue.processor()) {
+            await memoryDriver.setWorkerID(workerID)  // Same worker ID
+
+            // Recovery should find job with expired lease even though worker ID matches
+            let recoveredJobs = try await memoryDriver.queue.recoverOrphanedJobs(excludingWorkerID: workerID)
+
+            // Should recover based on expired lease, not worker ID difference
+            #expect(recoveredJobs.count == 1)
+            #expect(recoveredJobs.contains(jobID))
+
+            // Wait for the recovered job to be processed
+            try await expectation.wait(count: 1, timeout: .seconds(5))
+        }
+    }
+}
+
+extension MemoryQueue.Internal {
+    /// Test helper to simulate a worker picking up a job and then dying/crashing
+    ///
+    /// This simulates the complete lifecycle of a job being orphaned:
+    /// 1. Job is in the queue waiting to be processed
+    /// 2. Worker picks up the job (moves from queue to pending/processing state)
+    /// 3. Worker dies/crashes (heartbeat expires)
+    /// 4. Job remains in processing state with expired heartbeat, making it orphaned
+    func simulateJobPickupAndWorkerDeath(jobID: MemoryQueue.JobID, workerID: UUID) throws {
+        // Find the job in the queue
+        guard let jobIndex = self.queue.firstIndex(where: { $0.job.id == jobID }) else {
+            throw TestError.jobNotFound
+        }
+
+        let jobRequest = self.queue.remove(at: jobIndex)
+
+        // Simulate job pickup: move to pending/processing state with expired heartbeat
+        self.pendingJobs[jobID] = jobRequest.job.jobBuffer
+        self.processingJobs[jobID] = JobStatus(
+            workerID: workerID,
+            lastHeartbeat: Date().addingTimeInterval(-5 * 60),  // 5 minutes ago (expired)
+            leaseDuration: jobRequest.options.leaseDuration
+        )
+    }
+
+    /// Test helper to simulate a job being picked up with an EXPIRED lease (database restart scenario)
+    func simulateJobPickupWithExpiredLease(jobID: MemoryQueue.JobID, workerID: UUID) throws {
+        // Find the job in the queue
+        guard let jobIndex = self.queue.firstIndex(where: { $0.job.id == jobID }) else {
+            throw TestError.jobNotFound
+        }
+
+        let jobRequest = self.queue.remove(at: jobIndex)
+
+        // Simulate job pickup with expired lease - worker lost in-memory state after DB restart
+        // Heartbeat is recent but lease has conceptually expired due to lost processing state
+        self.pendingJobs[jobID] = jobRequest.job.jobBuffer
+        self.processingJobs[jobID] = JobStatus(
+            workerID: workerID,
+            lastHeartbeat: Date().addingTimeInterval(-1),  // Recent but past the short lease duration
+            leaseDuration: jobRequest.options.leaseDuration
+        )
+    }
+
+    /// Test helper to simulate a job being picked up with a FRESH heartbeat (worker restart scenario)
+    func simulateJobPickupWithFreshHeartbeat(jobID: MemoryQueue.JobID, workerID: UUID) throws {
+        // Find the job in the queue
+        guard let jobIndex = self.queue.firstIndex(where: { $0.job.id == jobID }) else {
+            throw TestError.jobNotFound
+        }
+
+        let jobRequest = self.queue.remove(at: jobIndex)
+
+        // Simulate job pickup with FRESH heartbeat (not expired) - this is the key difference
+        // In a worker restart scenario, old worker jobs may still have recent heartbeats
+        self.pendingJobs[jobID] = jobRequest.job.jobBuffer
+        self.processingJobs[jobID] = JobStatus(
+            workerID: workerID,
+            lastHeartbeat: Date(),  // Fresh heartbeat - NOT expired
+            leaseDuration: jobRequest.options.leaseDuration
+        )
+    }
+
+    enum TestError: Error {
+        case jobNotFound
     }
 }

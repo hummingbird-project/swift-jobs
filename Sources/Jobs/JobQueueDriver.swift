@@ -52,6 +52,15 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     func stop() async
     /// shutdown queue
     func shutdownGracefully() async
+    /// Initialize the current workerID
+    func setWorkerID(_ workerID: UUID) async
+    /// Updates the heartbeat timestamp and worker identity for an active job
+    func recordHeartbeat(jobID: JobID, workerID: UUID) async throws
+    /// Resets jobs that have timed out (current time > last_heartbeat + lease) or belong to different workers
+    /// This would be called by your separate RecoveryService
+    /// - Parameter currentWorkerID: The current worker's ID to exclude from recovery (jobs from other workers will be recovered)
+    @discardableResult
+    func recoverOrphanedJobs(currentWorkerID: UUID?) async throws -> [JobID]
 }
 
 extension JobQueueDriver {
@@ -90,10 +99,20 @@ public struct JobQueueResult<JobID: Sendable>: Sendable {
 public protocol JobOptionsProtocol: Sendable {
     /// When to execute the job
     var delayUntil: Date { get }
+    /// The maximum time a worker can hold a job without updating its heartbeat.
+    /// If exceeded, the job is considered orphaned and available for recovery.
+    var leaseDuration: Duration? { get set }
     /// Initialize JobOptionsProtocol
     /// - Parameters:
     ///   - delayUntil: When to execute the job
     init(delayUntil: Date)
+}
+
+extension JobOptionsProtocol {
+    /// Default to nil for leaseDuration
+    var leaseDuration: Duration? {
+        nil
+    }
 }
 
 /// Options for retrying a job

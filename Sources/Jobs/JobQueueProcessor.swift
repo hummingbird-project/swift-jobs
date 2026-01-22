@@ -28,6 +28,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
     let options: JobQueueProcessorOptions
     let middleware: any JobMiddleware
     let logger: Logger
+    let workerID: UUID
 
     public init(
         queue: JobQueue<Queue>,
@@ -39,6 +40,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
         self.logger = logger
         self.options = options
         self.middleware = middleware()
+        self.workerID = UUID()
     }
 
     init(
@@ -51,10 +53,16 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
         self.logger = logger
         self.options = options
         self.middleware = middleware
+        self.workerID = UUID()
     }
 
     public func run() async throws {
+        await self.queue.setWorkerID(workerID)
         try await queue.waitUntilReady()
+
+        // Recover jobs from previous worker instances before starting new ones
+        try await self.queue.recoverOrphanedJobs(currentWorkerID: self.workerID)
+
         let (stream, cont) = AsyncStream.makeStream(of: Void.self)
         try await withTaskCancellationOrGracefulShutdownHandler {
             do {
@@ -145,7 +153,25 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
 
     /// Run job
     func runJob(id jobID: Queue.JobID, job: any JobInstanceProtocol, logger: Logger) async throws {
-        logger.debug("Starting Job")
+        logger.debug("Starting Job", metadata: ["jobID": .stringConvertible(jobID), "workerID": .stringConvertible(self.workerID)])
+
+        // 1. Create a heartbeat task if the job/queue supports leases
+        // Note: We use an unstructured Task tied to this scope so it cancels automatically
+        let heartbeatTask = Task {
+            // Only run heartbeat if the job has a lease duration set in its options
+            guard let lease = job.leaseDuration else { return }
+
+            while !Task.isCancelled {
+                // Heartbeat at half the lease interval to ensure overlap
+                try await Task.sleep(for: lease / 2)
+
+                // This requires adding `recordHeartbeat` to the JobQueueDriver protocol
+                try await self.queue.recordHeartbeat(jobID: jobID, workerID: self.workerID)
+            }
+        }
+        /// Ensure heartbeat stops when job ends
+        defer { heartbeatTask.cancel() }
+
         do {
             do {
                 let context = JobExecutionContext(
@@ -153,7 +179,8 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
                     logger: logger,
                     queuedAt: job.queuedAt,
                     nextScheduledAt: job.nextScheduledAt,
-                    attempt: job.attempt
+                    attempt: job.attempt,
+                    workerID: self.workerID
                 )
                 try await handleJob(job: job, context: context)
             } catch let error as CancellationError {

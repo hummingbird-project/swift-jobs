@@ -29,20 +29,32 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     public struct JobOptions: JobOptionsProtocol {
         /// When to execute the job
         public let delayUntil: Date
+        /// How long a worker should hold this lease
+        public var leaseDuration: Duration?
         /// Requirement from `JobOptionsProtocol`
         public init() {
             self.delayUntil = Date.now
+            self.leaseDuration = nil
         }
         /// Requirement from `JobOptionsProtocol`
         /// - Parameters:
         ///   - delayUntil: When to execute the job
         public init(delayUntil: Date = .now) {
             self.delayUntil = delayUntil
+            self.leaseDuration = nil
+        }
+        /// Requirement from `JobOptionsProtocol`
+        /// - Parameters:
+        ///   - delayUntil: When to execute the job
+        ///   - leaseDuration: Lease expiration
+        public init(delayUntil: Date = .now, leaseDuration: Duration) {
+            self.delayUntil = delayUntil
+            self.leaseDuration = leaseDuration
         }
     }
 
     /// queue of jobs
-    fileprivate let queue: Internal
+    package let queue: Internal
     private let onFailedJob: @Sendable (JobID, any Error) -> Void
     private let jobRegistry: JobRegistry
 
@@ -113,22 +125,44 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.pauseJob(jobID: jobID)
     }
 
+    public func setWorkerID(_ workerID: UUID) async {
+        await self.queue.setWorkerID(workerID)
+    }
+
+    public func recordHeartbeat(jobID: JobID, workerID: UUID) async throws {
+        await self.queue.recordHeartbeat(jobID: jobID, workerID: workerID)
+    }
+
+    public func recoverOrphanedJobs(currentWorkerID: UUID?) async throws -> [JobID] {
+        try await self.queue.recoverOrphanedJobs(excludingWorkerID: currentWorkerID)
+    }
+
     /// Internal actor managing the job queue
-    fileprivate actor Internal {
-        struct QueuedJob: Sendable {
+    package actor Internal {
+        package struct QueuedJob: Sendable {
             let id: JobID
             let jobBuffer: ByteBuffer
         }
-        var queue: Deque<(job: QueuedJob, options: JobOptions)>
-        var pendingJobs: [JobID: ByteBuffer]
+        package struct JobStatus: Sendable {
+            let workerID: UUID
+            let lastHeartbeat: Date
+            let leaseDuration: Duration?
+        }
+        package var queue: Deque<(job: QueuedJob, options: JobOptions)>
+        package var pendingJobs: [JobID: ByteBuffer]
+        package var processingJobs: [JobID: JobStatus] = [:]
         var metadata: [String: (data: ByteBuffer, expires: Date)]
         var isStopped: Bool
+        var workerID: UUID
 
         init() {
             self.queue = .init()
             self.isStopped = false
             self.pendingJobs = .init()
             self.metadata = .init()
+            // Will get overriden in the run step
+            // Is this the best way to handle this?
+            self.workerID = .init()
         }
 
         func push(_ jobBuffer: ByteBuffer, options: JobOptions) throws -> JobID {
@@ -144,6 +178,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func clearPendingJob(jobID: JobID) {
             self.pendingJobs[jobID] = nil
+            self.processingJobs[jobID] = nil
         }
 
         func cancelJob(jobID: JobID) {
@@ -186,6 +221,8 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                         }
                     } else {
                         self.pendingJobs[request.job.id] = request.job.jobBuffer
+                        let status = JobStatus(workerID: self.workerID, lastHeartbeat: .now, leaseDuration: request.options.leaseDuration)
+                        self.processingJobs[request.job.id] = status
                         return request.job
                     }
                 }
@@ -230,6 +267,46 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             if self.metadata[key]?.data == id {
                 self.metadata[key] = nil
             }
+        }
+
+        public func setWorkerID(_ workerID: UUID) async {
+            self.workerID = workerID
+        }
+
+        func recordHeartbeat(jobID: JobID, workerID: UUID) {
+            guard let currentStatus = self.processingJobs[jobID] else { return }
+
+            // Only update if the workerID matches (fencing)
+            if currentStatus.workerID == workerID {
+                self.processingJobs[jobID] = JobStatus(
+                    workerID: workerID,
+                    lastHeartbeat: .now,
+                    leaseDuration: currentStatus.leaseDuration
+                )
+            }
+        }
+
+        func recoverOrphanedJobs(excludingWorkerID: UUID? = nil) throws -> [JobID] {
+            let now = Date.now
+            var recoveredIDs: [JobID] = []
+
+            for (id, status) in self.processingJobs {
+                guard let lease = status.leaseDuration else { continue }
+
+                // If workerID is different (restart) OR heartbeat expired (crash)
+                let isDifferentWorker = excludingWorkerID != nil && status.workerID != excludingWorkerID
+                let isExpired = status.lastHeartbeat.addingTimeInterval(TimeInterval(lease.components.seconds)) < now
+                if isDifferentWorker || isExpired {
+                    if let buffer = self.pendingJobs[id] {
+                        self.processingJobs[id] = nil
+                        self.pendingJobs[id] = nil
+                        // Return to queue and clean up tracking
+                        try self.retry(id, buffer: buffer, options: .init())
+                        recoveredIDs.append(id)
+                    }
+                }
+            }
+            return recoveredIDs
         }
     }
 }

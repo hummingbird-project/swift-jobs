@@ -17,6 +17,7 @@ public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
     let name: String
     let retryStrategy: any JobRetryStrategy
     let timeout: Duration?
+    let leaseDuration: Duration?
     let _execute: @Sendable (Parameters, JobExecutionContext) async throws -> Void
 
     ///  Initialize JobDefinition
@@ -35,6 +36,7 @@ public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
         self.retryStrategy = retryStrategy
         self._execute = execute
         self.timeout = timeout
+        self.leaseDuration = nil
     }
 
     ///  Initialize JobDefinition
@@ -55,6 +57,30 @@ public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
         self.retryStrategy = retryStrategy
         self._execute = execute
         self.timeout = timeout
+        self.leaseDuration = nil
+    }
+
+    ///  Initialize JobDefinition
+    /// - Parameters:
+    ///   - name: Job name
+    ///   - parameters: Job parameter type
+    ///   - retryStrategy: Retry strategy for failed jobs
+    ///   - timeout: Timeout for long running jobs
+    ///   - leaseDuration: Duration how long should the last heartbeat from now before a job is considered orphaned
+    ///   - execute: Closure that executes job
+    public init(
+        name: JobName<Parameters>,
+        parameters: Parameters.Type = Parameters.self,
+        retryStrategy: any JobRetryStrategy = .dontRetry,
+        timeout: Duration? = nil,
+        leaseDuration: Duration,
+        execute: @escaping @Sendable (Parameters, JobExecutionContext) async throws -> Void
+    ) {
+        self.name = name.name
+        self.retryStrategy = retryStrategy
+        self._execute = execute
+        self.timeout = timeout
+        self.leaseDuration = leaseDuration
     }
 
     ///  Initialize JobDefinition
@@ -72,6 +98,7 @@ public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
         self.retryStrategy = ExponentialJitterJobRetryStrategy(maxAttempts: maxRetryCount)
         self._execute = execute
         self.timeout = nil
+        self.leaseDuration = nil
     }
 
     func execute(_ parameters: Parameters, context: JobExecutionContext) async throws {
