@@ -75,6 +75,12 @@ public struct JobWorkerContext: Sendable {
     public let id: String
     /// Job worker metadata
     public let metadata: [String: String]
+
+    // initialize JobWorkerContext
+    public init(id: String, metadata: [String: String]) {
+        self.id = id
+        self.metadata = metadata
+    }
 }
 
 /// Type returned from iterating a JobQueueDriver
