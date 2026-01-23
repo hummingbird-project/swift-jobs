@@ -1,0 +1,118 @@
+//
+// This source file is part of the Hummingbird server framework project
+// Copyright (c) the Hummingbird authors
+//
+// See LICENSE.txt for license information
+// SPDX-License-Identifier: Apache-2.0
+//
+import Jobs
+
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
+
+struct WorkFlowJobInput<Input: Codable & Sendable>: Codable & Sendable {
+    let input: Input
+    let workflowID: String
+}
+
+extension JobQueueProtocol {
+    func registerWorkflowJob<Input: Codable & Sendable, Output: Codable & Sendable>(
+        workflowName: String,
+        workflowJob: WorkflowJob<Input, Output>,
+        nextItem: WorkflowNextJob<Output>
+    ) {
+        let jobName = "\(workflowName).\(workflowJob.name)"
+        self.logger.info(
+            "Registered Workflow Job",
+            metadata: ["JobName": .stringConvertible(jobName), "WorkflowName": .stringConvertible(workflowName)]
+        )
+        let job = JobDefinition(
+            name: .init(jobName),
+            parameters: WorkFlowJobInput<Input>.self,
+            retryStrategy: workflowJob.retryStrategy,
+            timeout: workflowJob.timeout
+        ) { parameters, context in
+            var logger = context.logger
+            logger[metadataKey: "WorkflowID"] = .string(parameters.workflowID)
+            let workflowContext = WorkflowExecutionContext(
+                workflowID: parameters.workflowID,
+                jobID: context.jobID,
+                logger: logger,
+                attempt: context.attempt,
+                queuedAt: context.queuedAt
+            )
+            let output = try await workflowJob._execute(parameters.input, workflowContext)
+            // work out what the next workflow job is and push it to the queue
+            if let outputJobName = try await nextItem.getNextWorkflowJob(output) {
+                let fullOutputJobName = "\(workflowName).\(outputJobName)"
+                self.logger.debug(
+                    "Triggering job",
+                    metadata: ["JobName": .stringConvertible(fullOutputJobName), "FromJob": .stringConvertible(jobName)]
+                )
+                try await self.pushWorkflowJob(.init(fullOutputJobName), workflowID: parameters.workflowID, parameters: output)
+            }
+        }
+        self.registerJob(job)
+    }
+
+    func registerFinalWorkflowJob<Input: Codable & Sendable>(
+        workflowName: String,
+        workflowJob: WorkflowJob<Input, Void>
+    ) {
+        let jobName = "\(workflowName).\(workflowJob.name)"
+        self.logger.info(
+            "Registered Final Workflow Job",
+            metadata: ["JobName": .stringConvertible(jobName)]
+        )
+        let job = JobDefinition(
+            name: .init(jobName),
+            parameters: WorkFlowJobInput<Input>.self,
+            retryStrategy: workflowJob.retryStrategy,
+            timeout: workflowJob.timeout
+        ) { input, context in
+            var logger = context.logger
+            logger[metadataKey: "WorkflowID"] = .string(input.workflowID)
+            let workflowContext = WorkflowExecutionContext(
+                workflowID: input.workflowID,
+                jobID: context.jobID,
+                logger: logger,
+                attempt: context.attempt,
+                queuedAt: context.queuedAt
+            )
+            try await workflowJob._execute(input.input, workflowContext)
+        }
+        self.registerJob(job)
+    }
+
+    public func registerWorkflow<Input: Codable & Sendable>(
+        name: String,
+        input: Input.Type = Input.self,
+        @WorkflowBuilder<Input> buildWorkflow: () -> Workflow<Input>
+    ) -> WorkflowName<Input> {
+        WorkflowBuilderState.$current.withValue(.init(name: name)) {
+            let workflow = buildWorkflow()
+            workflow.registerJobs(self)
+            return workflow.workflowName
+        }
+    }
+
+    public func pushWorkflow<Input: Sendable & Codable>(
+        _ workflowName: WorkflowName<Input>,
+        parameters: Input
+    ) async throws -> String {
+        let id = UUID().uuidString
+        _ = try await self.push(.init(workflowName.name), parameters: WorkFlowJobInput(input: parameters, workflowID: id))
+        return id
+    }
+
+    func pushWorkflowJob<Input: Sendable & Codable>(
+        _ workflowName: WorkflowName<Input>,
+        workflowID: String,
+        parameters: Input
+    ) async throws {
+        _ = try await self.push(.init(workflowName.name), parameters: WorkFlowJobInput(input: parameters, workflowID: workflowID))
+    }
+}

@@ -14,7 +14,7 @@
 
 /// Job definition type
 public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
-    let name: String
+    package let name: String
     let retryStrategy: any JobRetryStrategy
     let timeout: Duration?
     let _execute: @Sendable (Parameters, JobExecutionContext) async throws -> Void
