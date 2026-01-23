@@ -219,7 +219,7 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
     /// - Parameter workflowId: The workflow ID to cancel
     public func cancelWorkflow(_ workflowId: WorkflowID) async throws {
         let state = try await getInternalWorkflowState(workflowId)
-        guard [WorkflowStatus.running, WorkflowStatus.queued].contains(state.status) else {
+        guard [WorkflowStatus.running, WorkflowStatus.queued, WorkflowStatus.sleeping].contains(state.status) else {
             logger.debug(
                 "Workflow cancellation skipped - already in terminal state",
                 metadata: [
