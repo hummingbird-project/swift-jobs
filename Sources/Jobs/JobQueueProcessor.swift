@@ -299,5 +299,5 @@ extension TimeInterval {
 }
 
 extension JobMetadataKey where Value == ByteBuffer {
-    static func jobWorkerActiveLock(workerID: String) -> Self { "worker.\(workerID)" }
+    public static func jobWorkerActiveLock(workerID: String) -> Self { "worker.\(workerID)" }
 }

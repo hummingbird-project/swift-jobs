@@ -53,7 +53,7 @@ extension JobMetadataDriver {
     ///
     /// - Parameter key: Metadata key
     /// - Returns: Value associated with metadata key
-    func getMetadata<Value: Codable>(_ key: JobMetadataKey<Value>) async throws -> Value? {
+    public func getMetadata<Value: Codable>(_ key: JobMetadataKey<Value>) async throws -> Value? {
         guard let buffer = try await self.getMetadata(key.name) else { return nil }
         return try JSONDecoder().decode(Value.self, from: buffer)
     }
@@ -63,7 +63,7 @@ extension JobMetadataDriver {
     /// - Parameters:
     ///   - key: Metadata key
     ///   - value: Value associated with metadata key
-    func setMetadata<Value: Codable>(key: JobMetadataKey<Value>, value: Value) async throws {
+    public func setMetadata<Value: Codable>(key: JobMetadataKey<Value>, value: Value) async throws {
         let buffer = try JSONEncoder().encodeAsByteBuffer(value, allocator: ByteBufferAllocator())
         try await self.setMetadata(key: key.name, value: buffer)
     }
@@ -75,7 +75,7 @@ extension JobMetadataDriver {
     ///   - id: Lock identifier
     ///   - expiresIn: When lock will expire
     /// - Returns: If lock was acquired
-    func acquireLock<ID: Codable>(key: JobMetadataKey<ID>, id: ID, expiresIn: TimeInterval) async throws -> Bool {
+    public func acquireLock<ID: Codable>(key: JobMetadataKey<ID>, id: ID, expiresIn: TimeInterval) async throws -> Bool {
         let buffer = try JSONEncoder().encodeAsByteBuffer(id, allocator: ByteBufferAllocator())
         return try await self.acquireLock(key: key.name, id: buffer, expiresIn: expiresIn)
     }
@@ -85,7 +85,7 @@ extension JobMetadataDriver {
     /// - Parameters:
     ///   - key: Metadata key
     ///   - id: Lock identifier
-    func releaseLock<ID: Codable>(key: JobMetadataKey<ID>, id: ID) async throws {
+    public func releaseLock<ID: Codable>(key: JobMetadataKey<ID>, id: ID) async throws {
         let buffer = try JSONEncoder().encodeAsByteBuffer(id, allocator: ByteBufferAllocator())
         try await self.releaseLock(key: key.name, id: buffer)
     }
@@ -94,7 +94,7 @@ extension JobMetadataDriver {
     ///
     /// - Parameter key: Metadata key
     /// - Returns: Value associated with metadata key
-    func getMetadata(_ key: JobMetadataKey<ByteBuffer>) async throws -> ByteBuffer? {
+    public func getMetadata(_ key: JobMetadataKey<ByteBuffer>) async throws -> ByteBuffer? {
         try await self.getMetadata(key.name)
     }
 
@@ -103,7 +103,7 @@ extension JobMetadataDriver {
     /// - Parameters:
     ///   - key: Metadata key
     ///   - value: Value associated with metadata key
-    func setMetadata(key: JobMetadataKey<ByteBuffer>, value: ByteBuffer) async throws {
+    public func setMetadata(key: JobMetadataKey<ByteBuffer>, value: ByteBuffer) async throws {
         try await self.setMetadata(key: key.name, value: value)
     }
 
@@ -114,7 +114,7 @@ extension JobMetadataDriver {
     ///   - id: Lock identifier
     ///   - expiresIn: When lock will expire
     /// - Returns: If lock was acquired
-    func acquireLock(key: JobMetadataKey<ByteBuffer>, id: ByteBuffer, expiresIn: TimeInterval) async throws -> Bool {
+    public func acquireLock(key: JobMetadataKey<ByteBuffer>, id: ByteBuffer, expiresIn: TimeInterval) async throws -> Bool {
         try await self.acquireLock(key: key.name, id: id, expiresIn: expiresIn)
     }
 
@@ -123,7 +123,7 @@ extension JobMetadataDriver {
     /// - Parameters:
     ///   - key: Metadata key
     ///   - id: Lock identifier
-    func releaseLock(key: JobMetadataKey<ByteBuffer>, id: ByteBuffer) async throws {
+    public func releaseLock(key: JobMetadataKey<ByteBuffer>, id: ByteBuffer) async throws {
         try await self.releaseLock(key: key.name, id: id)
     }
 }
