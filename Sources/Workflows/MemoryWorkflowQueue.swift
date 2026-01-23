@@ -40,10 +40,10 @@ public final class MemoryWorkflowQueue: WorkflowQueueDriver, Sendable {
 
     // MARK: - Internal Storage
 
-    private let storage: Internal
-    private let jobRegistry: JobRegistry
-    private let workflowStateRegistry: WorkflowRegistry
-    private let onFailedJob: @Sendable (JobID, any Error) -> Void
+    let storage: Internal
+    let jobRegistry: JobRegistry
+    let workflowStateRegistry: WorkflowRegistry
+    let onFailedJob: @Sendable (JobID, any Error) -> Void
 
     public init(onFailedJob: @escaping @Sendable (JobID, any Error) -> Void = { _, _ in }) {
         self.workflowStateRegistry = WorkflowRegistry()
@@ -56,6 +56,16 @@ public final class MemoryWorkflowQueue: WorkflowQueueDriver, Sendable {
 
     public func registerJob<Parameters>(_ job: JobDefinition<Parameters>) {
         jobRegistry.registerJob(job)
+    }
+
+    public func registerCustomJobBuilder(
+        name: String,
+        builder: @escaping @Sendable (Decoder) throws -> any JobInstanceProtocol
+    ) {
+        // Override the default implementation to actually register the custom builder
+        jobRegistry.builderTypeMap.withLock {
+            $0[name] = builder
+        }
     }
 
     @discardableResult
@@ -530,7 +540,7 @@ extension MemoryWorkflowQueue {
 // MARK: - Internal Storage Actor
 
 extension MemoryWorkflowQueue {
-    fileprivate actor Internal {
+    actor Internal {
         struct QueuedJob: Sendable {
             let id: JobID
             let jobBuffer: ByteBuffer

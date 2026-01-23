@@ -92,10 +92,17 @@ struct StepRetryPolicyTests {
         #expect(strategy.shouldRetry(attempt: 2, error: retryableError) == true)
         #expect(strategy.shouldRetry(attempt: 3, error: retryableError) == false)
 
-        // Should have increasing backoff
-        let backoff1 = strategy.calculateBackoff(attempt: 1)
-        let backoff2 = strategy.calculateBackoff(attempt: 2)
-        #expect(backoff2 > backoff1)
+        // Should have increasing base backoff (test multiple times to account for jitter)
+        var increasingBackoffCount = 0
+        for _ in 0..<10 {
+            let backoff1 = strategy.calculateBackoff(attempt: 1)
+            let backoff2 = strategy.calculateBackoff(attempt: 2)
+            if backoff2 > backoff1 {
+                increasingBackoffCount += 1
+            }
+        }
+        // Due to random jitter, expect at least 70% to show increase
+        #expect(increasingBackoffCount >= 7)
     }
 
     // MARK: - WorkflowAwareJobRetryStrategy Tests
@@ -200,9 +207,7 @@ struct StepRetryPolicyTests {
         )
 
         // Verify the retry policy is stored
-        #expect(activityJob.retryPolicy != nil)
-
-        guard case let .exponentialJitter(maxAttempts, _, _, _) = activityJob.retryPolicy! else {
+        guard case let .exponentialJitter(maxAttempts, _, _, _) = activityJob.retryPolicy else {
             Issue.record("Expected exponentialJitter policy")
             return
         }
@@ -237,7 +242,7 @@ struct StepRetryPolicyTests {
         #expect(decodedJob.stepIndex == originalJob.stepIndex)
 
         // Verify retry policy
-        guard case let .fixedAttempts(maxAttempts) = decodedJob.retryPolicy! else {
+        guard case let .fixedAttempts(maxAttempts) = decodedJob.retryPolicy else {
             Issue.record("Expected fixedAttempts policy")
             return
         }

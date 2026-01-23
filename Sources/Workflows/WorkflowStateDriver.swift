@@ -36,6 +36,12 @@ public protocol WorkflowQueueDriver: JobQueueDriver, JobMetadataDriver, Workflow
     /// Push a workflow job with delay options
     func pushWorkflowJob<Parameters: JobParameters>(_ job: Parameters, delayUntil: Date) async throws -> JobID
 
+    /// Register custom job builder for specific parameter types
+    func registerCustomJobBuilder(
+        name: String,
+        builder: @escaping @Sendable (Decoder) throws -> any JobInstanceProtocol
+    )
+
     /// Queue a new workflow execution
     /// - Parameters:
     ///   - workflowName: Name of the workflow to execute

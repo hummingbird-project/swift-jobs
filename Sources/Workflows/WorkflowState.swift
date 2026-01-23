@@ -317,7 +317,7 @@ public enum WorkflowAction: String, Codable, Sendable {
 }
 
 /// Job that executes an activity within a workflow
-public struct ActivityExecutionJob: JobParameters {
+public struct ActivityExecutionJob: JobParameters, ActivityJobRetryLogic {
     public static var jobName: String { "ActivityExecution" }
 
     /// Unique identifier for this activity execution
@@ -331,7 +331,7 @@ public struct ActivityExecutionJob: JobParameters {
     /// Timeout for activity execution
     public let timeout: Duration?
     /// Retry policy for this activity
-    public let retryPolicy: StepRetryPolicy?
+    public let retryPolicy: StepRetryPolicy
     /// Workflow type for continuation after activity completion
     public let workflowType: String
     /// Current step index for continuation
@@ -343,7 +343,7 @@ public struct ActivityExecutionJob: JobParameters {
         activityName: String,
         input: Input,
         timeout: Duration? = nil,
-        retryPolicy: StepRetryPolicy? = nil,
+        retryPolicy: StepRetryPolicy = .exponentialJitter(maxAttempts: 4),
         workflowType: String,
         stepIndex: Int
     ) throws {
@@ -357,6 +357,26 @@ public struct ActivityExecutionJob: JobParameters {
         self.stepIndex = stepIndex
     }
 
+    // MARK: - ActivityJobRetryLogic Implementation
+
+    /// Use this job's specific retry policy instead of global strategy
+    public func shouldRetryJob(attempt: Int, error: Error) -> Bool {
+        retryPolicy.strategy.shouldRetry(attempt: attempt, error: error)
+    }
+
+    /// Calculate backoff using this job's specific retry policy
+    public func calculateJobBackoff(attempt: Int) -> Duration {
+        retryPolicy.strategy.calculateBackoff(attempt: attempt)
+    }
+}
+
+/// Protocol that allows job parameters to provide their own retry logic
+public protocol ActivityJobRetryLogic {
+    /// Determines if the job should be retried based on attempt number and error
+    func shouldRetryJob(attempt: Int, error: Error) -> Bool
+
+    /// Calculates backoff duration for retry based on attempt number
+    func calculateJobBackoff(attempt: Int) -> Duration
 }
 
 /// Result of an activity execution

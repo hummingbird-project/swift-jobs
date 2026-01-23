@@ -273,6 +273,7 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         return summary
     }
 
+    /// Register the workflow coordinator job handler
     private func registerWorkflowCoordinator() {
         jobQueue.registerJob(
             parameters: WorkflowCoordinatorJob.self,
@@ -282,7 +283,6 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         }
     }
 
-    /// Schedule a workflow to run at specified intervals
     /// Schedule a workflow to run according to the specified schedule
     /// This method accumulates schedules in the internal JobSchedule
     ///
@@ -316,8 +316,8 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         await jobSchedule.scheduler(on: jobQueue)
     }
 
+    /// Register the scheduled workflow execution job handler
     private func registerScheduledWorkflowJob() {
-        // Register handler for scheduled workflow jobs
         jobQueue.registerJob(
             parameters: ScheduledWorkflowExecutionJob.self,
             retryStrategy: StepRetryPolicy.default.strategy
@@ -326,23 +326,44 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         }
     }
 
+    /// Register the activity execution job handler with per-job retry strategies
     private func registerActivityExecutor() {
-        // Register activity executor with context-aware retry strategy
-        jobQueue.registerJob(
+        // Create base job definition for ActivityExecutionJob
+        let baseJobDefinition = JobDefinition<ActivityExecutionJob>(
             parameters: ActivityExecutionJob.self,
-            retryStrategy: ContextAwareActivityRetryStrategy()
+            retryStrategy: .dontRetry,  // Placeholder - will be replaced by job-specific strategies
+            timeout: nil
         ) { params, context in
             try await self.handleActivityExecution(params, context: context)
         }
+
+        // Register custom builder that creates job instances with job-specific retry strategies
+        let customBuilder: @Sendable (Decoder) throws -> any JobInstanceProtocol = { decoder in
+            let data = try JobInstanceData<ActivityExecutionJob>(from: decoder)
+            let activityJob = data.parameters
+
+            // Create a job definition with the activity's specific retry strategy
+            let jobSpecificDefinition = JobDefinition<ActivityExecutionJob>(
+                parameters: ActivityExecutionJob.self,
+                retryStrategy: activityJob.retryPolicy.strategy,
+                timeout: baseJobDefinition.timeout,
+                execute: baseJobDefinition.execute
+            )
+
+            return try JobInstance<ActivityExecutionJob>(job: jobSpecificDefinition, data: data)
+        }
+
+        // Register the custom builder using the workflow queue driver
+        jobQueue.queue.registerCustomJobBuilder(
+            name: baseJobDefinition.name,
+            builder: customBuilder
+        )
     }
 
     private func handleWorkflowCoordination(
         _ job: WorkflowCoordinatorJob,
         context: JobExecutionContext
     ) async throws {
-        let workflowLockKey = "workflow_lock:\(job.workflowId.value)"
-        let jobIdBuffer = try workflowRegistry.encode(context.jobID)
-
         context.logger.debug(
             "Processing workflow coordination",
             metadata: [
@@ -351,40 +372,59 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
             ]
         )
 
+        // Execute the workflow action with appropriate locking
+        try await executeWorkflowActionWithLock(job, context: context)
+    }
+
+    /// Execute workflow action with appropriate locking strategy
+    private func executeWorkflowActionWithLock(
+        _ job: WorkflowCoordinatorJob,
+        context: JobExecutionContext
+    ) async throws {
         // Cancellation operations bypass the workflow lock to ensure they can always execute
         if job.action == .cancel {
-            // Bypass workflow lock for cancellation operations
-        } else {
-            context.logger.debug("Attempting to acquire workflow lock")
+            try await executeWorkflowAction(job, context: context)
+            return
+        }
 
-            // Try to acquire workflow execution lock
-            let lockAcquired = try await jobQueue.queue.acquireLock(
-                key: workflowLockKey,
-                id: jobIdBuffer,
-                expiresIn: 300  // 5 minutes
+        // All other operations require workflow lock
+        let workflowLockKey = "workflow_lock:\(job.workflowId.value)"
+        let jobIdBuffer = try workflowRegistry.encode(context.jobID)
+
+        context.logger.debug("Attempting to acquire workflow lock")
+
+        let lockAcquired = try await jobQueue.queue.acquireLock(
+            key: workflowLockKey,
+            id: jobIdBuffer,
+            expiresIn: 300  // 5 minutes
+        )
+
+        guard lockAcquired else {
+            context.logger.debug(
+                "Workflow already locked by another job, skipping",
+                metadata: [
+                    "workflowId": .string(job.workflowId.value),
+                    "currentJobId": .string(context.jobID),
+                ]
             )
-
-            if !lockAcquired {
-                context.logger.debug(
-                    "Workflow already locked by another job, skipping",
-                    metadata: [
-                        "workflowId": .string(job.workflowId.value),
-                        "currentJobId": .string(context.jobID),
-                    ]
-                )
-                return
-            }
+            return
         }
 
         defer {
-            // Release workflow lock when done (only if we acquired it)
-            if job.action != .cancel {
-                Task {
-                    try? await jobQueue.queue.releaseLock(key: workflowLockKey, id: jobIdBuffer)
-                }
+            /// We should not need a Task here for Swift 6.3
+            Task {
+                try? await jobQueue.queue.releaseLock(key: workflowLockKey, id: jobIdBuffer)
             }
         }
 
+        try await executeWorkflowAction(job, context: context)
+    }
+
+    /// Execute the appropriate workflow action based on the job type
+    private func executeWorkflowAction(
+        _ job: WorkflowCoordinatorJob,
+        context: JobExecutionContext
+    ) async throws {
         switch job.action {
         case .start:
             try await startWorkflowExecution(job, context: context)
@@ -500,12 +540,12 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
                 stepIndex: job.stepIndex
             )
             try await jobQueue.push(completionJob)
-            context.logger.info("📝 Pushed completion job for workflow callbacks", metadata: ["workflowId": .string(job.workflowId.value)])
+            context.logger.debug("📝 Pushed completion job for workflow callbacks", metadata: ["workflowId": .string(job.workflowId.value)])
 
             // Cleanup workflow queries
             cleanupWorkflowQueries(job.workflowId)
 
-            context.logger.info(
+            context.logger.debug(
                 "Workflow execution completed",
                 metadata: [
                     "workflowId": .string(job.workflowId.value),
@@ -785,8 +825,6 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         )
 
         // Already handled above - workflow is in terminal state, cancellation was skipped
-
-        // Cancel pending sleep operations
         // Cancel pending sleep operations
         sleepCompletions.cancelPendingSleeps(workflowId: job.workflowId)
 
@@ -817,7 +855,6 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         )
 
         // Notify completion registry that workflow is cancelled
-        // Notify completion registry that workflow is cancelled
         WorkflowCompletionRegistry.shared.failWorkflow(
             workflowId: job.workflowId,
             error: WorkflowError.workflowCancelled(job.workflowId)
@@ -840,68 +877,81 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         let id = try await startWorkflow(workflowType, input: input, workflowId: workflowId, options: options)
 
         // Wait for completion using event-driven approach
-        let status: WorkflowExecutionSummary
-        if let timeout = options.timeout {
-            status = try await waitForWorkflowCompletionEventDriven(id, timeout: timeout)
-        } else {
-            status = try await waitForWorkflowCompletionEventDrivenIndefinitely(id)
-        }
+        let status = try await waitForWorkflowCompletionEventDriven(id, timeout: options.timeout)
 
-        // Check final status
+        // Process the final result
+        return try await processWorkflowResult(id, status: status, outputType: W.Output.self)
+    }
+
+    /// Process workflow execution result and extract typed output
+    private func processWorkflowResult<Output: Codable & Sendable>(
+        _ workflowId: WorkflowID,
+        status: WorkflowExecutionSummary,
+        outputType: Output.Type
+    ) async throws -> Output {
         switch status.status {
         case .completed:
-            // Get the full execution to access output
-            guard let execution = try await jobQueue.queue.workflowRepository.getExecution(id) else {
-                throw WorkflowError.executionNotFound(id)
-            }
-
-            guard let resultBuffer = execution.result else {
-                throw WorkflowError.noOutput(id)
-            }
-
-            // Decode the result using the registry
-            return try workflowRegistry.decode(resultBuffer, as: W.Output.self)
+            return try await extractWorkflowOutput(workflowId, outputType: outputType)
 
         case .failed:
             let errorMessage = status.error ?? "Unknown workflow error"
             throw WorkflowError.workflowFailed(errorMessage)
 
         case .cancelled:
-            // For cancelled workflows, check if they have output (graceful cancellation)
-            // Workflows can return meaningful results even when cancelled
-            guard let execution = try await jobQueue.queue.workflowRepository.getExecution(id) else {
-                throw WorkflowError.executionNotFound(id)
-            }
-
-            if let resultBuffer = execution.result {
-                // Decode the result using the registry
-                let output = try workflowRegistry.decode(resultBuffer, as: W.Output.self)
-                // Workflow was cancelled but produced meaningful output (graceful cancellation)
-                // This handles cases like OrderProcessingWorkflow.createCancelledOutput()
-                // which returns completed steps and cancellation status
-                logger.debug(
-                    "Returning output from cancelled workflow (graceful cancellation)",
-                    metadata: ["workflowId": .string(id.value)]
-                )
-                return output
-            } else {
-                // Workflow was cancelled without producing output (forceful cancellation)
-                logger.debug(
-                    "Cancelled workflow has no output available",
-                    metadata: ["workflowId": .string(id.value)]
-                )
-                throw WorkflowError.workflowCancelled(id)
-            }
+            return try await handleCancelledWorkflowOutput(workflowId, outputType: outputType)
 
         default:
-            throw WorkflowError.unexpectedStatus(id, status.status)
+            throw WorkflowError.unexpectedStatus(workflowId, status.status)
         }
     }
 
-    /// Wait for workflow completion using event-driven approach with timeout
+    /// Extract output from a completed workflow execution
+    private func extractWorkflowOutput<Output: Codable & Sendable>(
+        _ workflowId: WorkflowID,
+        outputType: Output.Type
+    ) async throws -> Output {
+        guard let execution = try await jobQueue.queue.workflowRepository.getExecution(workflowId) else {
+            throw WorkflowError.executionNotFound(workflowId)
+        }
+
+        guard let resultBuffer = execution.result else {
+            throw WorkflowError.noOutput(workflowId)
+        }
+
+        return try workflowRegistry.decode(resultBuffer, as: outputType)
+    }
+
+    /// Handle output from a cancelled workflow (graceful vs forceful cancellation)
+    private func handleCancelledWorkflowOutput<Output: Codable & Sendable>(
+        _ workflowId: WorkflowID,
+        outputType: Output.Type
+    ) async throws -> Output {
+        guard let execution = try await jobQueue.queue.workflowRepository.getExecution(workflowId) else {
+            throw WorkflowError.executionNotFound(workflowId)
+        }
+
+        if let resultBuffer = execution.result {
+            // Graceful cancellation - workflow produced meaningful output
+            let output = try workflowRegistry.decode(resultBuffer, as: outputType)
+            logger.debug(
+                "Returning output from cancelled workflow (graceful cancellation)",
+                metadata: ["workflowId": .string(workflowId.value)]
+            )
+            return output
+        } else {
+            // Forceful cancellation - no output available
+            logger.debug(
+                "Cancelled workflow has no output available",
+                metadata: ["workflowId": .string(workflowId.value)]
+            )
+            throw WorkflowError.workflowCancelled(workflowId)
+        }
+    }
+
+    /// Wait for workflow completion using event-driven approach with optional timeout
     private func waitForWorkflowCompletionEventDriven(
         _ workflowId: WorkflowID,
-        timeout: Duration
+        timeout: Duration? = nil
     ) async throws -> WorkflowExecutionSummary {
         // Check if workflow is already completed
         if let status = try await getWorkflowSummary(workflowId) {
@@ -919,67 +969,32 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         // Register the continuation in the global registry
         WorkflowCompletionRegistry.shared.register(workflowId: workflowId, continuation: continuation)
 
-        // Create timeout task
-        let timeoutTask = Task {
-            try await Task.sleep(for: timeout)
+        // Create timeout task if timeout is specified
+        let timeoutTask: Task<Void, Never>? = timeout.map { timeout in
+            Task {
+                do {
+                    try await Task.sleep(for: timeout)
 
-            // Try to cancel the actual workflow execution
-            do {
-                try await self.cancelWorkflow(workflowId)
-                // If cancellation succeeds, it will handle the notification
-            } catch {
-                // If cancellation fails (e.g., workflow already completed),
-                // notify about the timeout directly
-                WorkflowCompletionRegistry.shared.failWorkflow(
-                    workflowId: workflowId,
-                    error: WorkflowError.timeout(workflowId, timeout)
-                )
-            }
-        }
-
-        defer {
-            timeoutTask.cancel()
-            WorkflowCompletionRegistry.shared.cancelWorkflow(workflowId: workflowId)
-        }
-
-        // Wait for workflow completion via event stream
-        for try await result in stream {
-            switch result {
-            case .success(_):
-                // Get final status for return
-                guard let status = try await getWorkflowSummary(workflowId) else {
-                    throw WorkflowError.executionNotFound(workflowId)
+                    // Try to cancel the actual workflow execution
+                    do {
+                        try await self.cancelWorkflow(workflowId)
+                        // If cancellation succeeds, it will handle the notification
+                    } catch {
+                        // If cancellation fails (e.g., workflow already completed),
+                        // notify about the timeout directly
+                        WorkflowCompletionRegistry.shared.failWorkflow(
+                            workflowId: workflowId,
+                            error: WorkflowError.timeout(workflowId, timeout)
+                        )
+                    }
+                } catch {
+                    // Task was cancelled or sleep failed - ignore
                 }
-                return status
-            case .failure(let error):
-                throw error
             }
         }
-
-        throw WorkflowError.workflowFailed("Workflow completion stream ended unexpectedly")
-    }
-
-    /// Wait for workflow completion using event-driven approach without timeout
-    private func waitForWorkflowCompletionEventDrivenIndefinitely(
-        _ workflowId: WorkflowID
-    ) async throws -> WorkflowExecutionSummary {
-        // Check if workflow is already completed
-        if let status = try await getWorkflowSummary(workflowId) {
-            switch status.status {
-            case .completed, .failed, .cancelled:
-                return status
-            case .running, .queued:
-                break  // Continue with event-driven waiting
-            }
-        }
-
-        // Create completion stream for event-driven waiting
-        let (stream, continuation) = WorkflowCompletionRegistry.makeStream(workflowId: workflowId.value)
-
-        // Register the continuation in the global registry
-        WorkflowCompletionRegistry.shared.register(workflowId: workflowId, continuation: continuation)
 
         defer {
+            timeoutTask?.cancel()
             WorkflowCompletionRegistry.shared.cancelWorkflow(workflowId: workflowId)
         }
 
@@ -1052,70 +1067,63 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         _ job: ActivityExecutionJob,
         context: JobExecutionContext
     ) async throws {
-        // Set task-local context for retry strategy access
-        try await ActivityExecutionJob.$current.withValue(job) {
+        context.logger.debug(
+            "⚡ Executing activity",
+            metadata: [
+                "activityName": .string(job.activityName),
+                "activityId": .string(job.activityId.value),
+                "workflowId": .string(job.workflowId.value),
+            ]
+        )
+
+        do {
+            let activityContext = ActivityExecutionContext(
+                activityJob: job,
+                jobContext: context,
+                jobId: context.jobID
+            )
+
+            let resultBuffer = try await internalRegistry.executeActivity(
+                name: job.activityName,
+                inputBuffer: job.inputBuffer,
+                context: activityContext
+            )
+
+            // Store activity result as ByteBuffer directly to avoid double encoding
+            let activityResult = ActivityResult<ByteBuffer>.success(resultBuffer)
+            try await jobQueue.queue.workflowRepository.saveResult(job.activityId, result: activityResult)
+
             context.logger.debug(
-                "⚡ Executing activity",
+                "✅ Activity completed successfully",
                 metadata: [
-                    "activityName": .string(job.activityName),
                     "activityId": .string(job.activityId.value),
-                    "workflowId": .string(job.workflowId.value),
+                    "activityName": .string(job.activityName),
                 ]
             )
 
-            do {
-                let activityContext = ActivityExecutionContext(
-                    activityJob: job,
-                    jobContext: context,
-                    jobId: context.jobID
-                )
+        } catch {
+            // Store activity failure using repository with proper error information
+            let errorInfo = ActivityErrorInfo(from: error)
+            let failureResult = ActivityResult<ByteBuffer>.failure(errorInfo)
+            try await jobQueue.queue.workflowRepository.saveResult(job.activityId, result: failureResult)
 
-                let resultBuffer = try await internalRegistry.executeActivity(
-                    name: job.activityName,
-                    inputBuffer: job.inputBuffer,
-                    context: activityContext
-                )
-
-                // Store activity result as ByteBuffer directly to avoid double encoding
-                let activityResult = ActivityResult<ByteBuffer>.success(resultBuffer)
-                try await jobQueue.queue.workflowRepository.saveResult(job.activityId, result: activityResult)
-
-                context.logger.debug(
-                    "✅ Activity completed successfully",
-                    metadata: [
-                        "activityId": .string(job.activityId.value),
-                        "activityName": .string(job.activityName),
-                    ]
-                )
-
-                // Activity completion is handled by ActivityCallbackMiddleware
-                // which notifies the workflow via waitForActivity() mechanism
-
-            } catch {
-                // Store activity failure using repository with proper error information
-                let errorInfo = ActivityErrorInfo(from: error)
-                let failureResult = ActivityResult<ByteBuffer>.failure(errorInfo)
-                try await jobQueue.queue.workflowRepository.saveResult(job.activityId, result: failureResult)
-
-                context.logger.error(
-                    "Activity execution failed",
-                    metadata: [
-                        "activityId": .string(job.activityId.value),
-                        "activityName": .string(job.activityName),
-                        "attempt": .stringConvertible(context.attempt),
-                        "error": .string(error.localizedDescription),
-                    ]
-                )
-
-                // Re-throw to let job queue handle retry logic
-                throw error
-            }
-        }  // Close task-local context
+            context.logger.error(
+                "Activity execution failed",
+                metadata: [
+                    "activityId": .string(job.activityId.value),
+                    "activityName": .string(job.activityName),
+                    "attempt": .stringConvertible(context.attempt),
+                    "error": .string(error.localizedDescription),
+                ]
+            )
+            // Re-throw to let job queue handle retry logic
+            throw error
+        }
     }
 
-    /// Register DelayJob for workflow sleep functionality
+    /// Register the workflow delay job handler
+    /// Completion is handled by WorkflowSleepMiddleware
     private func registerDelayJob() {
-        // Register minimal WorkflowDelayJob handler - completion is handled by WorkflowSleepMiddleware
         jobQueue.registerJob(parameters: WorkflowDelayJob.self) { job, context in
             // Job completes immediately when executed (after the delayUntil time)
             // WorkflowSleepMiddleware handles the completion notification via onCompletedJob
@@ -1201,298 +1209,7 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
     }
 }
 
-/// Shared storage for sleep completions
-private final class SleepCompletionStorage<JobID: Sendable & CustomStringConvertible>: Sendable {
-    private let completions: Mutex<[String: CheckedContinuation<Void, Error>]> = .init([:])
-    private let scheduledJobs: Mutex<[WorkflowID: [JobID]]> = .init([:])
-
-    func waitForSleep(sleepKey: String) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            completions.withLock { sleeps in
-                sleeps[sleepKey] = continuation
-            }
-        }
-    }
-
-    func completeSleep(sleepKey: String, result: Result<Void, any Error>) {
-        completions.withLock { sleeps in
-            if let continuation = sleeps.removeValue(forKey: sleepKey) {
-                switch result {
-                case .success:
-                    continuation.resume()
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-    }
-
-    func trackScheduledJob(workflowId: WorkflowID, jobId: JobID) {
-        scheduledJobs.withLock { jobs in
-            jobs[workflowId, default: []].append(jobId)
-        }
-    }
-
-    func cancelPendingSleeps(workflowId: WorkflowID) {
-        let workflowPrefix = "workflow_sleep:\(workflowId.value):"
-        completions.withLock { sleeps in
-            let keysToCancel = sleeps.keys.filter { $0.hasPrefix(workflowPrefix) }
-            for key in keysToCancel {
-                if let continuation = sleeps.removeValue(forKey: key) {
-                    continuation.resume(throwing: WorkflowError.workflowCancelled(workflowId))
-                }
-            }
-        }
-    }
-
-    func getScheduledJobs(workflowId: WorkflowID) -> [JobID] {
-        scheduledJobs.withLock { jobs in
-            jobs[workflowId] ?? []
-        }
-    }
-
-    func clearScheduledJobs(workflowId: WorkflowID) {
-        scheduledJobs.withLock { jobs in
-            _ = jobs.removeValue(forKey: workflowId)
-        }
-    }
-}
-
-/// Simple middleware to handle WorkflowDelayJob completions with callback
-private final class SleepCallbackMiddleware<JobID: Sendable & CustomStringConvertible>: JobMiddleware {
-    let storage: SleepCompletionStorage<JobID>
-
-    init(storage: SleepCompletionStorage<JobID>) {
-        self.storage = storage
-    }
-
-    func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {
-        // Handle WorkflowDelayJob completions
-        guard job.parameters is WorkflowDelayJob else { return }
-        let delayJob = job.parameters as! WorkflowDelayJob
-        storage.completeSleep(sleepKey: delayJob.sleepKey, result: result)
-    }
-}
-
-/// Shared storage for activity completions
-private final class ActivityCompletionStorage: Sendable {
-    private let completions: Mutex<[String: CheckedContinuation<Void, Error>]> = .init([:])
-
-    func waitForActivity(activityId: String) async throws {
-        // Wait for middleware notification that activity completed
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            completions.withLock { activities in
-                activities[activityId] = continuation
-            }
-        }
-    }
-
-    func completeActivity(activityId: String) {
-        completions.withLock { activities in
-            if let continuation = activities.removeValue(forKey: activityId) {
-                continuation.resume()
-            }
-        }
-    }
-
-    func failActivity(activityId: String, error: Error) {
-        completions.withLock { activities in
-            if let continuation = activities.removeValue(forKey: activityId) {
-                continuation.resume(throwing: error)
-            }
-        }
-    }
-}
-
-/// Simple middleware to handle ActivityExecution completions with callback
-private final class ActivityCallbackMiddleware: JobMiddleware {
-    let storage: ActivityCompletionStorage
-
-    init(storage: ActivityCompletionStorage) {
-        self.storage = storage
-    }
-
-    func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {
-        // Handle ActivityExecution completions
-        guard job.parameters is ActivityExecutionJob else { return }
-        let activityJob = job.parameters as! ActivityExecutionJob
-
-        switch result {
-        case .success:
-            // Activity completed successfully - retrieve the actual result from storage
-            storage.completeActivity(activityId: activityJob.activityId.value)
-        case .failure(let error):
-            storage.failActivity(activityId: activityJob.activityId.value, error: error)
-        }
-    }
-}
-
-/// Unified middleware to handle both child and top-level workflow completion events
-///
-/// Detects when WorkflowCoordinator jobs complete and:
-/// - For child workflows: notifies parent workflows via ChildWorkflowRegistry
-/// - For top-level workflows: notifies runWorkflow calls via WorkflowCompletionRegistry
-private final class WorkflowCompletionMiddleware: JobMiddleware {
-
-    private let repository: any WorkflowRepository
-
-    init(repository: any WorkflowRepository) {
-        self.repository = repository
-    }
-
-    func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {
-        // Handle WorkflowCoordinator completions
-        guard let coordinatorJob = job.parameters as? WorkflowCoordinatorJob else {
-            return
-        }
-
-        // Only handle completion actions (not start actions)
-        guard coordinatorJob.action == .complete || coordinatorJob.action == .fail else {
-            return
-        }
-
-        // Get workflow execution summary to determine if it's a child or top-level workflow
-        guard let summary = try? await repository.getExecutionSummary(coordinatorJob.workflowId) else {
-            return
-        }
-
-        if summary.parentId != nil {
-            // This is a child workflow - notify parent via ChildWorkflowRegistry
-            await handleChildWorkflowCompletion(coordinatorJob: coordinatorJob, result: result)
-        } else {
-            // This is a top-level workflow - notify runWorkflow calls via WorkflowCompletionRegistry
-            await handleTopLevelWorkflowCompletion(coordinatorJob: coordinatorJob, result: result)
-        }
-    }
-
-    private func handleChildWorkflowCompletion(coordinatorJob: WorkflowCoordinatorJob, result: Result<Void, any Error>) async {
-        switch result {
-        case .success:
-            // Child workflow completed successfully
-            await handleChildWorkflowSuccess(coordinatorJob: coordinatorJob)
-        case .failure(let error):
-            // Child workflow failed
-            ChildWorkflowRegistry.shared.failWorkflow(childWorkflowId: coordinatorJob.workflowId, error: error)
-        }
-    }
-
-    private func handleTopLevelWorkflowCompletion(coordinatorJob: WorkflowCoordinatorJob, result: Result<Void, any Error>) async {
-        switch result {
-        case .success:
-            // Top-level workflow completed successfully
-            await handleTopLevelWorkflowSuccess(coordinatorJob: coordinatorJob)
-        case .failure(let error):
-            // Top-level workflow failed
-            WorkflowCompletionRegistry.shared.failWorkflow(workflowId: coordinatorJob.workflowId, error: error)
-        }
-    }
-
-    private func handleChildWorkflowSuccess(coordinatorJob: WorkflowCoordinatorJob) async {
-        do {
-            // Retrieve the workflow output from the repository
-            if let outputBuffer = try await getWorkflowOutput(coordinatorJob.workflowId) {
-                ChildWorkflowRegistry.shared.completeWorkflow(
-                    childWorkflowId: coordinatorJob.workflowId,
-                    result: outputBuffer
-                )
-            } else {
-                // No output found - complete with empty result
-                let emptyResult = ByteBufferAllocator().buffer(capacity: 0)
-                ChildWorkflowRegistry.shared.completeWorkflow(
-                    childWorkflowId: coordinatorJob.workflowId,
-                    result: emptyResult
-                )
-            }
-        } catch {
-            // Failed to retrieve output - treat as failure
-            ChildWorkflowRegistry.shared.failWorkflow(
-                childWorkflowId: coordinatorJob.workflowId,
-                error: error
-            )
-        }
-    }
-
-    private func handleTopLevelWorkflowSuccess(coordinatorJob: WorkflowCoordinatorJob) async {
-        do {
-            // Retrieve the workflow output from the repository
-            if let outputBuffer = try await getWorkflowOutput(coordinatorJob.workflowId) {
-                WorkflowCompletionRegistry.shared.completeWorkflow(
-                    workflowId: coordinatorJob.workflowId,
-                    result: outputBuffer
-                )
-            } else {
-                // No output found - complete with empty result
-                let emptyResult = ByteBufferAllocator().buffer(capacity: 0)
-                WorkflowCompletionRegistry.shared.completeWorkflow(
-                    workflowId: coordinatorJob.workflowId,
-                    result: emptyResult
-                )
-            }
-        } catch {
-            // Failed to retrieve output - treat as failure
-            WorkflowCompletionRegistry.shared.failWorkflow(
-                workflowId: coordinatorJob.workflowId,
-                error: error
-            )
-        }
-    }
-
-    private func getWorkflowOutput(_ workflowId: WorkflowID) async throws -> ByteBuffer? {
-        // Get execution summary to check status
-        guard let summary = try await repository.getExecutionSummary(workflowId) else {
-            return nil
-        }
-
-        // Only return output if workflow completed successfully
-        guard summary.status == .completed else {
-            return nil
-        }
-
-        // Get the full execution to access its result field
-        guard let execution = try await repository.getExecution(workflowId) else {
-            return nil
-        }
-
-        return execution.result
-    }
-}
-
 /// Extension to make the engine discoverable
 extension WorkflowEngine: CustomStringConvertible {
     public var description: String { "WorkflowEngine<\(String(describing: Queue.self))>" }
-}
-
-/// Context-aware retry strategy that accesses job parameters through task-local storage
-private struct ContextAwareActivityRetryStrategy: JobRetryStrategy {
-    func shouldRetry(attempt: Int, error: Error) -> Bool {
-        // Try to access current ActivityExecutionJob through task-local context
-        if let currentJob = ActivityExecutionJob.current {
-            let retryPolicy = currentJob.retryPolicy ?? StepRetryPolicy.default
-            let strategy = retryPolicy.strategy
-            return strategy.shouldRetry(attempt: attempt, error: error)
-        }
-
-        // Fallback to default workflow-aware strategy
-        let defaultStrategy = StepRetryPolicy.default.strategy
-        return defaultStrategy.shouldRetry(attempt: attempt, error: error)
-    }
-
-    func calculateBackoff(attempt: Int) -> Duration {
-        // Try to access current ActivityExecutionJob through task-local context
-        if let currentJob = ActivityExecutionJob.current {
-            let retryPolicy = currentJob.retryPolicy ?? StepRetryPolicy.default
-            let strategy = retryPolicy.strategy
-            return strategy.calculateBackoff(attempt: attempt)
-        }
-
-        // Fallback to default workflow-aware strategy
-        let defaultStrategy = StepRetryPolicy.default.strategy
-        return defaultStrategy.calculateBackoff(attempt: attempt)
-    }
-}
-
-/// Extension to support task-local access to current ActivityExecutionJob
-extension ActivityExecutionJob {
-    @TaskLocal
-    static var current: ActivityExecutionJob?
 }

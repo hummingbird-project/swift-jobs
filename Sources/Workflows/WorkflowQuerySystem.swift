@@ -297,5 +297,4 @@ extension WorkflowError {
     public static func updateHandlerFailed(_ updateName: String, _ error: String) -> WorkflowError {
         .workflowFailed("Update handler '\(updateName)' failed: \(error)")
     }
-
 }

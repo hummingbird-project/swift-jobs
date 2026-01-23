@@ -69,33 +69,33 @@ extension JobInstanceProtocol where Parameters: JobParameters {
 ///
 /// Includes everything needed to run the job plus any other data that was encoded
 /// with the job
-struct JobInstance<Parameters: Sendable & Codable>: JobInstanceProtocol {
+package struct JobInstance<Parameters: Sendable & Codable>: JobInstanceProtocol {
     /// job definition
     let job: JobDefinition<Parameters>
     /// job parameters
     let data: JobInstanceData<Parameters>
     /// Retry strategy
-    var retryStrategy: any JobRetryStrategy { job.retryStrategy }
+    package var retryStrategy: any JobRetryStrategy { job.retryStrategy }
     /// Time job was queued
-    var queuedAt: Date { self.data.queuedAt }
+    package var queuedAt: Date { self.data.queuedAt }
     /// Current attempt
-    var attempt: Int { self.data.attempt }
+    package var attempt: Int { self.data.attempt }
     /// Trace context
-    var traceContext: [String: String]? { self.data.traceContext }
+    package var traceContext: [String: String]? { self.data.traceContext }
     /// Job name
-    var name: String { self.job.name }
+    package var name: String { self.job.name }
     /// Job parameters
-    var parameters: Parameters { self.data.parameters }
+    package var parameters: Parameters { self.data.parameters }
     /// Next time job is scheduled to run
-    var nextScheduledAt: Date? { self.data.nextScheduledAt }
+    package var nextScheduledAt: Date? { self.data.nextScheduledAt }
     /// Timeout for long running jobs
-    var timeout: Duration? { self.job.timeout }
+    package var timeout: Duration? { self.job.timeout }
 
-    func execute(context: JobExecutionContext) async throws {
+    package func execute(context: JobExecutionContext) async throws {
         try await self.job.execute(self.data.parameters, context: context)
     }
 
-    init(job: JobDefinition<Parameters>, data: JobInstanceData<Parameters>) throws {
+    package init(job: JobDefinition<Parameters>, data: JobInstanceData<Parameters>) throws {
         self.job = job
         self.data = data
     }
@@ -105,16 +105,16 @@ struct JobInstance<Parameters: Sendable & Codable>: JobInstanceProtocol {
 public struct JobInstanceData<Parameters: Sendable & Codable>: Codable, Sendable {
     /// Job parameters
     @usableFromInline
-    let parameters: Parameters
+    package let parameters: Parameters
     /// Time job was queued
-    let queuedAt: Date
+    package let queuedAt: Date
     /// Current attempt
     @usableFromInline
-    let attempt: Int
+    package let attempt: Int
     /// trace context
-    let traceContext: [String: String]?
+    package let traceContext: [String: String]?
     /// Next time job is scheduled to run
-    let nextScheduledAt: Date?
+    package let nextScheduledAt: Date?
 
     init(
         parameters: Parameters,

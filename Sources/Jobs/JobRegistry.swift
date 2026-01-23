@@ -73,5 +73,5 @@ public final class JobRegistry: Sendable {
         }
     }
 
-    let builderTypeMap: Mutex<[String: @Sendable (Decoder) throws -> any JobInstanceProtocol]>
+    package let builderTypeMap: Mutex<[String: @Sendable (Decoder) throws -> any JobInstanceProtocol]>
 }

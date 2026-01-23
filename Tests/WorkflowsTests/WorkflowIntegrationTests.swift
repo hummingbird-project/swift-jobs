@@ -97,7 +97,7 @@ struct WorkflowIntegrationTests {
                 input: OrderValidationInput(orderId: input.orderId, customerId: input.customerId, amount: input.amount),
                 options: ActivityOptions(
                     startToCloseTimeout: .seconds(10),
-                    retryPolicy: nil
+                    retryPolicy: .dontRetry
                 )
             )
 
@@ -156,22 +156,42 @@ struct WorkflowIntegrationTests {
         }
 
         func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
+            context.logger.info(
+                "🔄 ErrorHandlingWorkflow starting",
+                metadata: [
+                    "shouldFail": .string("\(input.shouldFail)"),
+                    "failureType": .string(input.failureType),
+                ]
+            )
+
             do {
+                context.logger.info("🎯 Executing RiskyOperationActivity")
                 let result: String = try await context.executeActivity(
                     RiskyOperationActivity.self,
                     input: RiskyOperationInput(shouldFail: input.shouldFail, failureType: input.failureType),
                     options: ActivityOptions(
-                        startToCloseTimeout: .milliseconds(200),
+                        startToCloseTimeout: .seconds(30),
                         retryPolicy: .exponentialJitter(maxAttempts: 3)
                     )
                 )
 
+                context.logger.info("✅ Activity succeeded", metadata: ["result": .string(result)])
                 return Output(result: result)
             } catch {
+                context.logger.info(
+                    "❌ Activity failed",
+                    metadata: [
+                        "error": .string("\(error)"),
+                        "failureType": .string(input.failureType),
+                    ]
+                )
+
                 // Handle specific errors and provide fallback
                 if input.failureType == "recoverable" {
+                    context.logger.info("🔄 Providing fallback result for recoverable error")
                     return Output(result: "Fallback result after error: \(error)")
                 } else {
+                    context.logger.info("💥 Re-throwing non-recoverable error")
                     throw error
                 }
             }
@@ -321,14 +341,24 @@ struct WorkflowIntegrationTests {
                 (input: OrderValidationInput, context: ActivityExecutionContext) async throws -> Bool in
                 try await Task.sleep(for: .milliseconds(30))
 
+                context.logger.info(
+                    "ValidateOrderActivity executing",
+                    metadata: [
+                        "orderId": .string(input.orderId),
+                        "amount": .string("\(input.amount)"),
+                    ]
+                )
+
                 // Validate order - fail if amount is negative
                 guard input.amount > 0 else {
-                    throw WorkflowTestError.invalidOrder("Amount must be positive")
+                    context.logger.error("ValidateOrderActivity failing: Amount must be positive")
+                    throw ApplicationError.newNonRetryableFailure("Amount must be positive", type: "InvalidAmount")
                 }
 
                 // Fail if order ID contains "INVALID"
                 guard !input.orderId.contains("INVALID") else {
-                    throw WorkflowTestError.invalidOrder("Invalid order ID")
+                    context.logger.error("ValidateOrderActivity failing: Invalid order ID")
+                    throw ApplicationError.newNonRetryableFailure("Invalid order ID", type: "InvalidOrderId")
                 }
 
                 return true
@@ -347,20 +377,31 @@ struct WorkflowIntegrationTests {
 
             registry.registerActivity(RiskyOperationActivity.self) {
                 (input: RiskyOperationInput, context: ActivityExecutionContext) async throws -> String in
+                context.logger.info(
+                    "🎲 RiskyOperationActivity executing",
+                    metadata: [
+                        "shouldFail": .string("\(input.shouldFail)"),
+                        "failureType": .string(input.failureType),
+                    ]
+                )
+
                 try await Task.sleep(for: .milliseconds(10))
 
                 if input.shouldFail {
                     switch input.failureType {
                     case "recoverable":
-                        throw ApplicationError(message: "WorkflowTestError.recoverableError", isNonRetryable: false)  //WorkflowTestError.recoverableError
+                        context.logger.error("💥 Throwing recoverable error")
+                        throw ApplicationError(message: "WorkflowTestError.recoverableError", isNonRetryable: false)
                     case "nonRecoverable":
-                        throw ApplicationError(message: "WorkflowTestError.nonRecoverableError", isNonRetryable: true)  //WorkflowTestError.nonRecoverableError
+                        context.logger.error("💀 Throwing non-recoverable error")
+                        throw ApplicationError(message: "WorkflowTestError.nonRecoverableError", isNonRetryable: true)
                     default:
-                        // throw WorkflowTestError.recoverableError
-                        throw ApplicationError(message: "WorkflowTestError.recoverableError", isNonRetryable: true)  //WorkflowTestError.nonRecoverableError
+                        context.logger.error("💀 Throwing default non-recoverable error")
+                        throw ApplicationError(message: "WorkflowTestError.recoverableError", isNonRetryable: true)
                     }
                 }
 
+                context.logger.info("✅ RiskyOperationActivity succeeded")
                 return "Operation completed successfully"
             }
 
