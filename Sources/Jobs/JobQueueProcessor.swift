@@ -266,7 +266,7 @@ extension JobMetadataDriver {
             _ = try? await self.acquireLock(key: .jobWorkerActiveLock(workerID: workerID), id: lockID, expiresIn: holdFor)
             do {
                 while !Task.isCancelled {
-                    try await Task.sleep(for: .seconds(every))
+                    try await Task.sleep(for: .seconds(every * Double.random(in: 0.9..<1.0)))
                     _ = try? await self.acquireLock(key: .jobWorkerActiveLock(workerID: workerID), id: lockID, expiresIn: holdFor)
                 }
             } catch {}
