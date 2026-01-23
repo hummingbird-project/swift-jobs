@@ -64,11 +64,17 @@ public final class WorkflowRegistry: Sendable {
             let workflow = W.init()
 
             // Register workflow instance for queries/updates if it supports them
-            if let queryableWorkflow = workflow as? (any WorkflowQuery & AnyObject) {
-                context.registerWorkflowInstance(queryableWorkflow)
-            }
-            if let updatableWorkflow = workflow as? (any WorkflowUpdate & AnyObject) {
-                context.registerWorkflowInstance(updatableWorkflow)
+            // Check for WorkflowQueryUpdate first (which covers both WorkflowQuery and WorkflowUpdate)
+            if let queryUpdateWorkflow = workflow as? any WorkflowQueryUpdate {
+                context.registerWorkflowInstance(queryUpdateWorkflow)
+            } else {
+                // Handle individual protocols for workflows that only implement one
+                if let queryableWorkflow = workflow as? any WorkflowQuery {
+                    context.registerWorkflowInstance(queryableWorkflow)
+                }
+                if let updatableWorkflow = workflow as? any WorkflowUpdate {
+                    context.registerWorkflowInstance(updatableWorkflow)
+                }
             }
 
             logger.debug(

@@ -214,7 +214,7 @@ extension Duration {
     }
 
     /// Get the time interval in seconds as a Double
-    var timeInterval: TimeInterval {
+    public var timeInterval: TimeInterval {
         Double(self.components.seconds) + Double(self.components.attoseconds) / 1_000_000_000_000_000_000
     }
 

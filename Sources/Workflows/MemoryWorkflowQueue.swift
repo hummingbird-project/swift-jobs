@@ -591,7 +591,7 @@ extension MemoryWorkflowQueue {
             self.workflowStateRegistry = workflowStateRegistry
 
             // Initialize status indices
-            for status in [WorkflowStatus.queued, .running, .completed, .failed, .cancelled] {
+            for status in [WorkflowStatus.queued, .running, .sleeping, .completed, .failed, .cancelled] {
                 self.executionsByStatus[status] = Set<WorkflowID>()
             }
         }

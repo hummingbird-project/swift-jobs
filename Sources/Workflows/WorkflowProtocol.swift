@@ -50,6 +50,7 @@ public protocol WorkflowProtocol: Sendable {
 public enum WorkflowStatus: String, Codable, Sendable {
     case queued
     case running
+    case sleeping
     case completed
     case failed
     case cancelled

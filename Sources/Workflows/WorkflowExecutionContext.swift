@@ -206,7 +206,6 @@ public final class WorkflowExecutionContext: Sendable {
         try await queueDriver.getResult(activityId, resultType: resultType)
     }
 
-    /// Execute an activity using type-safe activity parameters
     /// Execute an activity and wait for its completion
     /// - Parameters:
     ///   - activityType: Type of the activity to execute (must conform to ActivityParameters)
@@ -325,7 +324,7 @@ public final class WorkflowExecutionContext: Sendable {
         return try await engine.waitForActivity(activityId: activityId, expectedType: Output.self)
     }
 
-    /// Wait for an external signal to be sent to this workflow using type-safe signal parameters
+    /// Wait for an external signal to be sent to this workflow
     /// - Parameters:
     ///   - signalType: Signal type conforming to SignalParameters
     ///   - timeout: Optional timeout duration
@@ -352,6 +351,15 @@ public final class WorkflowExecutionContext: Sendable {
         // Get current step and increment for next activity
         let currentStepIndex = currentStep
         currentStep += 1
+
+        // Mark workflow as sleeping before starting sleep operation
+        try await queueDriver.workflowRepository.updateExecutionStatus(
+            workflowId,
+            status: .sleeping,
+            startTime: nil,
+            endTime: nil,
+            error: nil
+        )
 
         // Create a WorkflowDelayJob that will be handled by middleware when it completes
         let delayJob = WorkflowDelayJob(
@@ -383,7 +391,30 @@ public final class WorkflowExecutionContext: Sendable {
         guard let engine = sleepEngine else {
             throw WorkflowError.workflowFailed("Sleep engine not available")
         }
-        return try await engine.waitForSleep(sleepKey: sleepKey)
+
+        do {
+            try await engine.waitForSleep(sleepKey: sleepKey)
+
+            // Mark workflow as running again after sleep completes
+            // This will generate a "resumed" event since we're transitioning from sleeping to running
+            try await queueDriver.workflowRepository.updateExecutionStatus(
+                workflowId,
+                status: .running,
+                startTime: nil,
+                endTime: nil,
+                error: nil
+            )
+        } catch {
+            // If sleep fails, restore running status
+            try await queueDriver.workflowRepository.updateExecutionStatus(
+                workflowId,
+                status: .running,
+                startTime: nil,
+                endTime: nil,
+                error: nil
+            )
+            throw error
+        }
     }
 
     /// Internal string-based signal wait implementation

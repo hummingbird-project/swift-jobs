@@ -26,11 +26,8 @@ import Foundation
 /// Protocol for workflows that support queries
 /// Must be a class to allow AnyObject storage for live state access
 public protocol WorkflowQuery: WorkflowProtocol, AnyObject {
-    /// The output type for queries on this workflow
-    associatedtype QueryOutput: Codable & Sendable
-
-    /// Handle query requests - framework calls this with the workflow instance
-    func handleQuery() throws -> QueryOutput
+    /// Register multiple  query handlers
+    func registerQueries(with registry: WorkflowQueryMethodRegistry)
 }
 
 /// Protocol for workflows that support updates
@@ -53,14 +50,100 @@ public struct EmptyInput: Codable, Sendable {
     public init() {}
 }
 
+///
+/// Query names are automatically derived from the struct name, following the same pattern
+/// as Activities and Signals for consistency.
+///
+/// ## Example Usage:
+/// ```swift
+/// // Simple query (no input parameters)
+/// struct GetStatusQuery: WorkflowQueryType {
+///     typealias Output = StatusResponse
+///     // queryName automatically becomes "GetStatusQuery"
+/// }
+///
+/// // Query with input parameters
+/// struct GetOrderDetailsQuery: WorkflowQueryType {
+///     struct Input: Codable, Sendable {
+///         let orderId: String
+///     }
+///     typealias Output = OrderDetails
+///     // queryName automatically becomes "GetOrderDetailsQuery"
+/// }
+/// ```
+public protocol WorkflowQueryType {
+    associatedtype Input: Codable & Sendable = EmptyInput
+    associatedtype Output: Codable & Sendable
+
+    /// The name of this query type
+    /// Defaults to the type name (e.g., "GetStatusQuery")
+    static var queryName: String { get }
+}
+
+extension WorkflowQueryType {
+    public static var queryName: String {
+        String(describing: self)
+    }
+}
+
 // MARK: - Query and Update Registry
 
 /// Registry for managing query and update handlers in a workflow execution context
+/// Registry for method-based query handlers
+public final class WorkflowQueryMethodRegistry: Sendable {
+    private let _queryHandlers = Mutex<[String: @Sendable (Any) throws -> Any]>([:])
+
+    /// Register a query handler
+    public func registerQuery<Q: WorkflowQueryType>(
+        _ queryType: Q.Type,
+        handler: @escaping @Sendable (Q.Input) throws -> Q.Output
+    ) {
+        let queryName = Q.queryName
+        _queryHandlers.withLock { handlers in
+            handlers[queryName] = { input in
+                if Q.Input.self == EmptyInput.self {
+                    // Handle EmptyInput case
+                    let emptyInput = EmptyInput() as! Q.Input
+                    return try handler(emptyInput)
+                } else {
+                    guard let typedInput = input as? Q.Input else {
+                        throw WorkflowError.validationFailed("Invalid input type for query '\(queryName)'")
+                    }
+                    return try handler(typedInput)
+                }
+            }
+        }
+    }
+
+    /// Execute a  query
+    internal func executeQuery<Q: WorkflowQueryType>(
+        queryType: Q.Type,
+        input: Q.Input
+    ) throws -> Q.Output {
+        let queryName = Q.queryName
+        let handler = try _queryHandlers.withLock { handlers in
+            guard let handler = handlers[queryName] else {
+                throw WorkflowError.queryNotFound(queryName)
+            }
+            return handler
+        }
+
+        let result = try handler(input as Any)
+        guard let typedResult = result as? Q.Output else {
+            throw WorkflowError.queryTypeMismatch(queryName)
+        }
+        return typedResult
+    }
+
+}
+
 internal final class WorkflowQueryRegistry: Sendable {
     private let logger: Logger
+    private let methodRegistry: WorkflowQueryMethodRegistry
 
     internal init(logger: Logger) {
         self.logger = logger
+        self.methodRegistry = WorkflowQueryMethodRegistry()
     }
 
     private let _workflowInstances = Mutex<[String: AnyObject]>([:])
@@ -83,11 +166,43 @@ internal final class WorkflowQueryRegistry: Sendable {
     }
 
     /// Get workflow instance for direct method calls
-    internal func getWorkflowInstance<W: WorkflowProtocol>(workflowType: W.Type) -> W? {
+    /// Get a workflow instance by type
+    internal func getWorkflowInstance<W: WorkflowProtocol & AnyObject>(workflowType: W.Type) -> W? {
         _workflowInstances.withLock { instances in
             instances[W.workflowName] as? W
         }
     }
+
+    /// Execute a method-based query on the registered workflow
+    internal func executeMethodQuery<Q: WorkflowQueryType>(
+        queryType: Q.Type,
+        input: Q.Input
+    ) throws -> Q.Output {
+        try methodRegistry.executeQuery(
+            queryType: queryType,
+            input: input
+        )
+    }
+
+    /// Get the method registry for registering queries
+    internal var queryMethodRegistry: WorkflowQueryMethodRegistry {
+        methodRegistry
+    }
+}
+
+// MARK: - Convenience Extensions for Query Registration
+
+extension WorkflowQueryMethodRegistry {
+    /// Convenience method for registering a query with no input
+    public func registerQuery<Q: WorkflowQueryType>(
+        _ queryType: Q.Type,
+        handler: @escaping @Sendable () throws -> Q.Output
+    ) where Q.Input == EmptyInput {
+        registerQuery(queryType) { _ in
+            try handler()
+        }
+    }
+
 }
 
 // MARK: - Global Active Workflow Registry
@@ -121,9 +236,14 @@ internal final class ActiveWorkflowRegistry: Sendable {
 
 extension WorkflowExecutionContext {
     /// Register workflow instance for queries and updates
-    public func registerWorkflowInstance<W: WorkflowProtocol & AnyObject>(_ workflowInstance: W) {
+    internal func registerWorkflowInstance<W: WorkflowProtocol & AnyObject>(_ workflowInstance: W) {
         // Register workflow instance for direct method calls
         queryRegistry.registerWorkflowInstance(workflowInstance)
+
+        // If the workflow supports multiple queries, register them
+        if let queryWorkflow = workflowInstance as? any WorkflowQuery {
+            queryWorkflow.registerQueries(with: queryRegistry.queryMethodRegistry)
+        }
 
         // Register this workflow's query registry globally for external access
         ActiveWorkflowRegistry.shared.registerWorkflow(workflowId, queryRegistry: queryRegistry)
@@ -134,38 +254,66 @@ extension WorkflowExecutionContext {
 
 extension WorkflowEngine {
 
-    /// Execute a query on a WorkflowQuery using workflow type
-    public func query<W: WorkflowQuery>(
+    /// Query a running workflow with no input
+    public func queryMethod<Q: WorkflowQueryType>(
         workflowId: WorkflowID,
-        workflowType: W.Type
-    ) async throws -> W.QueryOutput {
-        // Check if workflow execution exists
+        queryType: Q.Type
+    ) async throws -> Q.Output where Q.Input == EmptyInput {
+        try await queryMethod(workflowId: workflowId, queryType: queryType, input: EmptyInput())
+    }
+
+    /// Query a running workflow method-based queries
+    public func queryMethod<Q: WorkflowQueryType>(
+        workflowId: WorkflowID,
+        queryType: Q.Type,
+        input: Q.Input
+    ) async throws -> Q.Output {
+        // Get workflow execution
         guard let execution = try await jobQueue.queue.workflowRepository.getExecution(workflowId) else {
             throw WorkflowError.executionNotFound(workflowId)
         }
 
-        // For running workflows, use direct query execution
-        if execution.status == WorkflowStatus.running {
+        // Debug: Log current workflow status
+        logger.debug(
+            "Query attempt - checking workflow status",
+            metadata: [
+                "workflowId": .string(workflowId.value),
+                "status": .string(execution.status.rawValue),
+            ]
+        )
+
+        // Only allow queries on running workflows for now
+        if execution.status == .running {
+            // Try to get the query registry for this workflow
             guard let queryRegistry = ActiveWorkflowRegistry.shared.getWorkflowRegistry(workflowId) else {
                 throw WorkflowError.workflowNotAccessible(workflowId)
             }
 
-            // Get the workflow instance and call handleQuery directly
-            guard let workflowInstance = queryRegistry.getWorkflowInstance(workflowType: workflowType) else {
+            // Execute a method-based query
+            return try queryRegistry.executeMethodQuery(
+                queryType: queryType,
+                input: input
+            )
+        }
+
+        // Handle sleeping workflows - allow queries since they have active query handlers
+        if execution.status == .sleeping {
+            // Try to get the query registry for this workflow
+            guard let queryRegistry = ActiveWorkflowRegistry.shared.getWorkflowRegistry(workflowId) else {
+                logger.debug(
+                    "Cannot query sleeping workflow - query registry not accessible",
+                    metadata: [
+                        "workflowId": .string(workflowId.value)
+                    ]
+                )
                 throw WorkflowError.workflowNotAccessible(workflowId)
             }
 
-            let result = try workflowInstance.handleQuery()
-
-            logger.debug(
-                "Workflow query executed successfully",
-                metadata: [
-                    "workflowId": .string(workflowId.value),
-                    "workflowType": .string(W.workflowName),
-                ]
+            // Execute a method-based query on sleeping workflow
+            return try queryRegistry.executeMethodQuery(
+                queryType: queryType,
+                input: input
             )
-
-            return result
         }
 
         // For completed workflows, allow querying final state
@@ -201,7 +349,7 @@ extension WorkflowEngine {
                 "status": .string(execution.status.rawValue),
             ]
         )
-        throw WorkflowError.workflowFailed("Unknown workflow status: \(execution.status)")
+        throw WorkflowError.workflowFailed("Unexpected workflow status: \(execution.status)")
     }
 
     /// Execute an update on a WorkflowUpdate using workflow type
@@ -215,8 +363,9 @@ extension WorkflowEngine {
             throw WorkflowError.executionNotFound(workflowId)
         }
 
-        // Updates can only be executed on running or queued workflows
-        guard [WorkflowStatus.running, WorkflowStatus.queued].contains(execution.status) else {
+        // Updates can only be executed on running, queued, or sleeping workflows
+        // Sleeping workflows will be woken up by the update
+        guard [WorkflowStatus.running, WorkflowStatus.queued, WorkflowStatus.sleeping].contains(execution.status) else {
             throw WorkflowError.workflowNotAccessible(workflowId)
         }
 
@@ -271,6 +420,21 @@ extension WorkflowError {
     /// Error when workflow is not accessible for queries
     public static func workflowNotAccessible(_ workflowId: WorkflowID) -> WorkflowError {
         .workflowFailed("Workflow \(workflowId.value) is not accessible for queries")
+    }
+
+    /// Error when query method is not found
+    public static func queryNotFound(_ queryName: String) -> WorkflowError {
+        .workflowFailed("Query method '\(queryName)' not found")
+    }
+
+    /// Error when query return type doesn't match expected type
+    public static func queryTypeMismatch(_ queryName: String) -> WorkflowError {
+        .workflowFailed("Query method '\(queryName)' return type mismatch")
+    }
+
+    /// Error when attempting to query a sleeping workflow
+    public static func workflowSleeping(_ workflowId: WorkflowID) -> WorkflowError {
+        .workflowFailed("Cannot query workflow that is sleeping: \(workflowId.value)")
     }
 
     /// Error when trying to query a terminated workflow

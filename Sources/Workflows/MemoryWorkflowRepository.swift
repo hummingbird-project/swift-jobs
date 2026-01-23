@@ -414,32 +414,42 @@ public final class MemoryWorkflowRepository: WorkflowRepository, Sendable {
         endTime: Date?,
         error: String?
     ) async throws {
+        // Get previous status to determine appropriate event type
+        let previousStatus = await storage.getExecutionStatus(workflowId)
+
         await storage.updateExecutionStatus(workflowId, status: status, startTime: startTime, endTime: endTime, error: error)
 
-        // Record workflow status change event
+        // Record workflow status change event based on state transition
         let eventType: WorkflowExecutionEventType
         let message: String
         let severity: WorkflowEventSeverity
 
-        switch status {
-        case .queued:
+        switch (previousStatus, status) {
+        case (_, .queued):
             eventType = .queued
             message = "Workflow queued for execution"
             severity = .info
-        case .running:
+        case (_, .running) where previousStatus == .sleeping:
+            eventType = .resumed
+            message = "Workflow resumed from sleep"
+            severity = .info
+        case (_, .running):
             eventType = .started
             message = "Workflow execution started"
             severity = .info
-
-        case .completed:
+        case (_, .sleeping):
+            eventType = .paused
+            message = "Workflow entered sleep state"
+            severity = .info
+        case (_, .completed):
             eventType = .completed
             message = "Workflow execution completed successfully"
             severity = .info
-        case .failed:
+        case (_, .failed):
             eventType = .failed
             message = "Workflow execution failed"
             severity = .error
-        case .cancelled:
+        case (_, .cancelled):
             eventType = .cancelled
             message = "Workflow execution cancelled"
             severity = .warning
@@ -600,6 +610,10 @@ extension MemoryWorkflowRepository {
 
         func getExecutionSummary(_ workflowId: WorkflowID) -> WorkflowExecutionSummary? {
             executionSummaries[workflowId]
+        }
+
+        func getExecutionStatus(_ workflowId: WorkflowID) -> WorkflowStatus? {
+            executionSummaries[workflowId]?.status
         }
 
         func updateExecutionStatus(_ workflowId: WorkflowID, status: WorkflowStatus, startTime: Date?, endTime: Date?, error: String?) {

@@ -183,7 +183,7 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         try await jobQueue.queue.workflowRepository.getExecutionSummary(workflowId)
     }
 
-    /// Signal a running workflow using type-safe signal parameters
+    /// Signal a running workflow
     /// - Parameters:
     ///   - workflowId: The workflow ID to signal
     ///   - signalType: Signal type conforming to SignalParameters
@@ -213,23 +213,6 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
                 "signalName": .string(S.signalName),
             ]
         )
-
-        // Check if workflow is waiting for this signal and trigger continuation
-        let waitingKey = "workflow_waiting_signal:\(workflowId.value):\(S.signalName)"
-        if let _ = try await jobQueue.queue.getMetadata(waitingKey) {
-            // Remove the waiting marker
-            try await jobQueue.queue.setMetadata(key: waitingKey, value: ByteBuffer())
-
-            // Trigger workflow continuation
-            let continuationJob = WorkflowCoordinatorJob(
-                workflowId: workflowId,
-                workflowType: "",  // Will be filled from workflow state
-                action: .continueFromActivity,
-                stepIndex: 0  // Will be updated from workflow state
-            )
-
-            _ = try await jobQueue.push(continuationJob)
-        }
     }
 
     /// Cancel a running workflow
@@ -571,7 +554,7 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
                 stepIndex: job.stepIndex
             )
             try await jobQueue.push(failureJob)
-            context.logger.info("📝 Pushed failure job for workflow callbacks", metadata: ["workflowId": .string(job.workflowId.value)])
+            context.logger.debug("📝 Pushed failure job for workflow callbacks", metadata: ["workflowId": .string(job.workflowId.value)])
 
             // Cleanup workflow queries
             cleanupWorkflowQueries(job.workflowId)
@@ -593,7 +576,7 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
         _ job: WorkflowCoordinatorJob,
         context: JobExecutionContext
     ) async throws {
-        context.logger.info(
+        context.logger.debug(
             "Continuing workflow execution",
             metadata: [
                 "workflowId": .string(job.workflowId.value),
@@ -676,7 +659,7 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
                 stepIndex: job.stepIndex
             )
             try await jobQueue.push(completionJob)
-            context.logger.info("📝 Pushed completion job for workflow callbacks", metadata: ["workflowId": .string(job.workflowId.value)])
+            context.logger.debug("📝 Pushed completion job for workflow callbacks", metadata: ["workflowId": .string(job.workflowId.value)])
 
         } catch {
             context.logger.error(
@@ -958,7 +941,7 @@ public struct WorkflowEngine<Queue: WorkflowQueueDriver>: Sendable, WorkflowEngi
             switch status.status {
             case .completed, .failed, .cancelled:
                 return status
-            case .running, .queued:
+            case .running, .queued, .sleeping:
                 break  // Continue with event-driven waiting
             }
         }

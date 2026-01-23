@@ -38,7 +38,12 @@ struct QueryTests {
             activities: [activities]
         )
 
-        let processor = workflowEngine.processor(options: .init(numWorkers: 200))
+        let processor = workflowEngine.processor(
+            options: .init(
+                numWorkers: 200,
+                gracefulShutdownTimeout: .seconds(30)
+            )
+        )
 
         // Register test workflows
         workflowEngine.registerWorkflow(SimpleQueryableWorkflow.self)
@@ -67,9 +72,9 @@ struct QueryTests {
             try await Task.sleep(for: .milliseconds(500))
 
             // 1. Query initial state while workflow is waiting for signal
-            let initialStatus = try await workflowEngine.query(
+            let initialStatus = try await workflowEngine.queryMethod(
                 workflowId: workflowId,
-                workflowType: InteractiveOrderWorkflow.self
+                queryType: InteractiveOrderWorkflow.GetOrderStatusQuery.self
             )
             #expect(initialStatus.orderId == uniqueOrderId)
             #expect(initialStatus.status == .processing)
@@ -83,9 +88,9 @@ struct QueryTests {
 
             // 3. Query to see signal effect - workflow should still be running
             try await Task.sleep(for: .milliseconds(500))
-            let afterSignalStatus = try await workflowEngine.query(
+            let afterSignalStatus = try await workflowEngine.queryMethod(
                 workflowId: workflowId,
-                workflowType: InteractiveOrderWorkflow.self
+                queryType: InteractiveOrderWorkflow.GetOrderStatusQuery.self
             )
             #expect(afterSignalStatus.status == .updated)
 
@@ -98,10 +103,11 @@ struct QueryTests {
             #expect(updateResult.contains("Priority changed from standard to expedited"))
 
             // 5. Query to see update effect - Same clean API!
-            let afterUpdateStatus = try await workflowEngine.query(
+            let afterUpdateStatus = try await workflowEngine.queryMethod(
                 workflowId: workflowId,
-                workflowType: InteractiveOrderWorkflow.self
+                queryType: InteractiveOrderWorkflow.GetOrderStatusQuery.self
             )
+            #expect(afterUpdateStatus.status == .updated)
             #expect(afterUpdateStatus.priority == .expedited)
 
             // 6. Test validation - try invalid priority
@@ -127,51 +133,6 @@ struct QueryTests {
             )
 
             #expect(finalStatus.status == .completed)
-        }
-    }
-
-    @Test("Simple query-only workflow")
-    func testSimpleQueryWorkflow() async throws {
-        let (workflowEngine, processor) = try await setupWorkflowSystem()
-
-        try await testWorkflow(processor) {
-            let workflowId = try await workflowEngine.startWorkflow(
-                SimpleQueryableWorkflow.self,
-                input: SimpleQueryableWorkflow.Input(orderId: "simple_order_123")
-            )
-
-            // Wait for workflow to start and register
-            try await Task.sleep(for: .milliseconds(300))
-
-            // Query the workflow while it's running
-            let runningStatus = try await workflowEngine.query(
-                workflowId: workflowId,
-                workflowType: SimpleQueryableWorkflow.self
-            )
-
-            #expect(runningStatus.orderId == "simple_order_123")
-            #expect(runningStatus.status == "processing")
-            #expect(runningStatus.isRunning == true)
-
-            // Wait for completion
-            let finalStatus = try await waitForWorkflowCompletion(
-                workflowId,
-                engine: workflowEngine,
-                inputType: SimpleQueryableWorkflow.Input.self,
-                outputType: SimpleQueryableWorkflow.Output.self,
-                description: "simple query workflow test"
-            )
-
-            #expect(finalStatus.status == .completed)
-            #expect(finalStatus.hasOutput == true)
-
-            // Direct access to typed workflow output
-            if let finalOutput = finalStatus.output {
-                #expect(finalOutput.success == true)
-                #expect(finalOutput.orderId == "simple_order_123")
-            } else {
-                #expect(Bool(false), "Expected workflow output but none found")
-            }
         }
     }
 
@@ -286,9 +247,9 @@ struct QueryTests {
             try await Task.sleep(for: .milliseconds(300))
 
             // Query initial state
-            let initialStatus = try await workflowEngine.query(
+            let initialStatus = try await workflowEngine.queryMethod(
                 workflowId: workflowId,
-                workflowType: MultiQueryWorkflow.self
+                queryType: MultiQueryWorkflow.GetStatusQuery.self
             )
 
             #expect(initialStatus.id == "multi_workflow_456")
@@ -306,9 +267,9 @@ struct QueryTests {
             #expect(updateResult.contains("Phase updated from 'processing' to 'finalizing'"))
 
             // Query after update
-            let updatedStatus = try await workflowEngine.query(
+            let updatedStatus = try await workflowEngine.queryMethod(
                 workflowId: workflowId,
-                workflowType: MultiQueryWorkflow.self
+                queryType: MultiQueryWorkflow.GetStatusQuery.self
             )
 
             #expect(updatedStatus.currentPhase == "finalizing")
@@ -337,6 +298,91 @@ struct QueryTests {
         }
     }
 
+    // MARK: - Multiple Query Tests
+
+    @Test("Multiple queries using method registration")
+    func testMultipleQueryWorkflow() async throws {
+        let (workflowEngine, processor) = try await setupWorkflowSystem()
+
+        // Register the new test workflow type
+        workflowEngine.registerWorkflow(TestMultiQueryWorkflow.self)
+
+        try await testWorkflow(processor) {
+            // Start workflow
+            let workflowId = try await workflowEngine.startWorkflow(
+                TestMultiQueryWorkflow.self,
+                input: TestMultiQueryWorkflow.Input(orderId: "TEST-001")
+            )
+
+            // Wait for workflow to start activity and be in stable running state
+            try await Task.sleep(for: .milliseconds(300))
+
+            // Test Query 1: Basic status (no input required - uses EmptyInput default)
+            let basicStatus = try await workflowEngine.queryMethod(
+                workflowId: workflowId,
+                queryType: TestMultiQueryWorkflow.GetStatusQuery.self
+            )
+            #expect(basicStatus.orderId == "TEST-001")
+            #expect(basicStatus.status == "processing")
+
+            // Test Query 2: Detailed information (with typed input parameter)
+            let details = try await workflowEngine.queryMethod(
+                workflowId: workflowId,
+                queryType: TestMultiQueryWorkflow.GetDetailsQuery.self,
+                input: TestMultiQueryWorkflow.GetDetailsQuery.Input(field: "priority")
+            )
+            #expect(details.orderId == "TEST-001")
+            #expect(details.priority == "standard")
+            #expect(details.requestedField == "priority")
+
+            // Test Query 3: Progress information (no input required)
+            let progress = try await workflowEngine.queryMethod(
+                workflowId: workflowId,
+                queryType: TestMultiQueryWorkflow.GetProgressQuery.self
+            )
+            #expect(progress.orderId == "TEST-001")
+            #expect(progress.totalSteps == 3)
+            #expect(progress.percentComplete >= 0)
+            #expect(progress.percentComplete <= 100)
+        }
+    }
+
+    @Test("Multiple queries - error cases")
+    func testMultipleQueryErrorCases() async throws {
+        let (workflowEngine, processor) = try await setupWorkflowSystem()
+
+        // Register the new test workflow type
+        workflowEngine.registerWorkflow(TestErrorQueryWorkflow.self)
+
+        try await testWorkflow(processor) {
+            // Start workflow
+            let workflowId = try await workflowEngine.startWorkflow(
+                TestErrorQueryWorkflow.self,
+                input: TestErrorQueryWorkflow.Input(orderId: "TEST-002")
+            )
+
+            // Wait for workflow to complete
+            try await Task.sleep(for: .milliseconds(800))
+
+            // Test 1: Query non-existent workflow ID
+            let nonExistentId = WorkflowID(workflowId: "non-existent-workflow")
+            await #expect(throws: WorkflowError.self) {
+                _ = try await workflowEngine.queryMethod(
+                    workflowId: nonExistentId,
+                    queryType: TestErrorQueryWorkflow.ValidQuery.self
+                )
+            }
+
+            // Test 2: Query completed workflow (should fail because query registry is cleaned up)
+            await #expect(throws: WorkflowError.self) {
+                _ = try await workflowEngine.queryMethod(
+                    workflowId: workflowId,
+                    queryType: TestErrorQueryWorkflow.ValidQuery.self
+                )
+            }
+        }
+    }
+
     // MARK: - Test Workflows
 
     final class SimpleQueryableWorkflow: WorkflowQuery {
@@ -360,14 +406,6 @@ struct QueryTests {
         private nonisolated(unsafe) var status: String = "initializing"
         private nonisolated(unsafe) var isRunning: Bool = false
 
-        func handleQuery() throws -> QueryOutput {
-            QueryOutput(
-                orderId: orderId,
-                status: status,
-                isRunning: isRunning
-            )
-        }
-
         func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
             // Initialize state
             orderId = input.orderId
@@ -386,6 +424,10 @@ struct QueryTests {
             isRunning = false
 
             return Output(orderId: orderId, success: true)
+        }
+
+        func registerQueries(with registry: Workflows.WorkflowQueryMethodRegistry) {
+            /// NOOP
         }
     }
 
@@ -458,11 +500,15 @@ struct QueryTests {
             let updateCount: Int
         }
 
-        struct QueryOutput: Codable, Sendable {
-            let id: String
-            let currentPhase: String
-            let updateCount: Int
-            let isActive: Bool
+        // Query definitions
+        struct GetStatusQuery: WorkflowQueryType {
+            struct QueryOutput: Codable, Sendable {
+                let id: String
+                let currentPhase: String
+                let updateCount: Int
+                let isActive: Bool
+            }
+            typealias Output = QueryOutput
         }
 
         struct UpdateInput: Codable, Sendable {
@@ -474,13 +520,16 @@ struct QueryTests {
         private nonisolated(unsafe) var updateCount: Int = 0
         private nonisolated(unsafe) var isActive: Bool = false
 
-        func handleQuery() throws -> QueryOutput {
-            QueryOutput(
-                id: id,
-                currentPhase: currentPhase,
-                updateCount: updateCount,
-                isActive: isActive
-            )
+        func registerQueries(with registry: WorkflowQueryMethodRegistry) {
+            registry.registerQuery(GetStatusQuery.self) { [weak self] in
+                guard let self = self else { throw WorkflowError.workflowFailed("Workflow instance not available") }
+                return GetStatusQuery.QueryOutput(
+                    id: self.id,
+                    currentPhase: self.currentPhase,
+                    updateCount: self.updateCount,
+                    isActive: self.isActive
+                )
+            }
         }
 
         func handleUpdate(input: UpdateInput) async throws -> String {
@@ -507,6 +556,151 @@ struct QueryTests {
             isActive = false
 
             return Output(id: id, phase: currentPhase, updateCount: updateCount)
+        }
+    }
+
+    // MARK: - Multiple Query Test Workflows
+
+    final class TestMultiQueryWorkflow: WorkflowQuery {
+
+        struct Input: Codable, Sendable {
+            let orderId: String
+        }
+
+        struct Output: Codable, Sendable {
+            let message: String
+        }
+
+        private nonisolated(unsafe) var orderId: String = ""
+        private nonisolated(unsafe) var status: String = "initializing"
+        private nonisolated(unsafe) var priority: String = "standard"
+        private nonisolated(unsafe) var completedSteps: [String] = []
+
+        func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
+            orderId = input.orderId
+            status = "processing"
+            completedSteps.append("started")
+
+            // Execute activity immediately to keep workflow in stable running state
+            let _ = try await context.executeActivity(
+                TestQueryActivity.self,
+                input: TestQueryActivity.Input(name: "multi_query_test")
+            )
+
+            status = "shipping"
+            completedSteps.append("processed")
+
+            status = "completed"
+            completedSteps.append("shipped")
+
+            return Output(message: "Order \(orderId) completed")
+        }
+
+        // Register multiple query handlers
+        func registerQueries(with registry: WorkflowQueryMethodRegistry) {
+            // Query 1: Get basic status
+            registry.registerQuery(GetStatusQuery.self) { [weak self] in
+                guard let self = self else { throw WorkflowError.workflowFailed("Workflow instance not available") }
+                return GetStatusQuery.Output(
+                    orderId: self.orderId,
+                    status: self.status
+                )
+            }
+
+            // Query 2: Get detailed information
+            registry.registerQuery(GetDetailsQuery.self) { [weak self] input in
+                guard let self = self else { throw WorkflowError.workflowFailed("Workflow instance not available") }
+                return GetDetailsQuery.Output(
+                    orderId: self.orderId,
+                    status: self.status,
+                    priority: self.priority,
+                    completedSteps: self.completedSteps,
+                    requestedField: input.field
+                )
+            }
+
+            // Query 3: Get progress information
+            registry.registerQuery(GetProgressQuery.self) { [weak self] in
+                guard let self = self else { throw WorkflowError.workflowFailed("Workflow instance not available") }
+                return GetProgressQuery.Output(
+                    orderId: self.orderId,
+                    completedSteps: self.completedSteps,
+                    totalSteps: 3,
+                    percentComplete: Double(self.completedSteps.count) / 3.0 * 100
+                )
+            }
+        }
+
+        struct GetStatusQuery: WorkflowQueryType {
+            typealias Output = BasicStatusOutput
+        }
+
+        struct GetDetailsQuery: WorkflowQueryType {
+            struct Input: Codable, Sendable {
+                let field: String
+            }
+            typealias Output = DetailedOutput
+        }
+
+        struct GetProgressQuery: WorkflowQueryType {
+            typealias Output = ProgressOutput
+        }
+
+        // Query output types
+        struct BasicStatusOutput: Codable, Sendable {
+            let orderId: String
+            let status: String
+        }
+
+        struct DetailedOutput: Codable, Sendable {
+            let orderId: String
+            let status: String
+            let priority: String
+            let completedSteps: [String]
+            let requestedField: String
+        }
+
+        struct ProgressOutput: Codable, Sendable {
+            let orderId: String
+            let completedSteps: [String]
+            let totalSteps: Int
+            let percentComplete: Double
+        }
+    }
+
+    final class TestErrorQueryWorkflow: WorkflowQuery {
+
+        struct Input: Codable, Sendable {
+            let orderId: String
+        }
+
+        struct Output: Codable, Sendable {
+            let message: String
+        }
+
+        private nonisolated(unsafe) var orderId: String = ""
+
+        func run(input: Input, context: WorkflowExecutionContext) async throws -> Output {
+            orderId = input.orderId
+            try await Task.sleep(for: .milliseconds(600))
+            return Output(message: "Completed")
+        }
+
+        func registerQueries(with registry: WorkflowQueryMethodRegistry) {
+            registry.registerQuery(ValidQuery.self) { [weak self] in
+                guard let self = self else { throw WorkflowError.workflowFailed("No instance") }
+                return ValidQuery.Output(value: self.orderId)
+            }
+        }
+
+        // Query definition
+        struct ValidQuery: WorkflowQueryType {
+            typealias Output = SimpleOutput
+            static let queryName = "validQuery"
+        }
+
+        struct SimpleOutput: Codable, Sendable {
+            let value: String
         }
     }
 
@@ -546,14 +740,17 @@ struct QueryTests {
         private nonisolated(unsafe) var priority: OrderPriority = .standard
         private nonisolated(unsafe) var lastUpdated: Date = Date()
 
-        /// Handle query requests - Swift infers QueryOutput from return type
-        func handleQuery() throws -> GetOrderStatusQueryOutput {
-            GetOrderStatusQueryOutput(
-                orderId: orderId,
-                status: orderStatus,
-                priority: priority,
-                lastUpdated: lastUpdated
-            )
+        /// Register query handlers
+        func registerQueries(with registry: WorkflowQueryMethodRegistry) {
+            registry.registerQuery(GetOrderStatusQuery.self) { [weak self] in
+                guard let self = self else { throw WorkflowError.workflowFailed("Workflow instance not available") }
+                return GetOrderStatusQuery.QueryOutput(
+                    orderId: self.orderId,
+                    status: self.orderStatus,
+                    priority: self.priority,
+                    lastUpdated: self.lastUpdated
+                )
+            }
         }
 
         /// Handle update requests - Swift infers UpdateInput/UpdateOutput from method signature
@@ -600,7 +797,7 @@ struct QueryTests {
                 lastUpdated = Date()
 
                 // Stay alive longer to allow for queries and updates
-                try await context.sleep(for: .seconds(3))
+                try await context.sleep(for: .seconds(0.5))
 
                 finalStatus = "completed"
             } else {
@@ -614,16 +811,19 @@ struct QueryTests {
             orderStatus = .completed
             lastUpdated = Date()
 
-            return Output(orderId: input.orderId, finalStatus: finalStatus)
+            return Output(orderId: orderId, finalStatus: finalStatus)
         }
-    }
 
-    // Supporting output type for the query
-    struct GetOrderStatusQueryOutput: Codable, Sendable {
-        let orderId: String
-        let status: InteractiveOrderWorkflow.OrderStatus
-        let priority: InteractiveOrderWorkflow.OrderPriority
-        let lastUpdated: Date
+        // Query definitions
+        struct GetOrderStatusQuery: WorkflowQueryType {
+            struct QueryOutput: Codable, Sendable {
+                let orderId: String
+                let status: OrderStatus
+                let priority: OrderPriority
+                let lastUpdated: Date
+            }
+            typealias Output = QueryOutput
+        }
     }
 
     // Supporting input type for updates
@@ -654,8 +854,8 @@ struct QueryTests {
     struct TestQueryActivityContainer: ActivityContainer {
         func registerActivities(with registry: ActivityRegistry) {
             registry.registerActivity(TestQueryActivity.self) { input, context in
-                // Simulate some work
-                try await Task.sleep(for: .milliseconds(50))
+                // Simulate some work - longer duration to allow queries during execution
+                try await Task.sleep(for: .milliseconds(500))
 
                 return TestQueryActivity.Output(result: "completed_\(input.name)")
             }
