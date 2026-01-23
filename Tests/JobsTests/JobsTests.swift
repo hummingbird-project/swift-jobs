@@ -640,4 +640,29 @@ struct JobsTests {
         }
         #expect(failedJobCount.load(ordering: .relaxed) == 1)
     }
+
+    @Test func testWorkerID() async throws {
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            MemoryQueue { _, _ in },
+            logger: logger
+        )
+        let workerID = jobQueue.queue.workerContext.id
+        try await testJobQueue(jobQueue.processor()) {
+            try await Task.sleep(for: .milliseconds(100))
+            let acquired = try await jobQueue.queue.acquireLock(
+                key: .jobWorkerActiveLock(workerID: workerID),
+                id: .init(string: "Test"),
+                expiresIn: 5
+            )
+            #expect(acquired == false)
+        }
+        let acquired = try await jobQueue.queue.acquireLock(
+            key: .jobWorkerActiveLock(workerID: workerID),
+            id: .init(string: "Test"),
+            expiresIn: 5
+        )
+        #expect(acquired == true)
+    }
 }
