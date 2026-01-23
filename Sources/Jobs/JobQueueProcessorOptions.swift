@@ -49,8 +49,11 @@ public struct JobQueueProcessorOptions: Sendable {
     /// Initialize a JobQueueProcessorOptions
     ///
     /// - Parameters:
-    ///   - numWorkers: Number of concurrent jobs to be processed at one time
-    ///   - gracefulShutdownTimeout: Timeout after graceful shutdown has been triggered, before jobs are cancelled
+    ///   - numWorkers: Number of concurrent jobs to be processed at one time.
+    ///   - gracefulShutdownTimeout: Timeout after graceful shutdown has been triggered, before jobs are cancelled.
+    ///   - workerActiveLock: How frequently to update the worker active lock and how long to hold it. This is used
+    ///     to indicate if a worker is running. If another process can acquire the lock then the worker must have
+    ///     stopped.
     public init(
         numWorkers: Int = 1,
         gracefulShutdownTimeout: Duration = .seconds(30),
