@@ -53,10 +53,11 @@ public struct JobQueueProcessorOptions: Sendable {
     ///   - gracefulShutdownTimeout: Timeout after graceful shutdown has been triggered, before jobs are cancelled
     public init(
         numWorkers: Int = 1,
-        gracefulShutdownTimeout: Duration = .seconds(30)
+        gracefulShutdownTimeout: Duration = .seconds(30),
+        workerActiveLock: ExclusiveLock = .acquire(every: .milliseconds(300000), for: .milliseconds(450000))
     ) {
         self.numWorkers = numWorkers
         self.gracefulShutdownTimeout = gracefulShutdownTimeout
-        self.workerActiveLock = .acquire(every: .milliseconds(300000), for: .milliseconds(450000))
+        self.workerActiveLock = workerActiveLock
     }
 }
