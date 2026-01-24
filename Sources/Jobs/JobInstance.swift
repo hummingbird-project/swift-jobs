@@ -104,17 +104,15 @@ struct JobInstance<Parameters: Sendable & Codable>: JobInstanceProtocol {
 /// Data attach to a job
 public struct JobInstanceData<Parameters: Sendable & Codable>: Codable, Sendable {
     /// Job parameters
-    @usableFromInline
-    let parameters: Parameters
+    public let parameters: Parameters
     /// Time job was queued
-    let queuedAt: Date
+    public let queuedAt: Date
     /// Current attempt
-    @usableFromInline
-    let attempt: Int
+    public let attempt: Int
     /// trace context
-    let traceContext: [String: String]?
+    public let traceContext: [String: String]?
     /// Next time job is scheduled to run
-    let nextScheduledAt: Date?
+    public let nextScheduledAt: Date?
 
     init(
         parameters: Parameters,
