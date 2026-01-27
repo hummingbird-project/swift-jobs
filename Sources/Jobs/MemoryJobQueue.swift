@@ -45,12 +45,14 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     fileprivate let queue: Internal
     private let onFailedJob: @Sendable (JobID, any Error) -> Void
     private let jobRegistry: JobRegistry
+    public let queueName: String
 
     /// Initialise In memory job queue
-    public init(onFailedJob: @escaping @Sendable (JobID, any Error) -> Void = { _, _ in }) {
+    public init(queueName: String = "default", onFailedJob: @escaping @Sendable (JobID, any Error) -> Void = { _, _ in }) {
         self.queue = .init()
         self.onFailedJob = onFailedJob
         self.jobRegistry = .init()
+        self.queueName = queueName
     }
 
     /// Stop queue serving more jobs

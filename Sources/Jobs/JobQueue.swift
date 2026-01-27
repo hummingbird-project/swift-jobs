@@ -185,9 +185,12 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
         @JobMiddlewareBuilder middleware: () -> some JobMiddleware = { NullJobMiddleware() }
     ) {
         self.queue = queue
-        self.middleware = middleware()
         self.logger = logger
         self.options = options
+        let middleware = JobMiddlewareBuilder.$jobQueueName.withValue(queue.queueName) {
+            middleware()
+        }
+        self.middleware = middleware
     }
 
     ///  Create JobQueue handler that will process jobs pushed to the queue
