@@ -14,6 +14,7 @@
 
 import Foundation
 import Logging
+import NIOCore
 import Testing
 
 @testable import Jobs
@@ -214,4 +215,61 @@ struct JobMiddlewareTests {
         try await testEitherOr(first: true)
         try await testEitherOr(first: false)
     }
+
+    @Test func testMiddlewareBeingCalled() async throws {
+        struct TestMiddleware<Queue: JobMetadataDriver>: JobMiddleware {
+            let continuation: AsyncStream<String>.Continuation
+            let queue: Queue
+
+            init(continuation: AsyncStream<String>.Continuation, queue: Queue) {
+                self.continuation = continuation
+                self.queue = queue
+            }
+            func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobPushQueueContext) async {
+                continuation.yield("push")
+            }
+            func onPopJob(result: Result<any JobInstanceProtocol, JobQueueError>, context: JobPopQueueContext) async {
+                continuation.yield("pop")
+            }
+            func handleJob(
+                job: any JobInstanceProtocol,
+                context: JobExecutionContext,
+                next: (any JobInstanceProtocol, JobExecutionContext) async throws -> Void
+            ) async throws {
+                continuation.yield("handle")
+                return try await next(job, context)
+            }
+            func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {
+                continuation.yield("complete")
+                try? await queue.setMetadata(key: .init("\(context.jobID)"), value: ByteBuffer(string: "Done"))
+            }
+
+        }
+        struct TestParameters: JobParameters {
+            static let jobName = "testBasic"
+            let value: Int
+        }
+        let (stream, cont) = AsyncStream.makeStream(of: String.self)
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let jobQueue = JobQueue(
+            MemoryQueue { _, _ in },
+            logger: logger
+        ) { queue in
+            TestMiddleware(continuation: cont, queue: queue)
+        }
+        jobQueue.registerJob(name: .init("MiddlewareTest")) { (parameters: Bool, context) in
+        }
+        try await testJobQueue(jobQueue.processor()) {
+            let jobID = try await jobQueue.push("MiddlewareTest", parameters: true)
+            var iterator = stream.makeAsyncIterator()
+            #expect(await iterator.next() == "push")
+            #expect(await iterator.next() == "pop")
+            #expect(await iterator.next() == "handle")
+            #expect(await iterator.next() == "complete")
+            let response = try await jobQueue.queue.getMetadata(.init("\(jobID)"))
+            #expect(response == ByteBuffer(string: "Done"))
+        }
+    }
+
 }
