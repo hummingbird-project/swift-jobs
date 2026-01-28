@@ -253,7 +253,7 @@ struct JobMiddlewareTests {
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let jobQueue = JobQueue(
-            MemoryQueue { _, _ in },
+            .memory,
             logger: logger
         ) { queue in
             TestMiddleware(continuation: cont, queue: queue)
