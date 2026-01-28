@@ -118,6 +118,8 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         var queue: Deque<(job: QueuedJob, options: JobOptions)>
         var pendingJobs: [JobID: ByteBuffer]
         var metadata: [String: (data: ByteBuffer, expires: Date)]
+        var eventSubscriptions: [Int: AsyncStream<JobEvent>.Continuation]
+        var eventSubscriptionID: Int = 0
         var isStopped: Bool
 
         init() {
@@ -125,6 +127,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             self.isStopped = false
             self.pendingJobs = .init()
             self.metadata = .init()
+            self.eventSubscriptions = [:]
         }
 
         func push(_ jobBuffer: ByteBuffer, options: JobOptions) throws -> JobID {
@@ -227,6 +230,24 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                 self.metadata[key] = nil
             }
         }
+
+        func publish(event: JobEvent) {
+            for sub in eventSubscriptions.values {
+                sub.yield(event)
+            }
+        }
+
+        public func subscribe() -> (Int, AsyncStream<JobEvent>) {
+            let (stream, cont) = AsyncStream.makeStream(of: JobEvent.self)
+            let id = self.eventSubscriptionID
+            self.eventSubscriptionID += 1
+            self.eventSubscriptions[id] = cont
+            return (id, stream)
+        }
+
+        public func unsubscribe(_ id: Int) {
+            self.eventSubscriptions[id] = nil
+        }
     }
 }
 
@@ -266,6 +287,26 @@ extension MemoryQueue {
 
     public func makeAsyncIterator() -> AsyncIterator {
         .init(queue: self.queue, jobRegistry: self.jobRegistry)
+    }
+}
+
+extension MemoryQueue: JobEventsDriver {
+    public typealias EventStream = AsyncStream<JobEvent>
+
+    public func publish(event: JobEvent) async {
+        await self.queue.publish(event: event)
+    }
+
+    public func subscribe<Value>(_ operation: (_ events: EventStream) async throws -> Value) async throws -> sending Value {
+        let (id, stream) = await self.queue.subscribe()
+        let result: Result<Value, any Error>
+        do {
+            result = .success(try await operation(stream))
+        } catch {
+            result = .failure(error)
+        }
+        await self.queue.unsubscribe(id)
+        return try result.get()
     }
 }
 
