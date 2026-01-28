@@ -73,15 +73,20 @@ extension JobQueueDriver {
 }
 
 public struct JobQueueContext: Sendable {
+    public enum MetadataValue: Sendable {
+        case string(String)
+        case integer(Int)
+        case double(Double)
+    }
     /// Job worker id
     public let workerID: String
     /// Job queue name
     public let queueName: String
     /// Job worker metadata
-    public let metadata: [String: String]
+    public let metadata: [String: MetadataValue]
 
     // initialize JobWorkerContext
-    public init(workerID: String, queueName: String = "default", metadata: [String: String]) {
+    public init(workerID: String, queueName: String = "default", metadata: [String: MetadataValue]) {
         self.workerID = workerID
         self.queueName = queueName
         self.metadata = metadata
