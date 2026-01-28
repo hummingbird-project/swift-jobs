@@ -252,6 +252,7 @@ struct JobMiddlewareTests {
         ) { queue in
             TestMiddleware(continuation: cont, queue: queue)
         }
+
         jobQueue.registerJob(name: .init("MiddlewareTest")) { (parameters: Bool, context) in
         }
         try await testJobQueue(jobQueue.processor()) {
