@@ -187,7 +187,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
         self.queue = queue
         self.logger = logger
         self.options = options
-        let middleware = JobMiddlewareBuilder.$jobQueueName.withValue(queue.queueName) {
+        let middleware = JobMiddlewareBuilder.$jobQueueName.withValue(queue.context.queueName) {
             middleware()
         }
         self.middleware = middleware

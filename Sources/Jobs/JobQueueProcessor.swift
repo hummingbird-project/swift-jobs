@@ -39,7 +39,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
         self.queue = queue.queue
         self.logger = logger
         self.options = options
-        let middleware = JobMiddlewareBuilder.$jobQueueName.withValue(queue.queue.queueName) {
+        let middleware = JobMiddlewareBuilder.$jobQueueName.withValue(queue.queue.context.queueName) {
             middleware()
         }
         self.middleware = middleware

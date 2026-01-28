@@ -60,9 +60,7 @@ extension JobQueueDriver {
     /// default version of waitUntilReady doing nothing
     public func waitUntilReady() async throws {}
     /// default version of worker ID is to return the string version of a UUID
-    public var workerContext: JobQueueContext { .init(workerID: UUID().uuidString, metadata: [:]) }
-    /// default queue name
-    public var queueName: String { "default" }
+    public var context: JobQueueContext { .init(workerID: UUID().uuidString, metadata: [:]) }
 }
 
 extension JobQueueDriver {
