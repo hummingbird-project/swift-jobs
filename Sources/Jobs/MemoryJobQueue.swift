@@ -45,14 +45,14 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     fileprivate let queue: Internal
     private let onFailedJob: @Sendable (JobID, any Error) -> Void
     private let jobRegistry: JobRegistry
-    public let queueName: String
+    public let context: JobQueueContext
 
     /// Initialise In memory job queue
     public init(queueName: String = "default", onFailedJob: @escaping @Sendable (JobID, any Error) -> Void = { _, _ in }) {
         self.queue = .init()
         self.onFailedJob = onFailedJob
         self.jobRegistry = .init()
-        self.queueName = queueName
+        self.context = JobQueueContext(workerID: UUID().uuidString, queueName: queueName, metadata: [:])
     }
 
     /// Stop queue serving more jobs
@@ -114,8 +114,6 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     public func pause(jobID: JobID) async throws {
         await self.queue.pauseJob(jobID: jobID)
     }
-
-    public let workerContext = JobWorkerContext(id: UUID().uuidString, metadata: [:])
 
     /// Internal actor managing the job queue
     fileprivate actor Internal {

@@ -96,7 +96,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
                     if case .acquire(let every, let holdFor) = self.options.workerActiveLock.value,
                         let metadataDriver = self.queue as? JobMetadataDriver
                     {
-                        metadataDriver.updateActiveLock(&group, every: every, holdFor: holdFor, workerID: self.queue.workerContext.id)
+                        metadataDriver.updateActiveLock(&group, every: every, holdFor: holdFor, workerID: self.queue.context.workerID)
                     }
 
                     // wait on first child task to return. If the first task to return is the queue handler then

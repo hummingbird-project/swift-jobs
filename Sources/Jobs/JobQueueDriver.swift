@@ -52,17 +52,15 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     func stop() async
     /// shutdown queue
     func shutdownGracefully() async
-    /// worker context
-    var workerContext: JobWorkerContext { get }
-    /// queue name
-    var queueName: String { get }
+    /// job queue context
+    var context: JobQueueContext { get }
 }
 
 extension JobQueueDriver {
     /// default version of waitUntilReady doing nothing
     public func waitUntilReady() async throws {}
     /// default version of worker ID is to return the string version of a UUID
-    public var workerContext: JobWorkerContext { .init(id: UUID().uuidString, metadata: [:]) }
+    public var workerContext: JobQueueContext { .init(workerID: UUID().uuidString, metadata: [:]) }
     /// default queue name
     public var queueName: String { "default" }
 }
@@ -74,15 +72,18 @@ extension JobQueueDriver {
     }
 }
 
-public struct JobWorkerContext: Sendable {
+public struct JobQueueContext: Sendable {
     /// Job worker id
-    public let id: String
+    public let workerID: String
+    /// Job queue name
+    public let queueName: String
     /// Job worker metadata
     public let metadata: [String: String]
 
     // initialize JobWorkerContext
-    public init(id: String, metadata: [String: String]) {
-        self.id = id
+    public init(workerID: String, queueName: String = "default", metadata: [String: String]) {
+        self.workerID = workerID
+        self.queueName = queueName
         self.metadata = metadata
     }
 }
