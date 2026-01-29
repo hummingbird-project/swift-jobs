@@ -22,6 +22,6 @@ public protocol JobEventsDriver: Sendable {
         from: Date,
         _ operation: (_ events: EventStream) async throws -> Value
     ) async throws -> sending Value
-    /// subscribe to event for id
+    /// subscribe to events for a particular id
     func subscribe<Value>(id: String, from: Date, _ operation: (_ events: EventStream) async throws -> Value) async throws -> sending Value
 }
