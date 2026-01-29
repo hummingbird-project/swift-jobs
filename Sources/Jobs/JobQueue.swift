@@ -187,6 +187,18 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
         self.middleware = middleware
     }
 
+    public init(
+        _ queue: Queue,
+        logger: Logger,
+        options: JobQueueOptions = .init(),
+        @JobMiddlewareBuilder middleware: (Queue) -> some JobMiddleware
+    ) {
+        self.queue = queue
+        self.middleware = middleware(queue)
+        self.logger = logger
+        self.options = options
+    }
+
     ///  Create JobQueue handler that will process jobs pushed to the queue
     /// - Parameter options: Processor options
     public func processor(
