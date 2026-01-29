@@ -12,7 +12,7 @@ import Foundation
 #endif
 
 public struct JobEvent: Sendable {
-    public struct EventType: Sendable {
+    public struct EventType: Sendable, Equatable {
         let rawValue: Int
 
         static let jobPushed: EventType = .init(rawValue: "job-pushed".hashValue)
@@ -21,7 +21,15 @@ public struct JobEvent: Sendable {
         static let jobCompleted: EventType = .init(rawValue: "job-completed".hashValue)
     }
 
-    let type: EventType
-    let id: String
-    let time: Date
+    public let type: EventType
+    public let id: String
+    public let time: Date
+    public let data: [String: String]
+
+    public init(type: JobEvent.EventType, id: String, time: Date, data: [String: String] = [:]) {
+        self.type = type
+        self.id = id
+        self.time = time
+        self.data = data
+    }
 }

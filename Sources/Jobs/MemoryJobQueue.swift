@@ -115,11 +115,16 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             let id: JobID
             let jobBuffer: ByteBuffer
         }
+        enum Subscription {
+            case id(String)
+            case eventType(JobEvent.EventType)
+        }
         var queue: Deque<(job: QueuedJob, options: JobOptions)>
         var pendingJobs: [JobID: ByteBuffer]
         var metadata: [String: (data: ByteBuffer, expires: Date)]
-        var eventSubscriptions: [Int: AsyncStream<JobEvent>.Continuation]
+        var eventSubscriptions: [Int: (Subscription, AsyncStream<JobEvent>.Continuation)]
         var eventSubscriptionID: Int = 0
+        var events: [JobEvent]
         var isStopped: Bool
 
         init() {
@@ -128,6 +133,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             self.pendingJobs = .init()
             self.metadata = .init()
             self.eventSubscriptions = [:]
+            self.events = []
         }
 
         func push(_ jobBuffer: ByteBuffer, options: JobOptions) throws -> JobID {
@@ -232,16 +238,45 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
 
         func publish(event: JobEvent) {
+            self.events.append(event)
             for sub in eventSubscriptions.values {
-                sub.yield(event)
+                switch sub.0 {
+                case .id(let id):
+                    if id == event.id {
+                        sub.1.yield(event)
+                    }
+                case .eventType(let type):
+                    if type == event.type {
+                        sub.1.yield(event)
+                    }
+                }
             }
         }
 
-        public func subscribe() -> (Int, AsyncStream<JobEvent>) {
+        public func subscribe(_ subscription: Subscription, from date: Date) -> (Int, AsyncStream<JobEvent>) {
             let (stream, cont) = AsyncStream.makeStream(of: JobEvent.self)
             let id = self.eventSubscriptionID
             self.eventSubscriptionID += 1
-            self.eventSubscriptions[id] = cont
+            self.eventSubscriptions[id] = (subscription, cont)
+
+            let firstIndex = self.events.lastIndex(where: { $0.time < date }) ?? self.events.startIndex
+            if firstIndex != self.events.endIndex {
+                // find event after date
+                switch subscription {
+                case .id(let id):
+                    for index in firstIndex..<self.events.endIndex {
+                        if id == self.events[index].id {
+                            cont.yield(self.events[index])
+                        }
+                    }
+                case .eventType(let eventType):
+                    for index in firstIndex..<self.events.endIndex {
+                        if eventType == self.events[index].type {
+                            cont.yield(self.events[index])
+                        }
+                    }
+                }
+            }
             return (id, stream)
         }
 
@@ -297,8 +332,29 @@ extension MemoryQueue: JobEventsDriver {
         await self.queue.publish(event: event)
     }
 
-    public func subscribe<Value>(_ operation: (_ events: EventStream) async throws -> Value) async throws -> sending Value {
-        let (id, stream) = await self.queue.subscribe()
+    /// subscribe to event type stream
+    public func subscribe<Value>(
+        eventType: JobEvent.EventType,
+        from date: Date,
+        _ operation: (_ events: EventStream) async throws -> Value
+    ) async throws -> sending Value {
+        let (id, stream) = await self.queue.subscribe(.eventType(eventType), from: date)
+        let result: Result<Value, any Error>
+        do {
+            result = .success(try await operation(stream))
+        } catch {
+            result = .failure(error)
+        }
+        await self.queue.unsubscribe(id)
+        return try result.get()
+    }
+    /// subscribe to events for id
+    public func subscribe<Value>(
+        id: String,
+        from date: Date,
+        _ operation: (_ events: EventStream) async throws -> Value
+    ) async throws -> sending Value {
+        let (id, stream) = await self.queue.subscribe(.id(id), from: date)
         let result: Result<Value, any Error>
         do {
             result = .success(try await operation(stream))

@@ -6,10 +6,22 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
+
 public protocol JobEventsDriver: Sendable {
     associatedtype EventStream: AsyncSequence<JobEvent, Never>
     /// publish event
     func publish(event: JobEvent) async
-    /// subscribe to event stream
-    func subscribe<Value>(_ operation: (_ events: EventStream) async throws -> Value) async throws -> sending Value
+    /// subscribe to event type stream
+    func subscribe<Value>(
+        eventType: JobEvent.EventType,
+        from: Date,
+        _ operation: (_ events: EventStream) async throws -> Value
+    ) async throws -> sending Value
+    /// subscribe to event for id
+    func subscribe<Value>(id: String, from: Date, _ operation: (_ events: EventStream) async throws -> Value) async throws -> sending Value
 }
