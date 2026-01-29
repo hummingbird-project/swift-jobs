@@ -20,7 +20,11 @@ public struct MetricsJobMiddleware: JobMiddleware {
     @usableFromInline
     let queueName: String
 
-    public init(queueName: String = "default") {
+    public init() {
+        self.queueName = JobMiddlewareBuilder.jobQueueName ?? "default"
+    }
+
+    public init(queueName: String) {
         self.queueName = queueName
     }
 

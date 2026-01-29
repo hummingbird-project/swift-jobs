@@ -34,7 +34,7 @@ struct TracingTests {
             let sleep: Double
         }
         try await Self.testTracer.withUnique {
-            let jobQueue = JobQueue(.memory, logger: Logger(label: "JobsTests")) {
+            let jobQueue = JobQueue(MemoryQueue(queueName: "TestTracing"), logger: Logger(label: "JobsTests")) {
                 TracingJobMiddleware()
             }
             jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
@@ -62,7 +62,7 @@ struct TracingTests {
                 [
                     "job.id": "\(jobID.uuidString)",
                     "job.attempt": 1,
-                    "job.queue": "default",
+                    "job.queue": "TestTracing",
                 ]
             )
         }

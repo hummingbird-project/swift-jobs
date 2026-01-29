@@ -642,7 +642,7 @@ struct JobsTests {
             MemoryQueue { _, _ in },
             logger: logger
         )
-        let workerID = jobQueue.queue.workerContext.id
+        let workerID = jobQueue.queue.context.workerID
         try await testJobQueue(jobQueue.processor()) {
             try await Task.sleep(for: .milliseconds(100))
             let acquired = try await jobQueue.queue.acquireLock(

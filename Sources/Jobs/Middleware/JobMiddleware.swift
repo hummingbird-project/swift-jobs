@@ -165,6 +165,8 @@ struct TwoJobMiddlewares<Middleware1: JobMiddleware, Middleware2: JobMiddleware>
 /// Result builder used to create Job middleware chain
 @resultBuilder
 public enum JobMiddlewareBuilder {
+    @TaskLocal static var jobQueueName: String?
+
     public static func buildBlock<Middleware: JobMiddleware>(_ middleware: Middleware) -> Middleware {
         middleware
     }
