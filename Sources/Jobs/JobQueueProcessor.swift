@@ -24,6 +24,28 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
     let middleware: any JobMiddleware
     let logger: Logger
 
+    /// Initialize JobQueueProcessor from a JobQueue
+    /// - Parameters:
+    ///   - queue: job queue
+    ///   - logger: logger
+    ///   - options: Job queue processor options
+    public init(
+        queue: JobQueue<Queue>,
+        logger: Logger,
+        options: JobQueueProcessorOptions = .init()
+    ) {
+        self.queue = queue.queue
+        self.logger = logger
+        self.options = options
+        self.middleware = queue.middleware
+    }
+
+    /// Initialize JobQueueProcessor from a JobQueue and provide own middleware chain
+    /// - Parameters:
+    ///   - queue: job queue
+    ///   - logger: logger
+    ///   - options: Job queue processor options
+    ///   - middleware: JobMiddleware result builder
     public init(
         queue: JobQueue<Queue>,
         logger: Logger,
@@ -36,18 +58,6 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
         let middleware = JobMiddlewareBuilder.$jobQueueName.withValue(queue.queue.context.queueName) {
             middleware()
         }
-        self.middleware = middleware
-    }
-
-    init(
-        queue: Queue,
-        logger: Logger,
-        options: JobQueueProcessorOptions = .init(),
-        middleware: some JobMiddleware
-    ) {
-        self.queue = queue
-        self.logger = logger
-        self.options = options
         self.middleware = middleware
     }
 

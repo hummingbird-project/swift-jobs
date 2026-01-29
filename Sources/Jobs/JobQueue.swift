@@ -194,7 +194,10 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
         @JobMiddlewareBuilder middleware: (Queue) -> some JobMiddleware
     ) {
         self.queue = queue
-        self.middleware = middleware(queue)
+        let middleware = JobMiddlewareBuilder.$jobQueueName.withValue(queue.context.queueName) {
+            middleware(queue)
+        }
+        self.middleware = middleware
         self.logger = logger
         self.options = options
     }
@@ -204,7 +207,7 @@ public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
     public func processor(
         options: JobQueueProcessorOptions = .init()
     ) -> any Service {
-        JobQueueProcessor(queue: queue, logger: logger, options: options, middleware: self.middleware)
+        JobQueueProcessor(queue: self, logger: logger, options: options)
     }
 
     ///  Push Job onto queue
