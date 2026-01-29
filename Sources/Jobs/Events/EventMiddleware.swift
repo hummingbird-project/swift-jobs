@@ -5,8 +5,14 @@
 // See LICENSE.txt for license information
 // SPDX-License-Identifier: Apache-2.0
 //
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
 public struct EventsJobMiddleware<Queue: JobEventsDriver>: JobMiddleware {
+    @usableFromInline
     let queue: Queue
 
     public init(jobQueue: Queue) {
@@ -19,6 +25,7 @@ public struct EventsJobMiddleware<Queue: JobEventsDriver>: JobMiddleware {
     ///   - name: Job name
     ///   - parameters: Job parameters
     ///   - context: Job queue context
+    @inlinable
     public func onPushJob<Parameters>(name: String, parameters: Parameters, context: JobPushQueueContext) async {
         await self.queue.publish(event: .init(type: .jobPushed, id: context.jobID, time: .now))
     }
@@ -29,13 +36,21 @@ public struct EventsJobMiddleware<Queue: JobEventsDriver>: JobMiddleware {
     ///   - context: Job execution context
     ///   - next: Next handler
     /// - Throws:
+    @inlinable
     public func handleJob(
         job: any JobInstanceProtocol,
         context: JobExecutionContext,
         next: (any JobInstanceProtocol, JobExecutionContext) async throws -> Void
     ) async throws {
         await self.queue.publish(event: .init(type: .jobStarted, id: context.jobID, time: .now))
-        try await next(job, context)
+        do {
+            return try await next(job, context)
+        } catch {
+            await self.queue.publish(
+                event: .init(type: .jobAttemptFailed, id: context.jobID, time: .now, parameters: [.attempt: .int(context.attempt)])
+            )
+            throw error
+        }
     }
     /// Job has completed or failed and if it failed will not be retried
     ///
@@ -43,6 +58,7 @@ public struct EventsJobMiddleware<Queue: JobEventsDriver>: JobMiddleware {
     ///   - job: Job instance
     ///   - result: Result of completing job
     ///   - context: Job queue context
+    @inlinable
     public func onCompletedJob(job: any JobInstanceProtocol, result: Result<Void, any Error>, context: JobCompletedQueueContext) async {
         switch result {
         case .success: await self.queue.publish(event: .init(type: .jobCompleted, id: context.jobID, time: .now))
