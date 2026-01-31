@@ -18,7 +18,7 @@ import Foundation
 #endif
 
 /// Protocol for Job queue. Allows us to pass job queues around as existentials
-public protocol JobQueueProtocol {
+public protocol JobQueueProtocol: Sendable {
     associatedtype Queue: JobQueueDriver
 
     var logger: Logger { get }
