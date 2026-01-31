@@ -47,12 +47,12 @@ extension JobQueueProtocol {
             let output = try await workflowJob._execute(parameters.input, workflowContext)
             // work out what the next workflow job is and push it to the queue
             if let outputJobName = try await nextItem.getNextWorkflowJob(output) {
-                let fullOutputJobName = "\(workflowName).\(outputJobName)"
+                //let fullOutputJobName = "\(workflowName).\(outputJobName)"
                 self.logger.debug(
                     "Triggering job",
-                    metadata: ["JobName": .stringConvertible(fullOutputJobName), "FromJob": .stringConvertible(jobName)]
+                    metadata: ["JobName": .stringConvertible(outputJobName), "FromJob": .stringConvertible(jobName)]
                 )
-                try await self.pushWorkflowJob(.init(fullOutputJobName), workflowID: parameters.workflowID, parameters: output)
+                try await self.pushWorkflowJob(.init(outputJobName), workflowID: parameters.workflowID, parameters: output)
             }
         }
         self.registerJob(job)
@@ -92,11 +92,23 @@ extension JobQueueProtocol {
         input: Input.Type = Input.self,
         @WorkflowBuilder<Input> buildWorkflow: () -> Workflow<Input>
     ) -> WorkflowName<Input> {
-        WorkflowBuilderState.$current.withValue(.init(name: name)) {
-            let workflow = buildWorkflow()
-            workflow.registerJobs(self)
-            return workflow.workflowName
+        let workflow = buildWorkflow()
+        workflow.registerJobs(self, name)
+        return WorkflowName("\(name).\(workflow.firstJobName)")
+    }
+
+    public func createChildWorkflow<Input: Codable & Sendable, Output>(
+        name: String,
+        input: Input.Type = Input.self,
+        output: Output.Type = Output.self,
+        @PartialWorkflowBuilder<Input, Output> buildWorkflow: () -> PartialWorkflow<Output>
+    ) -> ChildWorkflow<Input, Output> {
+        let partialWorkflow = buildWorkflow()
+        let childWorkflow = PartialWorkflow<Output>(firstJobName: "\(name).\(partialWorkflow.firstJobName)") { queue, workflowName, nextJob in
+            let childWorkflowName = "\(workflowName).\(name)"
+            partialWorkflow.registerJobs(queue, childWorkflowName, nextJob)
         }
+        return ChildWorkflow(input: Input.self, output: Output.self, workflow: childWorkflow)
     }
 
     public func pushWorkflow<Input: Sendable & Codable>(

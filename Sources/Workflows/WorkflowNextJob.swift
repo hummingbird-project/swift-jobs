@@ -12,6 +12,10 @@ indirect enum WorkflowNextJob<Output> {
     case job(named: String)
     case ifelse(ifName: WorkflowNextJob<Output>, elseName: WorkflowNextJob<Output>, condition: @Sendable (Output) async throws -> Bool)
 
+    static func job(named: String, workflow: String) -> Self {
+        .job(named: "\(workflow).\(named)")
+    }
+
     func getNextWorkflowJob(_ output: Output) async throws -> String? {
         var current = self
         while true {

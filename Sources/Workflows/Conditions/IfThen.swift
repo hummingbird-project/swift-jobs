@@ -27,18 +27,18 @@ extension WorkflowBuilder {
         next condition: IfThen<Input, Input>
     ) -> PartialWorkflow<Input> {
         PartialWorkflow(
-            name: workflow.name,
             firstJobName: workflow.firstJobName
-        ) { queue, nextItem in
+        ) { queue, workflowName, nextItem in
             workflow.registerJobs(
                 queue,
+                workflowName,
                 .ifelse(
-                    ifName: .job(named: condition.thenWorkflow.firstJobName),
+                    ifName: .job(named: condition.thenWorkflow.firstJobName, workflow: workflowName),
                     elseName: nextItem,
                     condition: condition.condition
                 )
             )
-            condition.thenWorkflow.registerJobs(queue, nextItem)
+            condition.thenWorkflow.registerJobs(queue, workflowName, nextItem)
         }
     }
 
@@ -48,18 +48,18 @@ extension WorkflowBuilder {
         next condition: IfThen<Input, Void>
     ) -> PartialWorkflow<Input> {
         PartialWorkflow(
-            name: workflow.name,
             firstJobName: workflow.firstJobName
-        ) { queue, nextItem in
+        ) { queue, workflowName, nextItem in
             workflow.registerJobs(
                 queue,
+                workflowName,
                 .ifelse(
-                    ifName: .job(named: condition.thenWorkflow.firstJobName),
+                    ifName: .job(named: condition.thenWorkflow.firstJobName, workflow: workflowName),
                     elseName: nextItem,
                     condition: condition.condition
                 )
             )
-            condition.thenWorkflow.registerJobs(queue, .none)
+            condition.thenWorkflow.registerJobs(queue, workflowName, .none)
         }
     }
 }
@@ -71,18 +71,18 @@ extension PartialWorkflowBuilder {
         next condition: IfThen<Input, Input>
     ) -> PartialWorkflow<Input> {
         PartialWorkflow(
-            name: workflow.name,
             firstJobName: workflow.firstJobName
-        ) { queue, nextItem in
+        ) { queue, workflowName, nextItem in
             workflow.registerJobs(
                 queue,
+                workflowName,
                 .ifelse(
-                    ifName: .job(named: condition.thenWorkflow.firstJobName),
+                    ifName: .job(named: condition.thenWorkflow.firstJobName, workflow: workflowName),
                     elseName: nextItem,
                     condition: condition.condition
                 )
             )
-            condition.thenWorkflow.registerJobs(queue, nextItem)
+            condition.thenWorkflow.registerJobs(queue, workflowName, nextItem)
         }
     }
 
@@ -92,18 +92,18 @@ extension PartialWorkflowBuilder {
         next condition: IfThen<Input, Void>
     ) -> PartialWorkflow<Input> {
         PartialWorkflow(
-            name: workflow.name,
             firstJobName: workflow.firstJobName
-        ) { queue, nextItem in
+        ) { queue, workflowName, nextItem in
             workflow.registerJobs(
                 queue,
+                workflowName,
                 .ifelse(
-                    ifName: .job(named: condition.thenWorkflow.firstJobName),
+                    ifName: .job(named: condition.thenWorkflow.firstJobName, workflow: workflowName),
                     elseName: nextItem,
                     condition: condition.condition
                 )
             )
-            condition.thenWorkflow.registerJobs(queue, .none)
+            condition.thenWorkflow.registerJobs(queue, workflowName, .none)
         }
     }
 }
