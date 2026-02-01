@@ -22,7 +22,7 @@ extension JobQueueProtocol {
     func registerWorkflowJob<Input: Codable & Sendable, Output: Codable & Sendable>(
         workflowName: String,
         workflowStep: WorkflowStep<Input, Output>,
-        nextItem: WorkflowNextStep<Output>
+        nextStep: WorkflowNextStep<Output>
     ) {
         let jobName = "\(workflowName).\(workflowStep.name)"
         self.logger.info(
@@ -46,7 +46,7 @@ extension JobQueueProtocol {
             )
             let output = try await workflowStep._execute(parameters.input, workflowContext)
             // work out what the next workflow job is and push it to the queue
-            if let outputJobName = try await nextItem.getNextWorkflowJob(output) {
+            if let outputJobName = try await nextStep.getNextWorkflowJob(output) {
                 self.logger.debug(
                     "Triggering job",
                     metadata: ["JobName": .stringConvertible(outputJobName), "FromJob": .stringConvertible(jobName)]

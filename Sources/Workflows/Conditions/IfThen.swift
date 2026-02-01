@@ -28,17 +28,17 @@ extension WorkflowResultBuilder {
     ) -> Workflow<WorkflowInput, Input> {
         Workflow(
             firstJobName: workflow.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             workflow.registerJobs(
                 queue,
                 workflowName,
                 .ifelse(
                     ifName: .job(named: condition.thenWorkflow.firstJobName, workflow: workflowName),
-                    elseName: nextItem,
+                    elseName: nextStep,
                     condition: condition.condition
                 )
             )
-            condition.thenWorkflow.registerJobs(queue, workflowName, nextItem)
+            condition.thenWorkflow.registerJobs(queue, workflowName, nextStep)
         }
     }
 
@@ -49,13 +49,13 @@ extension WorkflowResultBuilder {
     ) -> Workflow<WorkflowInput, Input> {
         Workflow(
             firstJobName: workflow.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             workflow.registerJobs(
                 queue,
                 workflowName,
                 .ifelse(
                     ifName: .job(named: condition.thenWorkflow.firstJobName, workflow: workflowName),
-                    elseName: nextItem,
+                    elseName: nextStep,
                     condition: condition.condition
                 )
             )

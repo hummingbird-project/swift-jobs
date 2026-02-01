@@ -31,7 +31,7 @@ extension WorkflowResultBuilder {
     ) -> Workflow<WorkflowInput, Output> {
         Workflow(
             firstJobName: workflow.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             workflow.registerJobs(
                 queue,
                 workflowName,
@@ -41,8 +41,8 @@ extension WorkflowResultBuilder {
                     condition: condition.condition
                 )
             )
-            condition.thenWorkflow.registerJobs(queue, workflowName, nextItem)
-            condition.elseWorkflow.registerJobs(queue, workflowName, nextItem)
+            condition.thenWorkflow.registerJobs(queue, workflowName, nextStep)
+            condition.elseWorkflow.registerJobs(queue, workflowName, nextStep)
         }
     }
 
@@ -53,7 +53,7 @@ extension WorkflowResultBuilder {
     ) -> Workflow<WorkflowInput, Void> {
         Workflow(
             firstJobName: workflow.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             workflow.registerJobs(
                 queue,
                 workflowName,
@@ -63,8 +63,8 @@ extension WorkflowResultBuilder {
                     condition: condition.condition
                 )
             )
-            condition.thenWorkflow.registerJobs(queue, workflowName, nextItem)
-            condition.elseWorkflow.registerJobs(queue, workflowName, nextItem)
+            condition.thenWorkflow.registerJobs(queue, workflowName, nextStep)
+            condition.elseWorkflow.registerJobs(queue, workflowName, nextStep)
         }
     }
 }

@@ -23,12 +23,12 @@ extension Workflow where Output: Codable & Sendable {
     public func addStep<Output2: Codable & Sendable>(_ step: WorkflowStep<Output, Output2>) -> Workflow<Input, Output2> {
         Workflow<Input, Output2>(
             firstJobName: self.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             self.registerJobs(queue, workflowName, .job(named: step.name, workflow: workflowName))
             queue.registerWorkflowJob(
                 workflowName: workflowName,
                 workflowStep: step,
-                nextItem: nextItem
+                nextStep: nextStep
             )
         }
     }
@@ -59,12 +59,12 @@ extension Workflow where Output: Codable & Sendable {
     ) -> Workflow<Input, Output2> {
         Workflow<Input, Output2>(
             firstJobName: self.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             self.registerJobs(queue, workflowName, .job(named: name, workflow: workflowName))
             queue.registerWorkflowJob(
                 workflowName: workflowName,
                 workflowStep: .init(name: name, parameters: Output.self, retryStrategy: retryStrategy, timeout: timeout, execute: operation),
-                nextItem: nextItem
+                nextStep: nextStep
             )
         }
     }
@@ -95,9 +95,9 @@ extension Workflow where Output: Codable & Sendable {
     public func addChildWorkflow<Output2>(_ childWorkflow: Workflow<Output, Output2>) -> Workflow<Input, Output2> {
         Workflow<Input, Output2>(
             firstJobName: self.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             self.registerJobs(queue, workflowName, .job(named: childWorkflow.firstJobName, workflow: workflowName))
-            childWorkflow.registerJobs(queue, workflowName, nextItem)
+            childWorkflow.registerJobs(queue, workflowName, nextStep)
         }
     }
 
@@ -116,7 +116,7 @@ extension Workflow where Output: Codable & Sendable {
         let elseWorkflow = elseWorkflowBuilder(WorkflowBuilder())
         return Workflow<Input, Output2>(
             firstJobName: self.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             self.registerJobs(
                 queue,
                 workflowName,
@@ -126,8 +126,8 @@ extension Workflow where Output: Codable & Sendable {
                     condition: condition
                 )
             )
-            thenWorkflow.registerJobs(queue, workflowName, nextItem)
-            elseWorkflow.registerJobs(queue, workflowName, nextItem)
+            thenWorkflow.registerJobs(queue, workflowName, nextStep)
+            elseWorkflow.registerJobs(queue, workflowName, nextStep)
         }
     }
 
@@ -146,17 +146,17 @@ extension Workflow where Output: Codable & Sendable {
         let thenWorkflow = thenWorkflowBuilder(WorkflowBuilder())
         return Workflow(
             firstJobName: self.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             self.registerJobs(
                 queue,
                 workflowName,
                 .ifelse(
                     ifName: .job(named: thenWorkflow.firstJobName, workflow: workflowName),
-                    elseName: nextItem,
+                    elseName: nextStep,
                     condition: condition
                 )
             )
-            thenWorkflow.registerJobs(queue, workflowName, nextItem)
+            thenWorkflow.registerJobs(queue, workflowName, nextStep)
         }
     }
 
@@ -174,13 +174,13 @@ extension Workflow where Output: Codable & Sendable {
         let thenWorkflow = thenWorkflowBuilder(WorkflowBuilder())
         return Workflow(
             firstJobName: self.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             self.registerJobs(
                 queue,
                 workflowName,
                 .ifelse(
                     ifName: .job(named: thenWorkflow.firstJobName, workflow: workflowName),
-                    elseName: nextItem,
+                    elseName: nextStep,
                     condition: condition
                 )
             )
@@ -200,10 +200,10 @@ extension Workflow where Output: Codable & Sendable {
         let groupWorkflow = groupWorkflowBuilder(WorkflowBuilder())
         return Workflow<Input, Output2>(
             firstJobName: self.firstJobName
-        ) { queue, workflowName, nextItem in
+        ) { queue, workflowName, nextStep in
             let groupWorkflowName = "\(workflowName).\(name)"
             self.registerJobs(queue, workflowName, .job(named: groupWorkflow.firstJobName, workflow: workflowName))
-            groupWorkflow.registerJobs(queue, groupWorkflowName, nextItem)
+            groupWorkflow.registerJobs(queue, groupWorkflowName, nextStep)
         }
     }
 }
