@@ -83,4 +83,15 @@ public struct WorkflowBuilder<Input: Codable & Sendable> {
             )
         }
     }
+
+    ///  Return new workflow with child workflow added
+    /// - Parameter step: Child workflow to add
+    /// - Returns: New workflow with child workflow added
+    public func addChildWorkflow<Output>(_ childWorkflow: Workflow<Input, Output>) -> Workflow<Input, Output> {
+        Workflow<Input, Output>(
+            firstJobName: childWorkflow.firstJobName
+        ) { queue, workflowName, nextItem in
+            childWorkflow.registerJobs(queue, workflowName, nextItem)
+        }
+    }
 }

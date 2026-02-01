@@ -187,4 +187,23 @@ extension Workflow where Output: Codable & Sendable {
             thenWorkflow.registerJobs(queue, workflowName, .none)
         }
     }
+
+    /// Group workflows under a sub-workflow name to avoid name clashes
+    /// - Parameters:
+    ///   - name: Sub workflow name
+    ///   - groupWorkflowBuilder: Closure building workflow
+    /// - Returns: New workflow with group added
+    public func group<Output2>(
+        name: String,
+        group groupWorkflowBuilder: (WorkflowBuilder<Output>) -> Workflow<Output, Output2>
+    ) -> Workflow<Input, Output2> {
+        let groupWorkflow = groupWorkflowBuilder(WorkflowBuilder())
+        return Workflow<Input, Output2>(
+            firstJobName: self.firstJobName
+        ) { queue, workflowName, nextItem in
+            let groupWorkflowName = "\(workflowName).\(name)"
+            self.registerJobs(queue, workflowName, .job(named: groupWorkflow.firstJobName, workflow: workflowName))
+            groupWorkflow.registerJobs(queue, groupWorkflowName, nextItem)
+        }
+    }
 }
