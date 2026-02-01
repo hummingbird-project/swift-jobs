@@ -47,7 +47,6 @@ extension JobQueueProtocol {
             let output = try await workflowJob._execute(parameters.input, workflowContext)
             // work out what the next workflow job is and push it to the queue
             if let outputJobName = try await nextItem.getNextWorkflowJob(output) {
-                //let fullOutputJobName = "\(workflowName).\(outputJobName)"
                 self.logger.debug(
                     "Triggering job",
                     metadata: ["JobName": .stringConvertible(outputJobName), "FromJob": .stringConvertible(jobName)]
@@ -90,25 +89,19 @@ extension JobQueueProtocol {
     public func registerWorkflow<Input: Codable & Sendable>(
         name: String,
         input: Input.Type = Input.self,
-        @WorkflowBuilder<Input> buildWorkflow: () -> Workflow<Input>
+        @WorkflowBuilder<Input, Void> buildWorkflow: () -> Workflow<Input, Void>
     ) -> WorkflowName<Input> {
         let workflow = buildWorkflow()
-        workflow.registerJobs(self, name)
+        workflow.registerJobs(self, name, .none)
         return WorkflowName("\(name).\(workflow.firstJobName)")
     }
 
     public func createChildWorkflow<Input: Codable & Sendable, Output>(
-        name: String,
         input: Input.Type = Input.self,
         output: Output.Type = Output.self,
-        @PartialWorkflowBuilder<Input, Output> buildWorkflow: () -> PartialWorkflow<Output>
-    ) -> ChildWorkflow<Input, Output> {
-        let partialWorkflow = buildWorkflow()
-        let childWorkflow = PartialWorkflow<Output>(firstJobName: "\(name).\(partialWorkflow.firstJobName)") { queue, workflowName, nextJob in
-            let childWorkflowName = "\(workflowName).\(name)"
-            partialWorkflow.registerJobs(queue, childWorkflowName, nextJob)
-        }
-        return ChildWorkflow(input: Input.self, output: Output.self, workflow: childWorkflow)
+        @WorkflowBuilder<Input, Output> buildWorkflow: () -> Workflow<Input, Output>
+    ) -> Workflow<Input, Output> {
+        buildWorkflow()
     }
 
     public func pushWorkflow<Input: Sendable & Codable>(

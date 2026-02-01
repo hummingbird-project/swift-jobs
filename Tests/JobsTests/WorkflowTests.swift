@@ -143,7 +143,7 @@ struct WorkflowTests {
             WorkflowJob(name: "convert-to-int") { (input: String, context) in
                 Int(input)!
             }
-            IfThen(output: Void.self) { (output: Int) in
+            IfThen<Int, Void>(output: Void.self) { (output: Int) in
                 output > 10
             } then: {
                 WorkflowJob(name: "big") { (input: Int, context) in
@@ -382,7 +382,7 @@ struct WorkflowTests {
         let (stream, cont) = AsyncStream.makeStream(of: Int.self)
         let jobQueue = JobQueue(.memory, logger: logger)
 
-        let childWorkflow = jobQueue.createChildWorkflow(name: "child", input: Int.self, output: Int.self) {
+        let childWorkflow = jobQueue.createChildWorkflow(input: Int.self, output: Int.self) {
             WorkflowJob(name: "Set bit 0") { (input: Int, context) in
                 input | 1
             }
@@ -421,7 +421,7 @@ struct WorkflowTests {
         logger.logLevel = .trace
         let (stream, cont) = AsyncStream.makeStream(of: String.self)
         let jobQueue = JobQueue(.memory, logger: logger)
-        let bigChildWorkflow = jobQueue.createChildWorkflow(name: "big", output: String.self) {
+        let bigChildWorkflow = jobQueue.createChildWorkflow(output: String.self) {
             WorkflowJob(name: "big") { (input: Int, context) in
                 "BIG"
             }

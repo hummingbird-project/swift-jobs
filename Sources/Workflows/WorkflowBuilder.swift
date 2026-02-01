@@ -8,13 +8,14 @@
 
 import Jobs
 
+/*
 @resultBuilder
 public struct WorkflowBuilder<WorkflowInput: Codable & Sendable> {
     /// First item with output
     public static func buildPartialBlock<Output: Codable & Sendable>(
         first job: WorkflowJob<WorkflowInput, Output>
-    ) -> PartialWorkflow<Output> {
-        PartialWorkflow(
+    ) -> Workflow<WorkflowInput, Output> {
+        Workflow(
             firstJobName: job.name
         ) { queue, workflowName, nextItem in
             queue.registerWorkflowJob(
@@ -28,8 +29,8 @@ public struct WorkflowBuilder<WorkflowInput: Codable & Sendable> {
     /// First item with no output
     public static func buildPartialBlock(
         first job: WorkflowJob<WorkflowInput, Void>
-    ) -> PartialWorkflow<Void> {
-        PartialWorkflow(
+    ) -> Workflow<WorkflowInput, Void> {
+        Workflow(
             firstJobName: job.name
         ) { queue, workflowName, nextItem in
             queue.registerFinalWorkflowJob(
@@ -41,10 +42,10 @@ public struct WorkflowBuilder<WorkflowInput: Codable & Sendable> {
 
     /// Item with previous and subsequents items
     public static func buildPartialBlock<Input: Codable & Sendable, Output: Codable & Sendable>(
-        accumulated workflow: PartialWorkflow<Input>,
+        accumulated workflow: Workflow<WorkflowInput, Input>,
         next job2: WorkflowJob<Input, Output>
-    ) -> PartialWorkflow<Output> {
-        PartialWorkflow(
+    ) -> Workflow<WorkflowInput, Output> {
+        Workflow(
             firstJobName: workflow.firstJobName
         ) { queue, workflowName, nextItem in
             workflow.registerJobs(queue, workflowName, .job(named: job2.name, workflow: workflowName))
@@ -58,10 +59,10 @@ public struct WorkflowBuilder<WorkflowInput: Codable & Sendable> {
 
     /// Item with previous and no more after
     public static func buildPartialBlock<Input: Codable & Sendable>(
-        accumulated workflow: PartialWorkflow<Input>,
+        accumulated workflow: Workflow<WorkflowInput, Input>,
         next job2: WorkflowJob<Input, Void>
-    ) -> PartialWorkflow<Void> {
-        PartialWorkflow(
+    ) -> Workflow<WorkflowInput, Void> {
+        Workflow(
             firstJobName: workflow.firstJobName
         ) { queue, workflowName, _ in
             workflow.registerJobs(queue, workflowName, .job(named: job2.name, workflow: workflowName))
@@ -74,21 +75,21 @@ public struct WorkflowBuilder<WorkflowInput: Codable & Sendable> {
 
     /// Final result
     public static func buildFinalResult(
-        _ workflow: PartialWorkflow<Void>
-    ) -> Workflow<WorkflowInput> {
-        Workflow(firstJobName: workflow.firstJobName) { queue, workflowName in
-            workflow.registerJobs(queue, workflowName, .none)
+        _ workflow: Workflow<WorkflowInput, Void>
+    ) -> Workflow<WorkflowInput, Void> {
+        Workflow(firstJobName: workflow.firstJobName) { queue, workflowName, nextItem in
+            workflow.registerJobs(queue, workflowName, nextItem)
         }
     }
 }
-
+*/
 @resultBuilder
-public struct PartialWorkflowBuilder<WorkflowInput: Codable & Sendable, WorkflowOutput> {
+public struct WorkflowBuilder<WorkflowInput: Codable & Sendable, WorkflowOutput> {
     /// First item with output
     public static func buildPartialBlock<Output: Codable & Sendable>(
         first job: WorkflowJob<WorkflowInput, Output>
-    ) -> PartialWorkflow<Output> {
-        PartialWorkflow(
+    ) -> Workflow<WorkflowInput, Output> {
+        Workflow(
             firstJobName: job.name
         ) { queue, workflowName, nextItem in
             queue.registerWorkflowJob(
@@ -102,8 +103,8 @@ public struct PartialWorkflowBuilder<WorkflowInput: Codable & Sendable, Workflow
     /// First item without output
     public static func buildPartialBlock(
         first job: WorkflowJob<WorkflowInput, Void>
-    ) -> PartialWorkflow<Void> {
-        PartialWorkflow(
+    ) -> Workflow<WorkflowInput, Void> {
+        Workflow(
             firstJobName: job.name
         ) { queue, workflowName, nextItem in
             queue.registerFinalWorkflowJob(
@@ -115,49 +116,24 @@ public struct PartialWorkflowBuilder<WorkflowInput: Codable & Sendable, Workflow
 
     /// Item with previous and subsequents items
     public static func buildPartialBlock<Input: Codable & Sendable, Output: Codable & Sendable>(
-        accumulated workflow: PartialWorkflow<Input>,
-        next job2: WorkflowJob<Input, Output>
-    ) -> PartialWorkflow<Output> {
-        PartialWorkflow(
-            firstJobName: workflow.firstJobName
-        ) { queue, workflowName, nextItem in
-            workflow.registerJobs(queue, workflowName, .job(named: job2.name, workflow: workflowName))
-            queue.registerWorkflowJob(
-                workflowName: workflowName,
-                workflowJob: job2,
-                nextItem: nextItem
-            )
-        }
+        accumulated workflow: Workflow<WorkflowInput, Input>,
+        next job: WorkflowJob<Input, Output>
+    ) -> Workflow<WorkflowInput, Output> {
+        workflow.addStep(job)
+    }
+
+    /// Item with previous and no more after
+    public static func buildPartialBlock<Input: Codable & Sendable>(
+        accumulated workflow: Workflow<WorkflowInput, Input>,
+        next job: WorkflowJob<Input, Void>
+    ) -> Workflow<WorkflowInput, Void> {
+        workflow.addStep(job)
     }
 
     // Final result
     public static func buildFinalResult(
-        _ workflow: PartialWorkflow<WorkflowOutput>
-    ) -> PartialWorkflow<WorkflowOutput> {
+        _ workflow: Workflow<WorkflowInput, WorkflowOutput>
+    ) -> Workflow<WorkflowInput, WorkflowOutput> {
         workflow
     }
-}
-
-/// Partially constructed Workflow
-public struct PartialWorkflow<Output> {
-    /// name of first job in workflow
-    let firstJobName: String
-    /// function to call to register all the workflow jobs
-    let registerJobs: (any JobQueueProtocol, String, WorkflowNextJob<Output>) -> Void
-
-    init(
-        firstJobName: String,
-        registerJobs: @escaping (any JobQueueProtocol, String, WorkflowNextJob<Output>) -> Void
-    ) {
-        self.firstJobName = firstJobName
-        self.registerJobs = registerJobs
-    }
-}
-
-/// Fully constructed workflow
-public struct Workflow<WorkflowInput: Codable & Sendable> {
-    /// name of first job to trigger workflow
-    let firstJobName: String
-    /// function to call to register all the workflow jobs
-    let registerJobs: (any JobQueueProtocol, String) -> Void
 }
