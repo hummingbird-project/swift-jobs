@@ -265,6 +265,35 @@ struct WorkflowTests {
         try await testJobQueue(JobQueueProcessor(queue: jobQueue, logger: logger)) {
             _ = try await jobQueue.pushWorkflow(workflowName, parameters: "25")
             let value = await stream.first { _ in true }
+            #expect(value == 6.25)
+            _ = try await jobQueue.pushWorkflow(workflowName, parameters: "3")
+            let value2 = await stream.first { _ in true }
+            #expect(value2 == 0.75)
+        }
+    }
+
+    @Test func testDropResult() async throws {
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let (stream, cont) = AsyncStream.makeStream(of: Double.self)
+        let jobQueue = JobQueue(.memory, logger: logger)
+        let workflow = WorkflowBuilder()
+            .addStep(name: "convert-to-int", input: String.self) { input, context in
+                print(input)
+                return Int(input)!
+            }
+            .addStep(name: "divide-by-two") { (input, context) in
+                print(input)
+                return Double(input) / 2.0
+            }
+            .addStep(name: "yield") { input, _ in
+                cont.yield(input)
+                return input
+            }.dropResult()
+        let workflowName = jobQueue.registerWorkflow(name: "basic", workflow: workflow)
+        try await testJobQueue(JobQueueProcessor(queue: jobQueue, logger: logger)) {
+            _ = try await jobQueue.pushWorkflow(workflowName, parameters: "25")
+            let value = await stream.first { _ in true }
             #expect(value == 12.5)
             _ = try await jobQueue.pushWorkflow(workflowName, parameters: "3")
             let value2 = await stream.first { _ in true }

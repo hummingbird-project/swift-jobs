@@ -202,8 +202,16 @@ extension Workflow where Output: Codable & Sendable {
             firstJobName: self.firstJobName
         ) { queue, workflowName, nextStep in
             let groupWorkflowName = "\(workflowName).\(name)"
-            self.registerJobs(queue, workflowName, .job(named: groupWorkflow.firstJobName, workflow: workflowName))
+            self.registerJobs(queue, workflowName, .job(named: groupWorkflow.firstJobName, workflow: groupWorkflowName))
             groupWorkflow.registerJobs(queue, groupWorkflowName, nextStep)
+        }
+    }
+
+    public func dropResult() -> Workflow<Input, Void> {
+        Workflow<Input, Void>(
+            firstJobName: self.firstJobName
+        ) { queue, workflowName, nextStep in
+            self.registerJobs(queue, workflowName, .none)
         }
     }
 }
