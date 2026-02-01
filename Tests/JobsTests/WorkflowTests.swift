@@ -77,6 +77,50 @@ struct WorkflowTests {
         }
     }
 
+    @Test func testIfElseConditionWorkflow() async throws {
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let (stream, cont) = AsyncStream.makeStream(of: String.self)
+        let jobQueue = JobQueue(.memory, logger: logger)
+        let workflow = WorkflowBuilder()
+            .addStep(
+                WorkflowStep(name: "convert-to-int") { (input: String, context) in
+                    Int(input)!
+                }
+            )
+            .if {
+                $0 > 10
+            } then: {
+                $0.addStep(
+                    WorkflowStep(name: "big") { (input: Int, context) in
+                        "BIG"
+                    }
+                )
+            } else: {
+                $0.addStep(
+                    WorkflowStep(name: "small") { (input: Int, context) in
+                        "SMALL"
+                    }
+                )
+            }
+            .addStep(
+                WorkflowStep(name: "yield") { (input: String, context) in
+                    cont.yield(input)
+                    return
+                }
+            )
+        let workflowName = jobQueue.registerWorkflow(name: "testing", workflow: workflow)
+
+        try await testJobQueue(JobQueueProcessor(queue: jobQueue, logger: logger)) {
+            _ = try await jobQueue.pushWorkflow(workflowName, parameters: "25")
+            let value = await stream.first { _ in true }
+            #expect(value == "BIG")
+            _ = try await jobQueue.pushWorkflow(workflowName, parameters: "3")
+            let value2 = await stream.first { _ in true }
+            #expect(value2 == "SMALL")
+        }
+    }
+
     struct ResultBuilder {
         @Test func testBasicWorkflow() async throws {
             var logger = Logger(label: "JobsTests")
