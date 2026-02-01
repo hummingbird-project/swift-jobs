@@ -5,7 +5,7 @@
 // See LICENSE.txt for license information
 // SPDX-License-Identifier: Apache-2.0
 //
-extension WorkflowBuilder {
+extension WorkflowResultBuilder {
     /// First item
     public static func buildPartialBlock<Output>(
         first workflow: Workflow<WorkflowInput, Output>

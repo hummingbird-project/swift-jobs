@@ -14,8 +14,8 @@ public struct IfThenElse<Input: Codable & Sendable, Output> {
     public init(
         output: Output.Type,
         if condition: @Sendable @escaping (Input) async throws -> Bool,
-        @WorkflowBuilder<Input, Output> then thenWorkflow: () -> Workflow<Input, Output>,
-        @WorkflowBuilder<Input, Output> else elseWorkflow: () -> Workflow<Input, Output>
+        @WorkflowResultBuilder<Input, Output> then thenWorkflow: () -> Workflow<Input, Output>,
+        @WorkflowResultBuilder<Input, Output> else elseWorkflow: () -> Workflow<Input, Output>
     ) {
         self.condition = condition
         self.thenWorkflow = thenWorkflow()
@@ -23,7 +23,7 @@ public struct IfThenElse<Input: Codable & Sendable, Output> {
     }
 }
 
-extension WorkflowBuilder {
+extension WorkflowResultBuilder {
     /// If else with previous and subsequent items
     public static func buildPartialBlock<Input: Codable & Sendable, Output: Codable & Sendable>(
         accumulated workflow: Workflow<WorkflowInput, Input>,

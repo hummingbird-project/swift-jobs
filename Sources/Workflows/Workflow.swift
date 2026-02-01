@@ -8,41 +8,50 @@
 
 import Jobs
 
-/// Fully constructed workflow
+/// Workflow
 public struct Workflow<Input: Codable & Sendable, Output> {
     /// name of first job to trigger workflow
     let firstJobName: String
     /// function to call to register all the workflow jobs
-    let registerJobs: (any JobQueueProtocol, String, WorkflowNextJob<Output>) -> Void
+    let registerJobs: (any JobQueueProtocol, String, WorkflowNextStep<Output>) -> Void
 }
 
 extension Workflow where Output: Codable & Sendable {
-    func addStep<Output2: Codable & Sendable>(_ workflowJob: WorkflowJob<Output, Output2>) -> Workflow<Input, Output2> {
+    ///  Return new workflow with step added
+    /// - Parameter step: Workflow step to add
+    /// - Returns: New workflow with step added
+    public func addStep<Output2: Codable & Sendable>(_ step: WorkflowStep<Output, Output2>) -> Workflow<Input, Output2> {
         Workflow<Input, Output2>(
             firstJobName: self.firstJobName
         ) { queue, workflowName, nextItem in
-            self.registerJobs(queue, workflowName, .job(named: workflowJob.name, workflow: workflowName))
+            self.registerJobs(queue, workflowName, .job(named: step.name, workflow: workflowName))
             queue.registerWorkflowJob(
                 workflowName: workflowName,
-                workflowJob: workflowJob,
+                workflowStep: step,
                 nextItem: nextItem
             )
         }
     }
 
-    func addStep(_ workflowJob: WorkflowJob<Output, Void>) -> Workflow<Input, Void> {
+    ///  Return new workflow with step added
+    /// - Parameter step: Workflow step to add
+    /// - Returns: New workflow with step added
+    public func addStep(_ step: WorkflowStep<Output, Void>) -> Workflow<Input, Void> {
         Workflow<Input, Void>(
             firstJobName: self.firstJobName
         ) { queue, workflowName, _ in
-            self.registerJobs(queue, workflowName, .job(named: workflowJob.name, workflow: workflowName))
+            self.registerJobs(queue, workflowName, .job(named: step.name, workflow: workflowName))
             queue.registerFinalWorkflowJob(
                 workflowName: workflowName,
-                workflowJob: workflowJob
+                workflowJob: step
             )
         }
     }
 
-    func addChildWorkflow<Output2>(_ childWorkflow: Workflow<Output, Output2>) -> Workflow<Input, Output2> {
+    ///  Return new workflow with child workflow added
+    /// - Parameter step: Child workflow to add
+    /// - Returns: New workflow with child workflow added
+    public func addChildWorkflow<Output2>(_ childWorkflow: Workflow<Output, Output2>) -> Workflow<Input, Output2> {
         Workflow<Input, Output2>(
             firstJobName: self.firstJobName
         ) { queue, workflowName, nextItem in

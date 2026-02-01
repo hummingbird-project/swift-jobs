@@ -13,14 +13,14 @@ public struct IfThen<Input: Codable & Sendable, Output> {
     public init(
         output: Output.Type,
         if condition: @Sendable @escaping (Input) async throws -> Bool,
-        @WorkflowBuilder<Input, Output> then thenWorkflow: () -> Workflow<Input, Output>,
+        @WorkflowResultBuilder<Input, Output> then thenWorkflow: () -> Workflow<Input, Output>,
     ) {
         self.condition = condition
         self.thenWorkflow = thenWorkflow()
     }
 }
 
-extension WorkflowBuilder {
+extension WorkflowResultBuilder {
     /// If then where then returns a value that will be passed to next block
     public static func buildPartialBlock<Input>(
         accumulated workflow: Workflow<WorkflowInput, Input>,

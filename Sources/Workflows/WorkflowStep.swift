@@ -15,7 +15,7 @@ import Foundation
 #endif
 
 /// Job definition type
-public struct WorkflowJob<Input: Codable & Sendable, Output>: Sendable {
+public struct WorkflowStep<Input: Codable & Sendable, Output>: Sendable {
     let name: String
     let retryStrategy: any JobRetryStrategy
     let timeout: Duration?

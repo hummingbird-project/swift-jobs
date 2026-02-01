@@ -7,10 +7,10 @@
 //
 
 /// Decision on what job to run next
-indirect enum WorkflowNextJob<Output> {
+indirect enum WorkflowNextStep<Output> {
     case none
     case job(named: String)
-    case ifelse(ifName: WorkflowNextJob<Output>, elseName: WorkflowNextJob<Output>, condition: @Sendable (Output) async throws -> Bool)
+    case ifelse(ifName: WorkflowNextStep<Output>, elseName: WorkflowNextStep<Output>, condition: @Sendable (Output) async throws -> Bool)
 
     static func job(named: String, workflow: String) -> Self {
         .job(named: "\(workflow).\(named)")

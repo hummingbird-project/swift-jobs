@@ -21,10 +21,10 @@ struct WorkFlowJobInput<Input: Codable & Sendable>: Codable & Sendable {
 extension JobQueueProtocol {
     func registerWorkflowJob<Input: Codable & Sendable, Output: Codable & Sendable>(
         workflowName: String,
-        workflowJob: WorkflowJob<Input, Output>,
-        nextItem: WorkflowNextJob<Output>
+        workflowStep: WorkflowStep<Input, Output>,
+        nextItem: WorkflowNextStep<Output>
     ) {
-        let jobName = "\(workflowName).\(workflowJob.name)"
+        let jobName = "\(workflowName).\(workflowStep.name)"
         self.logger.info(
             "Registered Workflow Job",
             metadata: ["JobName": .stringConvertible(jobName), "WorkflowName": .stringConvertible(workflowName)]
@@ -32,8 +32,8 @@ extension JobQueueProtocol {
         let job = JobDefinition(
             name: .init(jobName),
             parameters: WorkFlowJobInput<Input>.self,
-            retryStrategy: workflowJob.retryStrategy,
-            timeout: workflowJob.timeout
+            retryStrategy: workflowStep.retryStrategy,
+            timeout: workflowStep.timeout
         ) { parameters, context in
             var logger = context.logger
             logger[metadataKey: "WorkflowID"] = .string(parameters.workflowID)
@@ -44,7 +44,7 @@ extension JobQueueProtocol {
                 attempt: context.attempt,
                 queuedAt: context.queuedAt
             )
-            let output = try await workflowJob._execute(parameters.input, workflowContext)
+            let output = try await workflowStep._execute(parameters.input, workflowContext)
             // work out what the next workflow job is and push it to the queue
             if let outputJobName = try await nextItem.getNextWorkflowJob(output) {
                 self.logger.debug(
@@ -59,7 +59,7 @@ extension JobQueueProtocol {
 
     func registerFinalWorkflowJob<Input: Codable & Sendable>(
         workflowName: String,
-        workflowJob: WorkflowJob<Input, Void>
+        workflowJob: WorkflowStep<Input, Void>
     ) {
         let jobName = "\(workflowName).\(workflowJob.name)"
         self.logger.info(
@@ -89,9 +89,18 @@ extension JobQueueProtocol {
     public func registerWorkflow<Input: Codable & Sendable>(
         name: String,
         input: Input.Type = Input.self,
-        @WorkflowBuilder<Input, Void> buildWorkflow: () -> Workflow<Input, Void>
+        @WorkflowResultBuilder<Input, Void> buildWorkflow: () -> Workflow<Input, Void>
     ) -> WorkflowName<Input> {
         let workflow = buildWorkflow()
+        workflow.registerJobs(self, name, .none)
+        return WorkflowName("\(name).\(workflow.firstJobName)")
+    }
+
+    public func registerWorkflow<Input: Codable & Sendable>(
+        name: String,
+        input: Input.Type = Input.self,
+        workflow: Workflow<Input, Void>
+    ) -> WorkflowName<Input> {
         workflow.registerJobs(self, name, .none)
         return WorkflowName("\(name).\(workflow.firstJobName)")
     }
@@ -99,7 +108,7 @@ extension JobQueueProtocol {
     public func createChildWorkflow<Input: Codable & Sendable, Output>(
         input: Input.Type = Input.self,
         output: Output.Type = Output.self,
-        @WorkflowBuilder<Input, Output> buildWorkflow: () -> Workflow<Input, Output>
+        @WorkflowResultBuilder<Input, Output> buildWorkflow: () -> Workflow<Input, Output>
     ) -> Workflow<Input, Output> {
         buildWorkflow()
     }
