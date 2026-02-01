@@ -13,7 +13,7 @@ public struct IfThen<Input: Codable & Sendable, Output> {
     public init(
         output: Output.Type,
         if condition: @Sendable @escaping (Input) async throws -> Bool,
-        @WorkflowResultBuilder<Input, Output> then thenWorkflow: () -> Workflow<Input, Output>,
+        @WorkflowResultBuilder<Input, Output> then thenWorkflow: () -> Workflow<Input, Output>
     ) {
         self.condition = condition
         self.thenWorkflow = thenWorkflow()
