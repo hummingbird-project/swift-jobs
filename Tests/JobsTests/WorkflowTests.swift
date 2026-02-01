@@ -24,24 +24,18 @@ struct WorkflowTests {
         let (stream, cont) = AsyncStream.makeStream(of: Double.self)
         let jobQueue = JobQueue(.memory, logger: logger)
         let workflow = WorkflowBuilder()
-            .addStep(
-                WorkflowStep(name: "convert-to-int") { (input: String, context) in
-                    print(input)
-                    return Int(input)!
-                }
-            )
-            .addStep(
-                WorkflowStep(name: "divide-by-two") { (input: Int, context) in
-                    print(input)
-                    return Double(input) / 2.0
-                }
-            )
-            .addStep(
-                WorkflowStep(name: "yield") { (input: Double, context) in
-                    cont.yield(input)
-                    return
-                }
-            )
+            .addStep(name: "convert-to-int", input: String.self) { input, context in
+                print(input)
+                return Int(input)!
+            }
+            .addStep(name: "divide-by-two") { (input, context) in
+                print(input)
+                return Double(input) / 2.0
+            }
+            .addStep(name: "yield") { input, _ in
+                cont.yield(input)
+                return
+            }
         let workflowName = jobQueue.registerWorkflow(name: "basic", workflow: workflow)
         try await testJobQueue(JobQueueProcessor(queue: jobQueue, logger: logger)) {
             _ = try await jobQueue.pushWorkflow(workflowName, parameters: "25")
