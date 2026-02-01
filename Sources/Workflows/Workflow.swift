@@ -83,4 +83,46 @@ extension Workflow where Output: Codable & Sendable {
             elseWorkflow.registerJobs(queue, workflowName, nextItem)
         }
     }
+
+    public func `if`(
+        _ condition: @Sendable @escaping (Output) throws -> Bool,
+        then thenWorkflowBuilder: (WorkflowBuilder<Output>) -> Workflow<Output, Output>
+    ) -> Workflow<Input, Output> {
+        let thenWorkflow = thenWorkflowBuilder(WorkflowBuilder())
+        return Workflow(
+            firstJobName: self.firstJobName
+        ) { queue, workflowName, nextItem in
+            self.registerJobs(
+                queue,
+                workflowName,
+                .ifelse(
+                    ifName: .job(named: thenWorkflow.firstJobName, workflow: workflowName),
+                    elseName: nextItem,
+                    condition: condition
+                )
+            )
+            thenWorkflow.registerJobs(queue, workflowName, nextItem)
+        }
+    }
+
+    public func `if`(
+        _ condition: @Sendable @escaping (Output) throws -> Bool,
+        then thenWorkflowBuilder: (WorkflowBuilder<Output>) -> Workflow<Output, Void>
+    ) -> Workflow<Input, Output> {
+        let thenWorkflow = thenWorkflowBuilder(WorkflowBuilder())
+        return Workflow(
+            firstJobName: self.firstJobName
+        ) { queue, workflowName, nextItem in
+            self.registerJobs(
+                queue,
+                workflowName,
+                .ifelse(
+                    ifName: .job(named: thenWorkflow.firstJobName, workflow: workflowName),
+                    elseName: nextItem,
+                    condition: condition
+                )
+            )
+            thenWorkflow.registerJobs(queue, workflowName, .none)
+        }
+    }
 }
