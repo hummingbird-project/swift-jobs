@@ -7,7 +7,7 @@
 //
 
 @resultBuilder
-public struct WorkflowResultBuilder<WorkflowInput: Codable & Sendable, WorkflowOutput> {
+public struct WorkflowResultBuilder<WorkflowInput: Codable & Sendable, WorkflowOutput: Codable & Sendable> {
 
     /// First item with output
     public static func buildPartialBlock<Output: Codable & Sendable>(
@@ -16,26 +16,11 @@ public struct WorkflowResultBuilder<WorkflowInput: Codable & Sendable, WorkflowO
         WorkflowBuilder().addStep(job)
     }
 
-    /// First item without output
-    public static func buildPartialBlock(
-        first job: WorkflowStep<WorkflowInput, Void>
-    ) -> Workflow<WorkflowInput, Void> {
-        WorkflowBuilder().addStep(job)
-    }
-
     /// Item with previous and subsequents items
     public static func buildPartialBlock<Input: Codable & Sendable, Output: Codable & Sendable>(
         accumulated workflow: Workflow<WorkflowInput, Input>,
         next job: WorkflowStep<Input, Output>
     ) -> Workflow<WorkflowInput, Output> {
-        workflow.addStep(job)
-    }
-
-    /// Item with previous and no more after
-    public static func buildPartialBlock<Input: Codable & Sendable>(
-        accumulated workflow: Workflow<WorkflowInput, Input>,
-        next job: WorkflowStep<Input, Void>
-    ) -> Workflow<WorkflowInput, Void> {
         workflow.addStep(job)
     }
 

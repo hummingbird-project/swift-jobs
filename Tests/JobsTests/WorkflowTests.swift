@@ -152,7 +152,7 @@ struct WorkflowTests {
         }
     }
 
-    @Test func testIfEndingConditionWorkflow() async throws {
+    @Test func testGuardConditionWorkflow() async throws {
         var logger = Logger(label: "JobsTests")
         logger.logLevel = .trace
         let (stream, cont) = AsyncStream.makeStream(of: Int.self)
@@ -163,8 +163,8 @@ struct WorkflowTests {
                     Int(input)!
                 }
             )
-            .if {
-                $0 > 10
+            .guard {
+                $0 <= 10
             } then: {
                 $0.addStep(
                     WorkflowStep(name: "big") { (input: Int, context) in
@@ -427,9 +427,9 @@ struct WorkflowTests {
                 WorkflowStep(name: "convert-to-int") { (input: String, context) in
                     Int(input)!
                 }
-                IfThen<Int, Void>(output: Void.self) { (output: Int) in
-                    output > 10
-                } then: {
+                Guard {
+                    $0 <= 10
+                } else: {
                     WorkflowStep(name: "big") { (input: Int, context) in
                         cont.yield(input + 10)
                         return
@@ -460,7 +460,7 @@ struct WorkflowTests {
                 WorkflowStep(name: "convert-to-int") { (input: String, context) in
                     Int(input)!
                 }
-                IfThenElse(output: Void.self) { (output: Int) in
+                IfThenElse(output: EmptyOutput.self) { (output: Int) in
                     output > 10
                 } then: {
                     WorkflowStep(name: "big") { (input: Int, context) in

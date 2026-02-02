@@ -57,39 +57,10 @@ extension JobQueueProtocol {
         self.registerJob(job)
     }
 
-    func registerFinalWorkflowJob<Input: Codable & Sendable>(
-        workflowName: String,
-        workflowJob: WorkflowStep<Input, Void>
-    ) {
-        let jobName = "\(workflowName).\(workflowJob.name)"
-        self.logger.info(
-            "Registered Final Workflow Job",
-            metadata: ["JobName": .stringConvertible(jobName)]
-        )
-        let job = JobDefinition(
-            name: .init(jobName),
-            parameters: WorkFlowJobInput<Input>.self,
-            retryStrategy: workflowJob.retryStrategy,
-            timeout: workflowJob.timeout
-        ) { input, context in
-            var logger = context.logger
-            logger[metadataKey: "WorkflowID"] = .string(input.workflowID)
-            let workflowContext = WorkflowExecutionContext(
-                workflowID: input.workflowID,
-                jobID: context.jobID,
-                logger: logger,
-                attempt: context.attempt,
-                queuedAt: context.queuedAt
-            )
-            try await workflowJob._execute(input.input, workflowContext)
-        }
-        self.registerJob(job)
-    }
-
     public func registerWorkflow<Input: Codable & Sendable>(
         name: String,
         input: Input.Type = Input.self,
-        @WorkflowResultBuilder<Input, Void> buildWorkflow: () -> Workflow<Input, Void>
+        @WorkflowResultBuilder<Input, EmptyOutput> buildWorkflow: () -> Workflow<Input, EmptyOutput>
     ) -> WorkflowName<Input> {
         let workflow = buildWorkflow()
         workflow.registerJobs(self, name, .none)
@@ -99,7 +70,7 @@ extension JobQueueProtocol {
     public func registerWorkflow<Input: Codable & Sendable>(
         name: String,
         input: Input.Type = Input.self,
-        workflow: Workflow<Input, Void>
+        workflow: Workflow<Input, EmptyOutput>
     ) -> WorkflowName<Input> {
         workflow.registerJobs(self, name, .none)
         return WorkflowName("\(name).\(workflow.firstJobName)")

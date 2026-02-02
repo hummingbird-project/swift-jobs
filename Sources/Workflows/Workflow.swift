@@ -9,7 +9,7 @@
 import Jobs
 
 /// Workflow
-public struct Workflow<Input: Codable & Sendable, Output> {
+public struct Workflow<Input: Codable & Sendable, Output: Codable & Sendable> {
     /// name of first job to trigger workflow
     let firstJobName: String
     /// function to call to register all the workflow jobs
@@ -29,21 +29,6 @@ extension Workflow where Output: Codable & Sendable {
                 workflowName: workflowName,
                 workflowStep: step,
                 nextStep: nextStep
-            )
-        }
-    }
-
-    ///  Return new workflow with step added
-    /// - Parameter step: Workflow step to add
-    /// - Returns: New workflow with step added
-    public func addStep(_ step: WorkflowStep<Output, Void>) -> Workflow<Input, Void> {
-        Workflow<Input, Void>(
-            firstJobName: self.firstJobName
-        ) { queue, workflowName, _ in
-            self.registerJobs(queue, workflowName, .job(named: step.name, workflow: workflowName))
-            queue.registerFinalWorkflowJob(
-                workflowName: workflowName,
-                workflowJob: step
             )
         }
     }
@@ -77,14 +62,15 @@ extension Workflow where Output: Codable & Sendable {
         retryStrategy: any JobRetryStrategy = .dontRetry,
         timeout: Duration? = nil,
         operation: @escaping @Sendable (Output, WorkflowExecutionContext) async throws -> Void
-    ) -> Workflow<Input, Void> {
-        Workflow<Input, Void>(
+    ) -> Workflow<Input, EmptyOutput> {
+        Workflow<Input, EmptyOutput>(
             firstJobName: self.firstJobName
-        ) { queue, workflowName, _ in
+        ) { queue, workflowName, nextStep in
             self.registerJobs(queue, workflowName, .job(named: name, workflow: workflowName))
-            queue.registerFinalWorkflowJob(
+            queue.registerWorkflowJob(
                 workflowName: workflowName,
-                workflowJob: .init(name: name, parameters: Output.self, retryStrategy: retryStrategy, timeout: timeout, execute: operation)
+                workflowStep: .init(name: name, parameters: Output.self, retryStrategy: retryStrategy, timeout: timeout, execute: operation),
+                nextStep: nextStep
             )
         }
     }
@@ -108,7 +94,7 @@ extension Workflow where Output: Codable & Sendable {
     ///   - elseWorkflowBuilder: Closure building workflow for else clause
     /// - Returns: New workflow with condition added
     public func `if`<Output2>(
-        _ condition: @Sendable @escaping (Output) throws -> Bool,
+        _ condition: @Sendable @escaping (Output) async throws -> Bool,
         then thenWorkflowBuilder: (WorkflowBuilder<Output>) -> Workflow<Output, Output2>,
         else elseWorkflowBuilder: (WorkflowBuilder<Output>) -> Workflow<Output, Output2>
     ) -> Workflow<Input, Output2> {
@@ -140,7 +126,7 @@ extension Workflow where Output: Codable & Sendable {
     ///   - thenWorkflowBuilder: Closure building workflow for then clause
     /// - Returns: New workflow with condition added
     public func `if`(
-        _ condition: @Sendable @escaping (Output) throws -> Bool,
+        _ condition: @Sendable @escaping (Output) async throws -> Bool,
         then thenWorkflowBuilder: (WorkflowBuilder<Output>) -> Workflow<Output, Output>
     ) -> Workflow<Input, Output> {
         let thenWorkflow = thenWorkflowBuilder(WorkflowBuilder())
@@ -167,9 +153,9 @@ extension Workflow where Output: Codable & Sendable {
     ///   - condition: The closure holding the condition
     ///   - thenWorkflowBuilder: Closure building workflow for then clause
     /// - Returns: New workflow with condition added
-    public func `if`(
-        _ condition: @Sendable @escaping (Output) throws -> Bool,
-        then thenWorkflowBuilder: (WorkflowBuilder<Output>) -> Workflow<Output, Void>
+    public func `guard`(
+        _ condition: @Sendable @escaping (Output) async throws -> Bool,
+        then thenWorkflowBuilder: (WorkflowBuilder<Output>) -> Workflow<Output, EmptyOutput>
     ) -> Workflow<Input, Output> {
         let thenWorkflow = thenWorkflowBuilder(WorkflowBuilder())
         return Workflow(
@@ -181,7 +167,7 @@ extension Workflow where Output: Codable & Sendable {
                 .ifelse(
                     ifName: .job(named: thenWorkflow.firstJobName, workflow: workflowName),
                     elseName: nextStep,
-                    condition: condition
+                    condition: { try await !condition($0) }
                 )
             )
             thenWorkflow.registerJobs(queue, workflowName, .none)
@@ -207,8 +193,8 @@ extension Workflow where Output: Codable & Sendable {
         }
     }
 
-    public func dropResult() -> Workflow<Input, Void> {
-        Workflow<Input, Void>(
+    public func dropResult() -> Workflow<Input, EmptyOutput> {
+        Workflow<Input, EmptyOutput>(
             firstJobName: self.firstJobName
         ) { queue, workflowName, nextStep in
             self.registerJobs(queue, workflowName, .none)

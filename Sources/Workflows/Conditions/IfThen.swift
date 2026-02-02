@@ -6,17 +6,30 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-public struct IfThen<Input: Codable & Sendable, Output> {
+public struct IfThen<Input: Codable & Sendable, Output: Codable & Sendable> {
     let condition: @Sendable (Input) async throws -> Bool
     let thenWorkflow: Workflow<Input, Output>
 
     public init(
-        output: Output.Type,
+        output: Output.Type = Output.self,
         if condition: @Sendable @escaping (Input) async throws -> Bool,
         @WorkflowResultBuilder<Input, Output> then thenWorkflow: () -> Workflow<Input, Output>
     ) {
         self.condition = condition
         self.thenWorkflow = thenWorkflow()
+    }
+}
+
+public struct Guard<Input: Codable & Sendable> {
+    let condition: @Sendable (Input) async throws -> Bool
+    let elseWorkflow: Workflow<Input, EmptyOutput>
+
+    public init(
+        guard condition: @Sendable @escaping (Input) async throws -> Bool,
+        @WorkflowResultBuilder<Input, EmptyOutput> else elseWorkflow: () -> Workflow<Input, EmptyOutput>
+    ) {
+        self.condition = { try await !condition($0) }
+        self.elseWorkflow = elseWorkflow()
     }
 }
 
@@ -42,10 +55,9 @@ extension WorkflowResultBuilder {
         }
     }
 
-    /// If then where then finishes workflow
-    public static func buildPartialBlock<Input, Void>(
+    public static func buildPartialBlock<Input>(
         accumulated workflow: Workflow<WorkflowInput, Input>,
-        next condition: IfThen<Input, Void>
+        next condition: Guard<Input>
     ) -> Workflow<WorkflowInput, Input> {
         Workflow(
             firstJobName: workflow.firstJobName
@@ -54,12 +66,12 @@ extension WorkflowResultBuilder {
                 queue,
                 workflowName,
                 .ifelse(
-                    ifName: .job(named: condition.thenWorkflow.firstJobName, workflow: workflowName),
+                    ifName: .job(named: condition.elseWorkflow.firstJobName, workflow: workflowName),
                     elseName: nextStep,
                     condition: condition.condition
                 )
             )
-            condition.thenWorkflow.registerJobs(queue, workflowName, .none)
+            condition.elseWorkflow.registerJobs(queue, workflowName, .none)
         }
     }
 }

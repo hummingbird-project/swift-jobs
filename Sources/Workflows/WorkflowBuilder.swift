@@ -30,22 +30,6 @@ public struct WorkflowBuilder<Input: Codable & Sendable> {
     ///  Create workflow and add a single step to the workflow
     /// - Parameter step: Workflow step to add
     /// - Returns: New workflow with step added
-    public func addStep(
-        _ job: WorkflowStep<Input, Void>
-    ) -> Workflow<Input, Void> {
-        Workflow(
-            firstJobName: job.name
-        ) { queue, workflowName, nextStep in
-            queue.registerFinalWorkflowJob(
-                workflowName: workflowName,
-                workflowJob: job
-            )
-        }
-    }
-
-    ///  Create workflow and add a single step to the workflow
-    /// - Parameter step: Workflow step to add
-    /// - Returns: New workflow with step added
     public func addStep<Output: Codable & Sendable>(
         name: String,
         input: Input.Type = Input.self,
@@ -60,26 +44,6 @@ public struct WorkflowBuilder<Input: Codable & Sendable> {
                 workflowName: workflowName,
                 workflowStep: .init(name: name, parameters: Input.self, retryStrategy: retryStrategy, timeout: timeout, execute: operation),
                 nextStep: nextStep
-            )
-        }
-    }
-
-    ///  Create workflow and add a single step to the workflow
-    /// - Parameter step: Workflow step to add
-    /// - Returns: New workflow with step added
-    public func addStep(
-        name: String,
-        input: Input.Type = Input.self,
-        retryStrategy: any JobRetryStrategy = .dontRetry,
-        timeout: Duration? = nil,
-        operation: @escaping @Sendable (Input, WorkflowExecutionContext) async throws -> Void
-    ) -> Workflow<Input, Void> {
-        Workflow(
-            firstJobName: name
-        ) { queue, workflowName, nextStep in
-            queue.registerFinalWorkflowJob(
-                workflowName: workflowName,
-                workflowJob: .init(name: name, parameters: Input.self, retryStrategy: retryStrategy, timeout: timeout, execute: operation)
             )
         }
     }
