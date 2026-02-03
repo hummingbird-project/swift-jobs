@@ -19,6 +19,24 @@ struct WorkFlowJobInput<Input: Codable & Sendable>: Codable & Sendable {
 }
 
 extension JobQueueProtocol {
+    public func registerWorkflow<Input: Codable & Sendable>(
+        name: String,
+        input: Input.Type = Input.self,
+        workflow: Workflow<Input, EmptyOutput>
+    ) -> WorkflowName<Input> {
+        workflow.registerJobs(self, name, .none)
+        return WorkflowName("\(name).\(workflow.firstJobName)")
+    }
+
+    public func pushWorkflow<Input: Sendable & Codable>(
+        _ workflowName: WorkflowName<Input>,
+        parameters: Input
+    ) async throws -> String {
+        let id = UUID().uuidString
+        _ = try await self.push(.init(workflowName.name), parameters: WorkFlowJobInput(input: parameters, workflowID: id))
+        return id
+    }
+
     func registerWorkflowJob<Input: Codable & Sendable, Output: Codable & Sendable>(
         workflowName: String,
         workflowStep: WorkflowStep<Input, Output>,
@@ -55,42 +73,6 @@ extension JobQueueProtocol {
             }
         }
         self.registerJob(job)
-    }
-
-    public func registerWorkflow<Input: Codable & Sendable>(
-        name: String,
-        input: Input.Type = Input.self,
-        @WorkflowResultBuilder<Input, EmptyOutput> buildWorkflow: () -> Workflow<Input, EmptyOutput>
-    ) -> WorkflowName<Input> {
-        let workflow = buildWorkflow()
-        workflow.registerJobs(self, name, .none)
-        return WorkflowName("\(name).\(workflow.firstJobName)")
-    }
-
-    public func registerWorkflow<Input: Codable & Sendable>(
-        name: String,
-        input: Input.Type = Input.self,
-        workflow: Workflow<Input, EmptyOutput>
-    ) -> WorkflowName<Input> {
-        workflow.registerJobs(self, name, .none)
-        return WorkflowName("\(name).\(workflow.firstJobName)")
-    }
-
-    public func createChildWorkflow<Input: Codable & Sendable, Output>(
-        input: Input.Type = Input.self,
-        output: Output.Type = Output.self,
-        @WorkflowResultBuilder<Input, Output> buildWorkflow: () -> Workflow<Input, Output>
-    ) -> Workflow<Input, Output> {
-        buildWorkflow()
-    }
-
-    public func pushWorkflow<Input: Sendable & Codable>(
-        _ workflowName: WorkflowName<Input>,
-        parameters: Input
-    ) async throws -> String {
-        let id = UUID().uuidString
-        _ = try await self.push(.init(workflowName.name), parameters: WorkFlowJobInput(input: parameters, workflowID: id))
-        return id
     }
 
     func pushWorkflowJob<Input: Sendable & Codable>(
