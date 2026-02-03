@@ -199,18 +199,20 @@ struct WorkflowTests {
         let jobQueue = JobQueue(.memory, logger: logger)
 
         let childWorkflow = WorkflowBuilder()
-            .addStep(
-                WorkflowStep(name: "Set bit 0") { (input: Int, context) in
-                    input | 1
-                }
-            ).if {
-                $0 & 2 != 0
-            } then: {
+            .group(name: "child") {
                 $0.addStep(
-                    WorkflowStep(name: "set bit 2") { (input: Int, _) in
-                        input | 4
+                    WorkflowStep(name: "Set bit 0") { (input: Int, context) in
+                        input | 1
                     }
-                )
+                ).if {
+                    $0 & 2 != 0
+                } then: {
+                    $0.addStep(
+                        WorkflowStep(name: "set bit 2") { (input: Int, _) in
+                            input | 4
+                        }
+                    )
+                }
             }
         let workflow = WorkflowBuilder()
             .addStep(

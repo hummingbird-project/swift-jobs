@@ -58,4 +58,22 @@ public struct WorkflowBuilder<Input: Codable & Sendable> {
             childWorkflow.registerJobs(queue, workflowName, nextStep)
         }
     }
+
+    /// Group workflows under a sub-workflow name to avoid name clashes
+    /// - Parameters:
+    ///   - name: Sub workflow name
+    ///   - groupWorkflowBuilder: Closure building workflow
+    /// - Returns: New workflow with group added
+    public func group<Output>(
+        name: String,
+        group groupWorkflowBuilder: (WorkflowBuilder<Input>) -> Workflow<Input, Output>
+    ) -> Workflow<Input, Output> {
+        let groupWorkflow = groupWorkflowBuilder(WorkflowBuilder())
+        return Workflow<Input, Output>(
+            firstJobName: "\(name).\(groupWorkflow.firstJobName)"
+        ) { queue, workflowName, nextStep in
+            let groupWorkflowName = "\(workflowName).\(name)"
+            groupWorkflow.registerJobs(queue, groupWorkflowName, nextStep)
+        }
+    }
 }
