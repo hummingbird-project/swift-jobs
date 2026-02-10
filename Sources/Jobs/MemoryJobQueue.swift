@@ -343,6 +343,7 @@ extension MemoryQueue.Internal {
             for job in queue {
                 self.queue.append((QueuedJob(id: job.key, jobBuffer: job.value), .init()))
             }
+            queue = [:]
         case .doNothing:
             break
         }

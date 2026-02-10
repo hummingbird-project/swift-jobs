@@ -71,7 +71,7 @@ struct MetricsTests {
             try await jobQueue.push(TestParameters(value: 3))
             try await jobQueue.push(TestParameters(value: 4))
             try await jobQueue.push(TestParameters(value: 5))
-            try await testJobQueue(jobQueue.processor()) {
+            try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 1))) {
                 try await expectation.wait(count: 5)
             }
 
