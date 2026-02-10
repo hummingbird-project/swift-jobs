@@ -49,7 +49,7 @@ public struct JobQueueProcessorOptions: Sendable {
     ///     to indicate if a worker is running. If another process can acquire the lock then the worker must have
     ///     stopped.
     public init(
-        numWorkers: Int = 1,
+        numWorkers: Int = 16,
         gracefulShutdownTimeout: Duration = .seconds(30),
         workerActiveLock: ExclusiveLock = .acquire(every: .milliseconds(300000), for: .milliseconds(450000))
     ) {

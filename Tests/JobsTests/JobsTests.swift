@@ -106,6 +106,32 @@ struct JobsTests {
         }
     }
 
+    @Test func testRunTwice() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testBasic"
+            let value: Int
+        }
+        let logger = Logger(label: "JobsTests")
+        let expectation = TestExpectation()
+        let jobQueue = JobQueue(.memory, logger: logger)
+        let job = JobDefinition { (parameters: TestParameters, context) in
+            context.logger.info("Parameters=\(parameters.value)")
+            try await Task.sleep(for: .milliseconds(Int.random(in: 10..<50)))
+            expectation.trigger()
+        }
+        jobQueue.registerJob(job)
+        try await testJobQueue(JobQueueProcessor(queue: jobQueue, logger: logger)) {
+            try await jobQueue.push(TestParameters(value: 1))
+
+            try await expectation.wait(count: 1)
+        }
+        try await testJobQueue(JobQueueProcessor(queue: jobQueue, logger: logger)) {
+            try await jobQueue.push(TestParameters(value: 1))
+
+            try await expectation.wait(count: 1)
+        }
+    }
+
     @Test func testErrorRetryAndThenSucceed() async throws {
         struct TestParameters: JobParameters {
             static let jobName = "testErrorRetryAndThenSucceed"

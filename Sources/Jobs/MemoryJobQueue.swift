@@ -49,6 +49,10 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         self.context = JobQueueContext(workerID: UUID().uuidString, queueName: queueName, metadata: [:])
     }
 
+    public func waitUntilReady() async throws {
+        await self.queue.start()
+    }
+
     /// Stop queue serving more jobs
     public func stop() async {
         await self.queue.stop()
@@ -88,11 +92,11 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     }
 
     public func finished(jobID: JobID) async throws {
-        await self.queue.clearPendingJob(jobID: jobID)
+        await self.queue.clearProcessingJob(jobID: jobID)
     }
 
     public func failed(jobID: JobID, error: any Error) async throws {
-        if await self.queue.clearAndReturnPendingJob(jobID: jobID) != nil {
+        if await self.queue.failJob(jobID: jobID) {
             self.onFailedJob(jobID, error)
         }
     }
@@ -116,14 +120,18 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             let jobBuffer: ByteBuffer
         }
         var queue: Deque<(job: QueuedJob, options: JobOptions)>
-        var pendingJobs: [JobID: ByteBuffer]
+        var processingJobs: [JobID: ByteBuffer]
+        var pausedJobs: [JobID: ByteBuffer]
+        var failedJobs: [JobID: ByteBuffer]
         var metadata: [String: (data: ByteBuffer, expires: Date)]
         var isStopped: Bool
 
         init() {
             self.queue = .init()
             self.isStopped = false
-            self.pendingJobs = .init()
+            self.processingJobs = .init()
+            self.pausedJobs = .init()
+            self.failedJobs = .init()
             self.metadata = .init()
         }
 
@@ -134,12 +142,12 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
 
         func retry(_ id: JobID, buffer: ByteBuffer, options: JobOptions) throws {
-            self.clearPendingJob(jobID: id)
+            self.clearProcessingJob(jobID: id)
             let _ = self.queue.append((job: QueuedJob(id: id, jobBuffer: buffer), options: options))
         }
 
-        func clearPendingJob(jobID: JobID) {
-            self.pendingJobs[jobID] = nil
+        func clearProcessingJob(jobID: JobID) {
+            self.processingJobs[jobID] = nil
         }
 
         func cancelJob(jobID: JobID) {
@@ -148,23 +156,25 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
 
         func pauseJob(jobID: JobID) {
             let job = self.queue.first(where: { $0.job.id == jobID })
-            self.pendingJobs[jobID] = job?.job.jobBuffer
+            self.pausedJobs[jobID] = job?.job.jobBuffer
             self.queue.removeAll(where: { $0.job.id == jobID })
         }
 
         func resumeJob(jobID: JobID) {
-            if let jobBuffer = self.pendingJobs[jobID] {
+            if let jobBuffer = self.pausedJobs[jobID] {
+                self.pausedJobs[jobID] = nil
                 self.queue.append((job: QueuedJob(id: jobID, jobBuffer: jobBuffer), options: .init()))
             } else {
                 print("Warning: attempted to resume job \(jobID) which is not pending")
             }
-            self.clearPendingJob(jobID: jobID)
         }
 
-        func clearAndReturnPendingJob(jobID: JobID) -> ByteBuffer? {
-            let instance = self.pendingJobs[jobID]
-            self.pendingJobs[jobID] = nil
-            return instance
+        func failJob(jobID: JobID) -> Bool {
+            let instance = self.processingJobs[jobID]
+            self.clearProcessingJob(jobID: jobID)
+            self.processingJobs[jobID] = nil
+            self.failedJobs[jobID] = instance
+            return instance != nil
         }
 
         func next() async throws -> QueuedJob? {
@@ -181,7 +191,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
                             continue
                         }
                     } else {
-                        self.pendingJobs[request.job.id] = request.job.jobBuffer
+                        self.processingJobs[request.job.id] = request.job.jobBuffer
                         return request.job
                     }
                 }
@@ -193,8 +203,12 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             self.isStopped = true
         }
 
+        func start() {
+            self.isStopped = false
+        }
+
         func shutdown() {
-            assert(self.pendingJobs.count == 0)
+            assert(self.processingJobs.count == 0)
             self.isStopped = true
         }
 
@@ -266,6 +280,78 @@ extension MemoryQueue {
 
     public func makeAsyncIterator() -> AsyncIterator {
         .init(queue: self.queue, jobRegistry: self.jobRegistry)
+    }
+}
+
+extension MemoryQueue {
+    /// how to cleanup a job
+    public struct JobCleanup: Sendable, Codable {
+        enum RawValue: Codable {
+            case doNothing
+            case rerun
+            case remove
+        }
+        let rawValue: RawValue
+
+        /// Do nothing to jobs
+        public static var doNothing: Self { .init(rawValue: .doNothing) }
+        /// Add jobs back onto the pending queue
+        public static var rerun: Self { .init(rawValue: .rerun) }
+        /// Delete jobs
+        public static var remove: Self { .init(rawValue: .remove) }
+    }
+
+    /// Cleanup job queues
+    ///
+    /// This function is used to re-run or delete jobs in a certain state. Failed, completed,
+    /// cancelled and paused jobs can be pushed back into the pending queue to be re-run or removed.
+    /// When called at startup in theory no job should be set to processing, or set to pending but
+    /// not in the queue. but if your job server crashes these states are possible, so we also provide
+    /// options to re-queue these jobs so they are run again.
+    ///
+    /// You can call `cleanup` with `failedJobs`, `completedJobs`, `cancelledJobs` or `pausedJobs` set
+    /// to whatever you like at any point to re-queue failed jobs. Moving processing or pending jobs
+    /// should only be done if you are certain there is nothing processing the job queue.
+    ///
+    /// - Parameters:
+    ///   - pendingJobs: What to do with jobs tagged as pending
+    ///   - processingJobs: What to do with jobs tagged as processing
+    ///   - completedJobs: What to do with jobs tagged as completed
+    ///   - failedJobs: What to do with jobs tagged as failed
+    ///   - cancelledJobs: What to do with jobs tagged as cancelled
+    ///   - pausedJobs: What to do with jobs tagged as cancelled
+    /// - Throws:
+    public func cleanup(
+        processingJobs: JobCleanup = .doNothing,
+        failedJobs: JobCleanup = .doNothing,
+        pausedJobs: MemoryQueue.JobCleanup
+    ) async throws {
+        await self.queue.cleanup(processingJobs: processingJobs, failedJobs: failedJobs, pausedJobs: pausedJobs)
+    }
+}
+
+extension MemoryQueue.Internal {
+    func cleanup(
+        processingJobs: MemoryQueue.JobCleanup,
+        failedJobs: MemoryQueue.JobCleanup,
+        pausedJobs: MemoryQueue.JobCleanup
+    ) {
+        cleanupQueue(processingJobs, queue: &self.processingJobs)
+        cleanupQueue(failedJobs, queue: &self.failedJobs)
+        cleanupQueue(pausedJobs, queue: &self.pausedJobs)
+    }
+
+    func cleanupQueue(_ cleanup: MemoryQueue.JobCleanup, queue: inout [MemoryQueue.JobID: ByteBuffer]) {
+        switch cleanup.rawValue {
+        case .remove:
+            queue = [:]
+        case .rerun:
+            for job in queue {
+                self.queue.append((QueuedJob(id: job.key, jobBuffer: job.value), .init()))
+            }
+        case .doNothing:
+            break
+        }
     }
 }
 
