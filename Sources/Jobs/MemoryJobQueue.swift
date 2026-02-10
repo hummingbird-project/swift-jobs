@@ -303,28 +303,22 @@ extension MemoryQueue {
 
     /// Cleanup job queues
     ///
-    /// This function is used to re-run or delete jobs in a certain state. Failed, completed,
-    /// cancelled and paused jobs can be pushed back into the pending queue to be re-run or removed.
-    /// When called at startup in theory no job should be set to processing, or set to pending but
-    /// not in the queue. but if your job server crashes these states are possible, so we also provide
-    /// options to re-queue these jobs so they are run again.
+    /// This function is used to re-run or delete jobs in a certain state. Failed, paused and processing jobs
+    /// can be pushed back into the pending queue to be re-run or removed.
     ///
-    /// You can call `cleanup` with `failedJobs`, `completedJobs`, `cancelledJobs` or `pausedJobs` set
-    /// to whatever you like at any point to re-queue failed jobs. Moving processing or pending jobs
-    /// should only be done if you are certain there is nothing processing the job queue.
+    /// You can call `cleanup` with `failedJobs`, `pausedJobs` set to whatever you like at any point to re-queue
+    /// jobs. Moving processing jobs should only be done if you are certain there is nothing processing the job
+    /// queue.
     ///
     /// - Parameters:
-    ///   - pendingJobs: What to do with jobs tagged as pending
     ///   - processingJobs: What to do with jobs tagged as processing
-    ///   - completedJobs: What to do with jobs tagged as completed
     ///   - failedJobs: What to do with jobs tagged as failed
-    ///   - cancelledJobs: What to do with jobs tagged as cancelled
     ///   - pausedJobs: What to do with jobs tagged as cancelled
     /// - Throws:
     public func cleanup(
         processingJobs: JobCleanup = .doNothing,
         failedJobs: JobCleanup = .doNothing,
-        pausedJobs: MemoryQueue.JobCleanup
+        pausedJobs: MemoryQueue.JobCleanup = .doNothing
     ) async throws {
         await self.queue.cleanup(processingJobs: processingJobs, failedJobs: failedJobs, pausedJobs: pausedJobs)
     }
