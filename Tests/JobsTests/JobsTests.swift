@@ -582,7 +582,7 @@ struct JobsTests {
         try await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = ServiceGroup(
                 configuration: .init(
-                    services: [jobQueue.processor()],
+                    services: [jobQueue.processor(options: .init(numWorkers: 1))],
                     gracefulShutdownSignals: [.sigterm, .sigint],
                     logger: Logger(label: "JobQueueService")
                 )
