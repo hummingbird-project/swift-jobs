@@ -100,12 +100,11 @@ struct TracingTests {
                 try await expectation.wait(count: 2)
                 return jobID
             }
-
             let span = try #require(Self.testTracer.spans.first)
 
             #expect(span.operationName == "TestTracingErrors")
             #expect(span.kind == .server)
-            #expect(span.status == nil)
+            #expect(span.status?.code == .error)
             let error = try #require(span.recordedErrors.first)
 
             #expect(error.0 is FailedError)

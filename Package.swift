@@ -13,7 +13,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.1.0"),
+        .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.4.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", "1.0.0"..<"3.0.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.63.0"),
