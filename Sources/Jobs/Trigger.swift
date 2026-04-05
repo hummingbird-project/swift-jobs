@@ -9,12 +9,12 @@
 import NIOConcurrencyHelpers
 
 final class Trigger: @unchecked Sendable {
-    typealias Suspension = CheckedContinuation<Void, Error>
+    typealias Suspension = CheckedContinuation<Void, any Error>
 
     enum State {
         case waiting([Suspension])
         case completed
-        case failed(Error)
+        case failed(any Error)
     }
 
     let lock = NIOLock()
@@ -54,7 +54,7 @@ final class Trigger: @unchecked Sendable {
         }
     }
 
-    func failed(_ error: Error) {
+    func failed(_ error: any Error) {
         self.lock.withLock {
             switch self.state {
             case .waiting(let continuations):

@@ -6,12 +6,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-import Tracing
+public import Tracing
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 /// Protocol for a Job
@@ -40,7 +40,7 @@ public protocol JobInstanceProtocol: Sendable {
 
 extension JobInstanceProtocol {
     /// Should we retry this job
-    public func shouldRetry(error: Error) -> Bool {
+    public func shouldRetry(error: any Error) -> Bool {
         self.retryStrategy.shouldRetry(attempt: self.attempt, error: error)
     }
 

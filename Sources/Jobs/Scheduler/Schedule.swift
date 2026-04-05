@@ -9,13 +9,9 @@
 import Collections
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-#if compiler(<6.0)
-@preconcurrency import Foundation
-#else
-import Foundation
-#endif
+public import Foundation
 #endif
 
 /// Generates a Date at regular intervals (hourly, daily, weekly etc)

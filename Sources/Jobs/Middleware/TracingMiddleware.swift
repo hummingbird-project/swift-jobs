@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-import Tracing
+public import Tracing
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials

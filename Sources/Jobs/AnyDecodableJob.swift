@@ -10,7 +10,7 @@
 public struct AnyDecodableJob: DecodableWithUserInfoConfiguration, Sendable {
     public typealias DecodingConfiguration = JobRegistry
 
-    public init(from decoder: Decoder, configuration register: DecodingConfiguration) throws {
+    public init(from decoder: any Decoder, configuration register: DecodingConfiguration) throws {
         // Job JSON is structured as follows
         //  {
         //      "JobName": { job data... }

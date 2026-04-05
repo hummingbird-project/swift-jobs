@@ -8,13 +8,13 @@
 
 import ExtrasBase64
 import Logging
-import NIOCore
-import ServiceLifecycle
+public import NIOCore
+public import ServiceLifecycle
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 /// Protocol used to push an existential job

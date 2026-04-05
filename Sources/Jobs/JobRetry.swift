@@ -31,7 +31,7 @@ public protocol JobRetryStrategy: Sendable {
     ///   - attempt: Attempt number of job
     ///   - error: Error that was thrown by failed job
     /// - Returns: Whether we should retry a failed job
-    func shouldRetry(attempt: Int, error: Error) -> Bool
+    func shouldRetry(attempt: Int, error: any Error) -> Bool
 
     ///  Calculate backoff amount
     /// - Parameter attempt: Attempt number
@@ -41,7 +41,7 @@ public protocol JobRetryStrategy: Sendable {
 
 /// Never retry failed jobs
 public struct NoRetryJobRetryStrategy: JobRetryStrategy {
-    public func shouldRetry(attempt: Int, error: Error) -> Bool { false }
+    public func shouldRetry(attempt: Int, error: any Error) -> Bool { false }
     public func calculateBackoff(attempt: Int) -> Duration { .seconds(0) }
 }
 

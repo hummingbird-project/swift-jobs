@@ -23,7 +23,7 @@ protocol DecodableWithUserInfoConfiguration: Decodable, DecodableWithConfigurati
 
 /// Implement `init(from: Decoder)`` by extracting configuration from the userInfo dictionary.
 extension DecodableWithUserInfoConfiguration {
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         guard let configuration = decoder.userInfo[._jobConfiguration] as? DecodingConfiguration else {
             throw DecodingError.valueNotFound(
                 DecodingConfiguration.self,
