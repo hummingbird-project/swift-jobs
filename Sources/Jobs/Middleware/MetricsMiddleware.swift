@@ -6,10 +6,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-import Dispatch
 public import Metrics
 
 #if canImport(FoundationEssentials)
+public import Dispatch
 public import FoundationEssentials
 #else
 public import Foundation
