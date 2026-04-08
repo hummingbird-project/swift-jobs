@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-import Collections
+import DequeModule
 public import NIOCore
 
 #if canImport(FoundationEssentials)
