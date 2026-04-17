@@ -183,6 +183,30 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
                 }.value
                 await self.middleware.onCompletedJob(job: job, result: .failure(error), context: .init(jobID: jobID.description))
                 return
+            } catch let error as JobSleepError {
+                logger.debug("Job: sleeping")
+                /// retry the current job
+                try await self.queue.retry(
+                    jobID,
+                    job: job,
+                    attempt: job.attempt,
+                    options: .init(delayUntil: error.until)
+                )
+                /// Call onPushJob as job has been added to the queue again
+                await self.middleware.onPushJob(
+                    name: job.name,
+                    parameters: job.parameters,
+                    context: .init(jobID: jobID.description, attempt: job.attempt)
+                )
+
+                logger.debug(
+                    "Retrying Job",
+                    metadata: [
+                        "JobName": .string(job.name),
+                        "attempt": .stringConvertible(job.attempt),
+                        "delayedUntil": .stringConvertible(error.until),
+                    ]
+                )
             } catch {
                 if !job.shouldRetry(error: error) {
                     logger.debug("Job: failed")
@@ -212,7 +236,6 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
                 logger.debug(
                     "Retrying Job",
                     metadata: [
-                        "JobID": .stringConvertible(jobID),
                         "JobName": .string(job.name),
                         "attempt": .stringConvertible(attempt),
                         "delayedUntil": .stringConvertible(delayUntil),
