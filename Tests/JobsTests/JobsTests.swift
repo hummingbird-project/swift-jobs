@@ -693,11 +693,11 @@ struct JobsTests {
         var logger = Logger(label: "testJobSleep")
         logger.logLevel = .debug
         let jobQueue = JobQueue(.memory, logger: logger)
-        let delayedJob = ManagedAtomic(0)
+        let delayedJob = Atomic(0)
         let delayUntil = Date(timeIntervalSinceNow: 1.0)
         let (stream, cont) = AsyncStream.makeStream(of: Void.self)
         jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
-            if delayedJob.loadThenWrappingIncrement(ordering: .relaxed) == 0 {
+            if delayedJob.add(1, ordering: .relaxed).oldValue == 0 {
                 #expect(Date.now < delayUntil)
                 throw JobSleep(until: delayUntil)
             }
