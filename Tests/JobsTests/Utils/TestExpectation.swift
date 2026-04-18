@@ -13,9 +13,9 @@ struct TestExpectation {
 
         var description: String {
             if let waitingOn {
-                "Timed out waiting on \(waitingOn)"
+                "Expection timed out waiting on \(waitingOn)"
             } else {
-                "Timed out"
+                "Expection timed out"
             }
         }
     }

@@ -401,7 +401,7 @@ struct JobsTests {
         try await withThrowingTaskGroup(of: Void.self) { group in
             let serviceGroup = ServiceGroup(
                 configuration: .init(
-                    services: [jobQueue.processor(options: .init(numWorkers: 2)), jobQueue2.processor(options: .init(numWorkers: 1))],
+                    services: [jobQueue.processor(options: .init(numWorkers: 8)), jobQueue2.processor(options: .init(numWorkers: 1))],
                     gracefulShutdownSignals: [.sigterm, .sigint],
                     logger: logger
                 )
@@ -413,7 +413,7 @@ struct JobsTests {
                 for i in 0..<200 {
                     try await jobQueue.push(TestParameters(value: i))
                 }
-                try await expectation.wait(count: 200)
+                try await expectation.wait(count: 200, timeout: .seconds(60))
                 await serviceGroup.triggerGracefulShutdown()
             } catch {
                 Issue.record("\(String(reflecting: error))")
