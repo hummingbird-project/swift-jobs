@@ -6,9 +6,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 /// Error used to implement custom retry implementations
