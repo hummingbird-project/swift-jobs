@@ -11,24 +11,56 @@ import FoundationEssentials
 import Foundation
 #endif
 
-struct JobSleepError: Error {
-    let until: Date
-}
+/// Error used to implement custom retry implementations
+///
+/// When a job throws this error the JobQueueProcessor recognises it and
+/// will delay retrying of the job until the date specified. It will allows
+/// control over the attempt count is updated.
+///
+/// This can be used in situations where a resource is not ready for a job
+/// and we want to delay until that resource is available
+public struct JobSleep: Error {
+    public struct AttemptAction: Sendable {
+        enum Action {
+            case doNothing
+            case reset
+            case increment
+        }
+        let action: Action
 
-extension JobQueue {
-    /// Quit job and retry after specified period
-    ///
-    /// Throws an error that is caught by the job queue processor.
-    /// - Parameter delay: How long to wait before retrying job
-    public static func sleep(for delay: Duration) throws {
-        throw JobSleepError(until: Date.now._advanced(by: delay))
+        /// Don't increment job attempts
+        public static var doNothing: Self { .init(action: .doNothing) }
+        /// Reset job attempts to the first attempt
+        public static var reset: Self { .init(action: .reset) }
+        /// Increment job attemtps
+        public static var increment: Self { .init(action: .increment) }
+
+        func updateAttempt(_ attempt: Int) -> Int {
+            switch self.action {
+            case .doNothing: attempt
+            case .increment: attempt + 1
+            case .reset: 1
+            }
+        }
+    }
+    let delayUntil: Date
+    let attemptAction: AttemptAction
+
+    ///  Initialize JobSleep
+    /// - Parameters:
+    ///   - delayUntil: How long we should wait until before queuing job again
+    ///   - attempts: How we should update the attempt number
+    public init(until: Date, attempts: AttemptAction = .doNothing) {
+        self.delayUntil = until
+        self.attemptAction = attempts
     }
 
-    ///  Quit job and retry at specified date
-    ///
-    /// Throws an error that is caught by the job queue processor
-    /// - Parameter date: How long to wait until before retrying job
-    public static func sleep(until date: Date) throws {
-        throw JobSleepError(until: date)
+    ///  Initialize JobSleep
+    /// - Parameters:
+    ///   - duration: How long we should wait before queuing job again
+    ///   - attempts: How we should update the attempt number
+    public init(for duration: Duration, attempts: AttemptAction = .doNothing) {
+        self.delayUntil = Date.now._advanced(by: duration)
+        self.attemptAction = attempts
     }
 }
