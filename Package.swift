@@ -1,9 +1,18 @@
-// swift-tools-version:6.0
+// swift-tools-version:6.1
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
-let swiftSettings: [SwiftSetting] = [.enableExperimentalFeature("StrictConcurrency=complete")]
+var defaultSwiftSettings: [SwiftSetting] = [
+    // https://github.com/apple/swift-evolution/blob/main/proposals/0335-existential-any.md
+    .enableUpcomingFeature("ExistentialAny"),
+
+    // https://github.com/swiftlang/swift-evolution/blob/main/proposals/0444-member-import-visibility.md
+    .enableUpcomingFeature("MemberImportVisibility"),
+
+    // https://github.com/swiftlang/swift-evolution/blob/main/proposals/0409-access-level-on-imports.md
+    .enableUpcomingFeature("InternalImportsByDefault"),
+]
 
 let package = Package(
     name: "swift-jobs",
@@ -24,7 +33,7 @@ let package = Package(
         .target(
             name: "Jobs",
             dependencies: [
-                .product(name: "Collections", package: "swift-collections"),
+                .product(name: "DequeModule", package: "swift-collections"),
                 .product(name: "Tracing", package: "swift-distributed-tracing"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Metrics", package: "swift-metrics"),
@@ -33,7 +42,7 @@ let package = Package(
                 .product(name: "ServiceLifecycle", package: "swift-service-lifecycle"),
                 .product(name: "ExtrasBase64", package: "swift-extras-base64"),
             ],
-            swiftSettings: swiftSettings
+            swiftSettings: defaultSwiftSettings
         ),
         // test targets
         .testTarget(

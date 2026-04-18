@@ -6,7 +6,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-import NIOCore
+public import NIOCore
+import NIOFoundationCompat
 import Synchronization
 
 #if canImport(FoundationEssentials)
@@ -45,7 +46,7 @@ public final class JobRegistry: Sendable {
     /// - Parameters:
     ///   - job: Job Definition
     public func registerJob<Parameters>(_ job: JobDefinition<Parameters>) {
-        let builder: @Sendable (Decoder) throws -> any JobInstanceProtocol = { decoder in
+        let builder: @Sendable (any Decoder) throws -> any JobInstanceProtocol = { decoder in
             let data = try JobInstanceData<Parameters>(from: decoder)
             return try JobInstance<Parameters>(job: job, data: data)
         }
@@ -55,7 +56,7 @@ public final class JobRegistry: Sendable {
         }
     }
 
-    func decode(jobName: String, from decoder: Decoder) throws -> any JobInstanceProtocol {
+    func decode(jobName: String, from decoder: any Decoder) throws -> any JobInstanceProtocol {
         let jobDefinitionBuilder = try self.builderTypeMap.withLock {
             guard let job = $0[jobName] else { throw JobQueueError(code: .unrecognisedJobId, jobName: jobName) }
             return job
@@ -67,5 +68,5 @@ public final class JobRegistry: Sendable {
         }
     }
 
-    let builderTypeMap: Mutex<[String: @Sendable (Decoder) throws -> any JobInstanceProtocol]>
+    let builderTypeMap: Mutex<[String: @Sendable (any Decoder) throws -> any JobInstanceProtocol]>
 }

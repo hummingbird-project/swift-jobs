@@ -6,12 +6,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-import NIOCore
+public import NIOCore
+import NIOFoundationCompat
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 public protocol JobMetadataDriver: Sendable {

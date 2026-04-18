@@ -6,13 +6,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-import Collections
-import NIOCore
+import DequeModule
+public import NIOCore
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
