@@ -685,4 +685,28 @@ struct JobsTests {
         )
         #expect(acquired == true)
     }
+
+    @Test func testJobSleep() async throws {
+        struct TestParameters: JobParameters, Equatable {
+            static let jobName = "testJobSleep"
+        }
+        var logger = Logger(label: "testJobSleep")
+        logger.logLevel = .debug
+        let jobQueue = JobQueue(.memory, logger: logger)
+        let delayedJob = Atomic(0)
+        let delayUntil = Date(timeIntervalSinceNow: 1.0)
+        let (stream, cont) = AsyncStream.makeStream(of: Void.self)
+        jobQueue.registerJob(parameters: TestParameters.self) { parameters, context in
+            if delayedJob.add(1, ordering: .relaxed).oldValue == 0 {
+                #expect(Date.now < delayUntil)
+                throw JobSleep(until: delayUntil)
+            }
+            #expect(Date.now > delayUntil)
+            cont.yield()
+        }
+        try await testJobQueue(jobQueue.processor()) {
+            try await jobQueue.push(TestParameters())
+            await stream.first { _ in true }
+        }
+    }
 }
