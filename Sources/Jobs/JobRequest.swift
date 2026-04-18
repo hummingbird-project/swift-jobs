@@ -7,9 +7,9 @@
 //
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 /// Request to run job, pushed to job queue
@@ -45,7 +45,7 @@ public struct JobRequest<Parameters: Sendable & Codable>: Encodable {
         )
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: _JobCodingKey.self)
         let childEncoder = container.superEncoder(
             forKey: .init(stringValue: name, intValue: nil)

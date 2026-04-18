@@ -6,12 +6,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-import Logging
+public import Logging
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 /// Context of running job

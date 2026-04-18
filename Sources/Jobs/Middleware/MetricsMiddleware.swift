@@ -6,13 +6,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-import Dispatch
-import Metrics
+public import Metrics
 
 #if canImport(FoundationEssentials)
-import FoundationEssentials
+public import Dispatch
+public import FoundationEssentials
 #else
-import Foundation
+public import Foundation
 #endif
 
 /// Add publishing of Metrics to a job queue
@@ -217,7 +217,7 @@ public struct MetricsJobMiddleware: JobMiddleware {
     @usableFromInline
     func updateFailedMetrics(
         for name: String,
-        error: Error
+        error: any Error
     ) {
         let jobStatus: JobStatus =
             if error is CancellationError {

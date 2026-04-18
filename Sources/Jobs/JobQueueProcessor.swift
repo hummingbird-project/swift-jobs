@@ -7,9 +7,9 @@
 //
 
 import ExtrasBase64
-import Logging
-import NIOCore
-import ServiceLifecycle
+public import Logging
+public import NIOCore
+public import ServiceLifecycle
 
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -98,7 +98,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
 
                     // if queue supports metadata
                     if case .acquire(let every, let holdFor) = self.options.workerActiveLock.value,
-                        let metadataDriver = self.queue as? JobMetadataDriver
+                        let metadataDriver = self.queue as? (any JobMetadataDriver)
                     {
                         metadataDriver.updateActiveLock(&group, every: every, holdFor: holdFor, workerID: self.queue.context.workerID)
                     }
