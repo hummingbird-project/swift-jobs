@@ -24,9 +24,9 @@ import Android
 #error("Unsupported platform")
 #endif
 
-/// Strategy deciding whether we should retry a failed job
+/// Strategy deciding whether we should retry a failed job and backoff before retrying job
 public protocol JobRetryStrategy: Sendable {
-    ///  Calculate whether we should retry a failed job and how long we wait before retrying
+    /// Should we retry a failed job
     /// - Parameters:
     ///   - attempt: Attempt number of job
     ///   - error: Error that was thrown by failed job
@@ -50,7 +50,7 @@ extension JobRetryStrategy where Self == NoRetryJobRetryStrategy {
     public static var dontRetry: Self { .init() }
 }
 
-/// Retry failed jobs with an exponentially increasing delay
+/// Retry failed jobs with an exponentially increasing backoff
 ///
 /// See https://en.wikipedia.org/wiki/Exponential_backoff
 public struct ExponentialJitterJobRetryStrategy: JobRetryStrategy {
@@ -58,9 +58,9 @@ public struct ExponentialJitterJobRetryStrategy: JobRetryStrategy {
     public var maxAttempts: Int
     /// Maximum Delay - default is 120.0 seconds
     public var maxBackoff: Duration
-    /// Minimum jitter - default is 0 seconds
+    /// Minimum jitter as a ratio of calculated backoff - default is -0.5
     public var minJitter: Double
-    /// Maximum jitter - default is 10 seconds
+    /// Maximum jitter as a ratio of calculated backoff - default is 0.5
     public var maxJitter: Double
 
     public init(maxAttempts: Int = 4, maxBackoff: Duration = .seconds(120), minJitter: Double = -0.5, maxJitter: Double = 0.5) {

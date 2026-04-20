@@ -14,7 +14,7 @@ public import FoundationEssentials
 public import Foundation
 #endif
 
-/// Protocol for a Job
+/// Protocol for a Job decoded from a queue
 public protocol JobInstanceProtocol: Sendable {
     /// Parameters job requries
     associatedtype Parameters: Sendable & Codable
@@ -95,7 +95,7 @@ struct JobInstance<Parameters: Sendable & Codable>: JobInstanceProtocol {
     }
 }
 
-/// Data attach to a job
+/// Data used to define a single instance of a job
 public struct JobInstanceData<Parameters: Sendable & Codable>: Codable, Sendable {
     /// Job parameters
     @usableFromInline

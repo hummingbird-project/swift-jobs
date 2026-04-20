@@ -14,7 +14,7 @@ import FoundationEssentials
 import Foundation
 #endif
 
-/// Add distributed trace spans to each job instance a job queue runs
+/// Adds distributed trace spans to each job instance a job queue runs
 public struct TracingJobMiddleware: JobMiddleware {
     @usableFromInline
     let queueName: String
