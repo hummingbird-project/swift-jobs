@@ -15,7 +15,7 @@ public import FoundationEssentials
 public import Foundation
 #endif
 
-/// Add publishing of Metrics to a job queue
+/// Adds publishing of Metrics to a job queue
 public struct MetricsJobMiddleware: JobMiddleware {
     @usableFromInline
     let queueName: String
