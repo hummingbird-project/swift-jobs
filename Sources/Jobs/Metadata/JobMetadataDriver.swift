@@ -15,6 +15,7 @@ public import FoundationEssentials
 public import Foundation
 #endif
 
+/// Protocol for Job queue driver which implements storing arbitrary metadata
 public protocol JobMetadataDriver: Sendable {
     /// Get JobQueue metadata
     ///

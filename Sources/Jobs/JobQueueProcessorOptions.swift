@@ -12,7 +12,7 @@ import FoundationEssentials
 import Foundation
 #endif
 
-/// JobQueueHandler Options
+/// JobQueueProcessor Options
 public struct JobQueueProcessorOptions: Sendable {
     /// Defines how often if at all a lock should be acquired
     public struct ExclusiveLock: Sendable {

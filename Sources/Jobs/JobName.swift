@@ -10,7 +10,7 @@
 ///
 /// This should be unique as it is used to identify jobs when deserializing them.
 ///
-/// `JobName` has an associated generic parameter to indicate the parameters associated with this job
+/// `JobName` has an associated generic parameter to indicate the input parameters associated with this job
 public struct JobName<Parameters: Codable>: CustomStringConvertible, ExpressibleByStringLiteral, Sendable, Equatable {
     public let name: String
 

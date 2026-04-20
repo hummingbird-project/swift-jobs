@@ -64,13 +64,18 @@ extension JobQueueDriver {
     }
 }
 
+/// Various data associated with a job queue
 public struct JobQueueContext: Sendable {
     public enum MetadataValue: Sendable {
         case string(String)
         case integer(Int)
         case double(Double)
     }
-    /// Job worker id
+    /// Job worker id. Unique to this node
+    ///
+    /// This is used to associate a job being processed with the node processing it. If a
+    /// node stops responding then jobs associated with that node can be re-queued to be
+    /// processed by another node.
     public let workerID: String
     /// Job queue name
     public let queueName: String
@@ -87,7 +92,7 @@ public struct JobQueueContext: Sendable {
 
 /// Type returned from iterating a JobQueueDriver
 ///
-/// The `JobQueueResult`` can hold either a job instance or the error created when iterating
+/// The `JobQueueResult` can hold either a job instance or the error created when iterating
 /// the job queue. If the error is returned in `JobQueueResult` then the job queue handler will
 /// handle the error. If the job queue throws an error when it is iterated then the job queue
 /// will throw that error.

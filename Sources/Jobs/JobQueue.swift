@@ -161,8 +161,8 @@ extension JobQueueProtocol {
 /// Job queue
 ///
 /// Wrapper type to bring together a job queue implementation and a job queue
-/// handler. Before you can push jobs onto a queue you should register it
-/// with the queue via either ``registerJob(parameters:maxRetryCount:execute:)`` or
+/// handler. Before you can push jobs onto a queue you should register them
+/// with the queue via either ``registerJob(parameters:retryStrategy:timeout:execute:)`` or
 /// ``registerJob(_:)``.
 public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
     /// underlying driver for queue

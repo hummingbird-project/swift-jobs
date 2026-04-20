@@ -6,6 +6,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+/// Job metadata key
+///
+/// Includes the type of data associated with the key as a generic parameter
 public struct JobMetadataKey<Value>: Sendable, Hashable, ExpressibleByStringLiteral, ExpressibleByStringInterpolation {
     let name: String
     /// Initialize a JobMetadataKey
