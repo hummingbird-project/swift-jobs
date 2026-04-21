@@ -7,24 +7,26 @@
 //
 
 public import Logging
-import NIOCore
 public import ServiceLifecycle
 
 /// JobService brings together all the components of swift-jobs into one type
-public struct JobService<Queue: JobQueueDriver>: JobQueueProtocol where Queue: JobMetadataDriver {
+public struct JobService<Queue: JobQueueDriver>: JobQueueProtocol where Queue: JobServiceDriver {
     public struct Options: Sendable {
         var queue: JobQueueOptions
         var processor: JobQueueProcessorOptions
         var scheduler: JobSchedule.Scheduler<Queue>.Options
+        var cleanup: Queue.CleanupOptions
 
         public init(
             queue: JobQueueOptions = .init(),
             processor: JobQueueProcessorOptions = .init(),
-            scheduler: JobSchedule.Scheduler<Queue>.Options = .init()
+            scheduler: JobSchedule.Scheduler<Queue>.Options = .init(),
+            cleanup: Queue.CleanupOptions = .default
         ) {
             self.queue = queue
             self.processor = processor
             self.scheduler = scheduler
+            self.cleanup = cleanup
         }
     }
 
@@ -45,7 +47,7 @@ public struct JobService<Queue: JobQueueDriver>: JobQueueProtocol where Queue: J
         self.serviceOptions = options
         self.queue = .init(queue, logger: logger, options: options.queue, middleware: middleware)
         self.schedule = .init()
-        queue.scheduleQueueCleanup(&self.schedule)
+        queue.scheduleQueueCleanup(&self.schedule, options: options.cleanup)
     }
 
     public init(
@@ -57,7 +59,7 @@ public struct JobService<Queue: JobQueueDriver>: JobQueueProtocol where Queue: J
         self.serviceOptions = options
         self.queue = .init(queue, logger: logger, options: options.queue, middleware: middleware)
         self.schedule = .init()
-        queue.scheduleQueueCleanup(&self.schedule)
+        queue.scheduleQueueCleanup(&self.schedule, options: options.cleanup)
     }
 
     ///  Push Job onto queue

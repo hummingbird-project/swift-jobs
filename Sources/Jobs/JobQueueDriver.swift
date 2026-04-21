@@ -48,8 +48,6 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     func shutdownGracefully() async
     /// job queue context
     var context: JobQueueContext { get }
-    /// Schedule regular job queue cleanup
-    func scheduleQueueCleanup(_ schedule: inout JobSchedule)
 }
 
 extension JobQueueDriver {
@@ -57,8 +55,6 @@ extension JobQueueDriver {
     public func waitUntilReady() async throws {}
     /// default version of worker ID is to return the string version of a UUID
     public var context: JobQueueContext { .init(workerID: UUID().uuidString, metadata: [:]) }
-    /// Schedule regular job cleanup
-    public func scheduleQueueCleanup(_ schedule: inout JobSchedule) {}
 }
 
 extension JobQueueDriver {
