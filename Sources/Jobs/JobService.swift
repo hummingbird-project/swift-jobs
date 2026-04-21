@@ -45,6 +45,7 @@ public struct JobService<Queue: JobQueueDriver>: JobQueueProtocol where Queue: J
         self.serviceOptions = options
         self.queue = .init(queue, logger: logger, options: options.queue, middleware: middleware)
         self.schedule = .init()
+        queue.scheduleQueueCleanup(&self.schedule)
     }
 
     public init(
@@ -56,6 +57,7 @@ public struct JobService<Queue: JobQueueDriver>: JobQueueProtocol where Queue: J
         self.serviceOptions = options
         self.queue = .init(queue, logger: logger, options: options.queue, middleware: middleware)
         self.schedule = .init()
+        queue.scheduleQueueCleanup(&self.schedule)
     }
 
     ///  Push Job onto queue
