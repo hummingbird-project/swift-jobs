@@ -30,9 +30,10 @@ public struct JobService<Queue: JobQueueDriver>: JobQueueProtocol where Queue: J
         }
     }
 
+    /// Job queue that service uses
+    public let queue: JobQueue<Queue>
+
     let serviceOptions: Options
-    @usableFromInline
-    let queue: JobQueue<Queue>
     @usableFromInline
     var schedule: JobSchedule
 
