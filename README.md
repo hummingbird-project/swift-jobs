@@ -27,7 +27,7 @@ Job queue for processing workloads asynchronously across multiple nodes.
 
 ```swift
 // create job queue stored in local memory, that can run four jobs concurrently
-let jobQueue = JobQueue(
+let jobService = JobService(
     .memory, 
     logger: logger
 )
@@ -39,7 +39,7 @@ struct SendEmailJobParameters: JobParameters {
     let body: String
 }
 // Register jobs with job queue
-jobQueue.registerJob(parameters: SendEmailJobParameters.self) { parameters, context in
+jobService.registerJob(parameters: SendEmailJobParameters.self) { parameters, context in
     try await myEmailService.sendEmail(
         to: parameters.to, 
         subject: parameters.subject, 
@@ -47,21 +47,21 @@ jobQueue.registerJob(parameters: SendEmailJobParameters.self) { parameters, cont
     )
 }
 // Push instance of job onto queue
-jobQueue.push(SendEmailJobParameters(
+jobService.push(SendEmailJobParameters(
     to: "Ellen", 
     subject:"Hello", 
     body: "Hi there!"
 ))
 ```
 
-## Process Jobs
+## Processing Jobs
 
-You can create a `JobQueueProcessor` to process jobs added to yout `JobQueue`. `JobQueueProcessor` conforms to `Service` and can be used with `ServiceGroup` from `ServiceLifecycle`.
+`JobService` conforms to `Service` and can be used with `ServiceGroup` from `ServiceLifecycle`. Internally this will create a `JobQueueProcessor` to process jobs added to your `JobService`
 
 ```swift
 let serviceGroup = ServiceGroup(
     configuration: .init(
-        services: [jobQueue.processor(options: .init(numWorkers: 4))],
+        services: [jobService],
         gracefulShutdownSignals: [.sigterm, .sigint],
         logger: Logger(label: "JobQueueService")
     )
@@ -72,10 +72,20 @@ try await serviceGroup.run()
 Or it can be added as a service attached to a Hummingbird application
 
 ```swift
-let app = Application(router: router, services: [jobQueue.processor(options: .init(numWorkers: 4))])
+let app = Application(router: router, services: [jobService])
 ```
 
-When the `JobQueueProcessor` service is running it processes jobs as they appear on the queue. The `numWorkers` field in the options initializer indicates how many jobs it will run concurrently.
+When the `JobQueueProcessor` service is running it executes jobs as they appear on the queue. The `numWorkers` field in the options initializer indicates how many jobs it will run concurrently.
+
+## Scheduling Jobs
+
+`JobService` also include a job scheduler that will run jobs at regular intervals.
+
+```swift
+jobService.addScheduledJob(CleanupDatabaseJob(), schedule: .weekly(day: .sunday, hour: 4))
+// the scheduler also accepts crontab strings and will support most combinations
+jobService.addScheduledJob(CleanupDatabaseJob(), schedule: .crontab("0 4 * * sun"))
+```
 
 ## Documentation
 

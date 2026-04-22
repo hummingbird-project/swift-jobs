@@ -16,7 +16,7 @@ public import Foundation
 #endif
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
-public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJobQueue {
+public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJobQueue, JobServiceDriver {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
     /// Job options
@@ -33,6 +33,9 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         public init(delayUntil: Date = .now) {
             self.delayUntil = delayUntil
         }
+    }
+    public struct CleanupOptions: JobQueueCleanupOptionsProtocol {
+        public static var `default`: Self { .init() }
     }
 
     /// queue of jobs
@@ -112,6 +115,8 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     public func pause(jobID: JobID) async throws {
         await self.queue.pauseJob(jobID: jobID)
     }
+
+    public func scheduleQueueCleanup(_ schedule: inout JobSchedule, options: CleanupOptions) {}
 
     /// Internal actor managing the job queue
     fileprivate actor Internal {
