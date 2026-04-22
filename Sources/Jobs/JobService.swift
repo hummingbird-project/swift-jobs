@@ -96,6 +96,36 @@ public struct JobService<Queue: JobQueueDriver>: JobQueueProtocol where Queue: J
     @inlinable
     public var options: JobQueueOptions { self.queue.options }
 
+    /// Attempt to cancel a job
+    /// - Parameters:
+    ///   - jobID: an existing job id
+    @inlinable
+    public func cancelJob(
+        jobID: Queue.JobID
+    ) async throws where Queue: CancellableJobQueue {
+        try await self.queue.queue.cancel(jobID: jobID)
+    }
+
+    /// Attempt to pause a job
+    /// - Parameters:
+    ///   - jobID: an existing job id
+    @inlinable
+    public func pauseJob(
+        jobID: Queue.JobID
+    ) async throws where Queue: ResumableJobQueue {
+        try await self.queue.queue.pause(jobID: jobID)
+    }
+
+    /// Resumes a job that was paused
+    /// - Parameters:
+    ///   - jobID: an existing job id
+    @inlinable
+    public func resumeJob(
+        jobID: Queue.JobID
+    ) async throws where Queue: ResumableJobQueue {
+        try await self.queue.queue.resume(jobID: jobID)
+    }
+
     ///  Add Job to Schedule
     /// - Parameters:
     ///   - job: Job parameters
