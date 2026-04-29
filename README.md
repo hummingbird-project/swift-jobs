@@ -75,7 +75,15 @@ Or it can be added as a service attached to a Hummingbird application
 let app = Application(router: router, services: [jobService])
 ```
 
-When the `JobQueueProcessor` service is running it executes jobs as they appear on the queue. The `numWorkers` field in the options initializer indicates how many jobs it will run concurrently.
+When the `JobService` service is running it executes jobs as they appear on the queue. You can control how many jobs run concurrently by setting the `numWorkers` parameter of the `processor` section of the options when initializing the `JobService`.
+
+```swift
+let jobService = JobService(
+    .memory,
+    logger: logger,
+    options: .init(processor: .init(numWorkers: 64))
+)
+```
 
 ## Scheduling Jobs
 
