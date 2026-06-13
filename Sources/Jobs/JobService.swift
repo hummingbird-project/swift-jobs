@@ -152,11 +152,17 @@ public struct JobService<Queue: JobQueueDriver>: JobQueueProtocol where Queue: J
 
 extension JobService: Service {
     public func run() async throws {
-        let serviceGroup = await ServiceGroup(
-            services: [
-                self.queue.processor(options: self.serviceOptions.processor),
+        var services: [any Service] = [
+            self.queue.processor(options: self.serviceOptions.processor)
+        ]
+        // only add scheduler if there are scheduled jobs
+        if !self.schedule.isEmpty {
+            await services.append(
                 self.schedule.scheduler(on: queue, named: self.queue.queue.context.queueName, options: self.serviceOptions.scheduler),
-            ],
+            )
+        }
+        let serviceGroup = ServiceGroup(
+            services: services,
             gracefulShutdownSignals: [],
             logger: self.logger
         )
