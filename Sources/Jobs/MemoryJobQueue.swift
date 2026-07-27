@@ -39,9 +39,9 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     }
 
     /// queue of jobs
-    fileprivate let queue: Internal
+    internal let queue: Internal
     private let onFailedJob: @Sendable (JobID, any Error) -> Void
-    private let jobRegistry: JobRegistry
+    internal let jobRegistry: JobRegistry
     public let context: JobQueueContext
 
     /// Initialise In memory job queue
@@ -119,7 +119,7 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     public func scheduleQueueCleanup(_ schedule: inout JobSchedule, options: CleanupOptions) {}
 
     /// Internal actor managing the job queue
-    fileprivate actor Internal {
+    internal actor Internal {
         struct QueuedJob: Sendable {
             let id: JobID
             let jobBuffer: ByteBuffer
