@@ -5,6 +5,9 @@
 // See LICENSE.txt for license information
 // SPDX-License-Identifier: Apache-2.0
 //
+
+#if compiler(>=6.2.3)
+
 @_spi(JobsAPI) import Jobs
 import Logging
 import Testing
@@ -241,3 +244,5 @@ struct JobsAPITests {
         #expect(jobs.jobs[0].id == id)
     }
 }
+
+#endif

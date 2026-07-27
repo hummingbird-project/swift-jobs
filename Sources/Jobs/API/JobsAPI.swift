@@ -6,6 +6,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#if compiler(>=6.2.3)
+
 public import NIOCore
 
 #if canImport(FoundationEssentials)
@@ -54,3 +56,5 @@ public import Foundation
     /// - Returns: Job parameters
     func getJob(id: UUID) async throws -> GetJobResponse?
 }
+
+#endif

@@ -6,6 +6,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#if compiler(>=6.2.3)
+
 import DequeModule
 import NIOCore
 
@@ -103,3 +105,5 @@ extension MemoryQueue.Internal {
         return nil
     }
 }
+
+#endif
