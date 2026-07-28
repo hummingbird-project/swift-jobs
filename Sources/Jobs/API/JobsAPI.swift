@@ -31,16 +31,34 @@ public import Foundation
     public let createdAt: Date
     public let completedAt: Date?
     public let status: Status
+
+    public init(id: UUID, name: String, createdAt: Date, completedAt: Date? = nil, status: JobAPIMetadata.Status) {
+        self.id = id
+        self.name = name
+        self.createdAt = createdAt
+        self.completedAt = completedAt
+        self.status = status
+    }
 }
 
 @_spi(JobsAPI) public struct GetJobsResponse: Sendable {
     public let paginationToken: String?
     public let jobs: [JobAPIMetadata]
+
+    public init(paginationToken: String? = nil, jobs: [JobAPIMetadata]) {
+        self.paginationToken = paginationToken
+        self.jobs = jobs
+    }
 }
 
 @_spi(JobsAPI) public struct GetJobResponse: Sendable {
     public let jobMetadata: JobAPIMetadata
     public let jobParameters: ByteBuffer
+
+    public init(jobMetadata: JobAPIMetadata, jobParameters: ByteBuffer) {
+        self.jobMetadata = jobMetadata
+        self.jobParameters = jobParameters
+    }
 }
 
 @_spi(JobsAPI) public protocol JobsAPI {
