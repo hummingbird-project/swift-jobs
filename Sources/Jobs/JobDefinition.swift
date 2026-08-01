@@ -20,9 +20,9 @@ public struct JobDefinitionOptions: OptionSet, Sendable {
 /// Job definition type
 public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
     let name: String
-    var retryStrategy: any JobRetryStrategy
-    var timeout: Duration?
-    var options: JobDefinitionOptions
+    public var retryStrategy: any JobRetryStrategy
+    public var timeout: Duration?
+    public var options: JobDefinitionOptions
     let _execute: @Sendable (Parameters, JobExecutionContext) async throws -> Void
 
     ///  Initialize JobDefinition
