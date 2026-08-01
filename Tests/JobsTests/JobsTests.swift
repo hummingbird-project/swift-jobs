@@ -200,6 +200,39 @@ struct JobsTests {
         #expect(attemptCounter.withLock { $0 } == [1, 2, 3])
     }
 
+    @Test func testDoNotRetainOption() async throws {
+        struct TestParameters: JobParameters {
+            static let jobName = "testErrorRetryCount"
+        }
+        let (stream, cont) = AsyncStream.makeStream(of: Void.self)
+        struct FailedError: Error {}
+        var logger = Logger(label: "JobsTests")
+        logger.logLevel = .trace
+        let memoryQueue = MemoryQueue()
+        let jobQueue = JobQueue(
+            memoryQueue,
+            logger: logger
+        )
+        var jobDefintion = JobDefinition(
+            parameters: TestParameters.self
+        ) { _, context in
+            cont.yield()
+            throw FailedError()
+        }
+        jobDefintion.options = [.doNotRetain]
+        jobQueue.registerJob(jobDefintion)
+
+        try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 1))) {
+            try await jobQueue.push(TestParameters())
+            try await jobQueue.push(TestParameters())
+
+            var iterator = stream.makeAsyncIterator()
+            _ = await iterator.next()
+            _ = await iterator.next()
+        }
+        #expect(await memoryQueue.failedJobs.isEmpty)
+    }
+
     /// Test retry policy that does different things based on the error passed to it
     @Test func testRetryHandlerErrorChecking() async throws {
         struct TestError: Error {}

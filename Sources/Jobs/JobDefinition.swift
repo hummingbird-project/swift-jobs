@@ -6,11 +6,23 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+public struct JobDefinitionOptions: OptionSet, Sendable {
+    public var rawValue: Int
+
+    public init(rawValue: Int) {
+        self.rawValue = rawValue
+    }
+    /// When job has completed or failed we should not record its state even if the
+    /// job queue driver has indicated it will store the state.
+    static var doNotRetain: Self { self.init(rawValue: 1 << 0) }
+}
+
 /// Job definition type
 public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
     let name: String
-    let retryStrategy: any JobRetryStrategy
-    let timeout: Duration?
+    var retryStrategy: any JobRetryStrategy
+    var timeout: Duration?
+    var options: JobDefinitionOptions
     let _execute: @Sendable (Parameters, JobExecutionContext) async throws -> Void
 
     ///  Initialize JobDefinition
@@ -29,6 +41,7 @@ public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
         self.retryStrategy = retryStrategy
         self._execute = execute
         self.timeout = timeout
+        self.options = []
     }
 
     ///  Initialize JobDefinition
@@ -49,6 +62,7 @@ public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
         self.retryStrategy = retryStrategy
         self._execute = execute
         self.timeout = timeout
+        self.options = []
     }
 
     ///  Initialize JobDefinition
@@ -66,6 +80,7 @@ public struct JobDefinition<Parameters: Codable & Sendable>: Sendable {
         self.retryStrategy = ExponentialJitterJobRetryStrategy(maxAttempts: maxRetryCount)
         self._execute = execute
         self.timeout = nil
+        self.options = []
     }
 
     func execute(_ parameters: Parameters, context: JobExecutionContext) async throws {

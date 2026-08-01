@@ -98,12 +98,24 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         await self.queue.clearProcessingJob(jobID: jobID)
     }
 
-    public func failed(jobID: JobID, error: any Error) async throws {
-        if await self.queue.failJob(jobID: jobID) {
+    public func failed(jobID: JobID, error: any Error, retain: Bool) async throws {
+        if await self.queue.failJob(jobID: jobID, retain: retain) {
             self.onFailedJob(jobID, error)
         }
     }
 
+    @available(*, deprecated, message: "Failed without a retain is no longer used")
+    public func failed(jobID: JobID, error: any Error) async throws {
+        if await self.queue.failJob(jobID: jobID, retain: false) {
+            self.onFailedJob(jobID, error)
+        }
+    }
+
+    public func cancel(jobID: JobID, retain: Bool) async throws {
+        await self.queue.cancelJob(jobID: jobID)
+    }
+
+    @available(*, deprecated, message: "Failed without a retain is no longer used")
     public func cancel(jobID: JobID) async throws {
         await self.queue.cancelJob(jobID: jobID)
     }
@@ -117,6 +129,12 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     }
 
     public func scheduleQueueCleanup(_ schedule: inout JobSchedule, options: CleanupOptions) {}
+
+    var failedJobs: [JobID: ByteBuffer] {
+        get async {
+            await self.queue.failedJobs
+        }
+    }
 
     /// Internal actor managing the job queue
     fileprivate actor Internal {
@@ -174,11 +192,13 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             }
         }
 
-        func failJob(jobID: JobID) -> Bool {
+        func failJob(jobID: JobID, retain: Bool) -> Bool {
             let instance = self.processingJobs[jobID]
             self.clearProcessingJob(jobID: jobID)
             self.processingJobs[jobID] = nil
-            self.failedJobs[jobID] = instance
+            if retain {
+                self.failedJobs[jobID] = instance
+            }
             return instance != nil
         }
 
