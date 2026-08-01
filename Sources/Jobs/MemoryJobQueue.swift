@@ -16,7 +16,7 @@ public import Foundation
 #endif
 
 /// In memory implementation of job queue driver. Stores job data in a circular buffer
-public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJobQueue, JobServiceDriver {
+public final class MemoryQueue: JobQueueDriverV2, CancellableJobQueue, ResumableJobQueue, JobServiceDriver {
     public typealias Element = JobQueueResult<JobID>
     public typealias JobID = UUID
     /// Job options
@@ -94,19 +94,12 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         try await self.queue.retry(id, buffer: buffer, options: options)
     }
 
-    public func finished(jobID: JobID) async throws {
+    public func finished(jobID: JobID, retain: Bool) async throws {
         await self.queue.clearProcessingJob(jobID: jobID)
     }
 
     public func failed(jobID: JobID, error: any Error, retain: Bool) async throws {
         if await self.queue.failJob(jobID: jobID, retain: retain) {
-            self.onFailedJob(jobID, error)
-        }
-    }
-
-    @available(*, deprecated, message: "Failed without a retain is no longer used")
-    public func failed(jobID: JobID, error: any Error) async throws {
-        if await self.queue.failJob(jobID: jobID, retain: false) {
             self.onFailedJob(jobID, error)
         }
     }
@@ -375,7 +368,7 @@ extension MemoryQueue.Internal {
     }
 }
 
-extension JobQueueDriver where Self == MemoryQueue {
+extension JobQueueDriverV2 where Self == MemoryQueue {
     /// Return In memory driver for Job Queue
     /// - Parameters:
     ///   - onFailedJob: Closure called when a job fails

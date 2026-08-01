@@ -19,7 +19,7 @@ public import Foundation
 
 /// Protocol used to push an existential job
 protocol SchedulableJobRequest: Sendable & Codable {
-    func push<Queue: JobQueueDriver>(
+    func push<Queue: JobQueueDriverV2>(
         to jobQueue: JobQueue<Queue>,
         options: Queue.JobOptions
     ) async throws -> Queue.JobID
@@ -172,7 +172,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     ///   - name: Job schedule name, used when storing metadata for schedule
     ///   - jobOptions: Job options applied to all jobs scheduled
     /// - Returns: JobScheduler
-    public func scheduler<Queue: JobQueueDriver>(
+    public func scheduler<Queue: JobQueueDriverV2>(
         on jobQueue: JobQueue<Queue>,
         named name: String = "default",
         options: Scheduler<Queue>.Options = .init()
@@ -256,7 +256,7 @@ public struct JobSchedule: MutableCollection, Sendable {
     }
 
     /// Job Scheduler Service
-    public struct Scheduler<Driver: JobQueueDriver & JobMetadataDriver>: Service, CustomStringConvertible {
+    public struct Scheduler<Driver: JobQueueDriverV2 & JobMetadataDriver>: Service, CustomStringConvertible {
         /// Defines how often if at all a lock should be acquired
         public struct ExclusiveLock: Sendable {
             enum Value: Sendable {

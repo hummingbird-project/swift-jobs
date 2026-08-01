@@ -18,7 +18,7 @@ import Foundation
 #endif
 
 /// Object handling a single job queue
-public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
+public final class JobQueueProcessor<Queue: JobQueueDriverV2>: Service {
     let queue: Queue
     let options: JobQueueProcessorOptions
     let middleware: any JobMiddleware
@@ -151,7 +151,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
             default:
                 logger.debug("Job failed to decode")
             }
-            try await self.queue.failed(jobID: jobResult.id, error: error)
+            try await self.queue.failed(jobID: jobResult.id, error: error, retain: true)
             await self.middleware.onPopJob(
                 result: .failure(error),
                 context: .init(jobID: jobResult.id.description)

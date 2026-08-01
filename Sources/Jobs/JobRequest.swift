@@ -56,7 +56,7 @@ public struct JobRequest<Parameters: Sendable & Codable>: Encodable {
 
 extension JobRequest: SchedulableJobRequest {
     /// Added so it's possible for the scheduler to add date partitions
-    internal func push<Queue: JobQueueDriver>(
+    internal func push<Queue: JobQueueDriverV2>(
         to jobQueue: JobQueue<Queue>,
         options: Queue.JobOptions = .init(delayUntil: .now)
     ) async throws -> Queue.JobID {

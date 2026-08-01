@@ -19,7 +19,7 @@ public import Foundation
 
 /// Protocol for Job queue. Allows us to pass job queues around as existentials
 public protocol JobQueueProtocol: Sendable {
-    associatedtype Queue: JobQueueDriver
+    associatedtype Queue: JobQueueDriverV2
 
     var logger: Logger { get }
 
@@ -164,7 +164,7 @@ extension JobQueueProtocol {
 /// handler. Before you can push jobs onto a queue you should register them
 /// with the queue via either ``registerJob(parameters:retryStrategy:timeout:execute:)`` or
 /// ``registerJob(_:)``.
-public struct JobQueue<Queue: JobQueueDriver>: JobQueueProtocol, Sendable {
+public struct JobQueue<Queue: JobQueueDriverV2>: JobQueueProtocol, Sendable {
     /// underlying driver for queue
     public let queue: Queue
     @usableFromInline

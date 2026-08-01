@@ -12,7 +12,7 @@ public protocol JobQueueCleanupOptionsProtocol: Sendable {
 }
 
 /// A queue that can be used with the JobService type
-public protocol JobServiceDriver: JobQueueDriver, JobMetadataDriver {
+public protocol JobServiceDriver: JobQueueDriverV2, JobMetadataDriver {
     associatedtype CleanupOptions: JobQueueCleanupOptionsProtocol
 
     /// Schedule regular job queue cleanup
