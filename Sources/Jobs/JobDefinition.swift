@@ -12,9 +12,12 @@ public struct JobDefinitionOptions: OptionSet, Sendable {
     public init(rawValue: Int) {
         self.rawValue = rawValue
     }
-    /// When job has completed or failed we should not record its state even if the
-    /// job queue driver has indicated it will store the state.
-    public static var doNotRetain: Self { self.init(rawValue: 1 << 0) }
+    /// When job has completed we should not retain record of this job regardless of
+    /// whether job queue driver has indicated it will store the state.
+    public static var doNotRetainCompleted: Self { self.init(rawValue: 1 << 0) }
+    /// When job has failed we should not retain record of this job regardless of
+    /// whether job queue driver has indicated it will store the state.
+    public static var doNotRetainFailed: Self { self.init(rawValue: 1 << 1) }
 }
 
 /// Job definition type

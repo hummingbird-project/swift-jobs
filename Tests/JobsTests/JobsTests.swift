@@ -219,7 +219,7 @@ struct JobsTests {
             cont.yield()
             throw FailedError()
         }
-        jobDefintion.options = [.doNotRetain]
+        jobDefintion.options = [.doNotRetainFailed]
         jobQueue.registerJob(jobDefintion)
 
         try await testJobQueue(jobQueue.processor(options: .init(numWorkers: 1))) {
