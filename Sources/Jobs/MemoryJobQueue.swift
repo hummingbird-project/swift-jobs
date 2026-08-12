@@ -94,8 +94,12 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         try await self.queue.retry(id, buffer: buffer, options: options)
     }
 
-    public func finished(jobID: JobID) async throws {
+    public func finished(jobID: JobID, retain: Bool) async throws {
         await self.queue.clearProcessingJob(jobID: jobID)
+    }
+
+    public func finished(jobID: JobID) async throws {
+        preconditionFailure("No longer used. Replaced by MemoryQueue.finished(jobID:retain:)")
     }
 
     public func failed(jobID: JobID, error: any Error, retain: Bool) async throws {
@@ -104,11 +108,8 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         }
     }
 
-    @available(*, deprecated, message: "Failed without a retain is no longer used")
     public func failed(jobID: JobID, error: any Error) async throws {
-        if await self.queue.failJob(jobID: jobID, retain: false) {
-            self.onFailedJob(jobID, error)
-        }
+        preconditionFailure("No longer used. Replaced by MemoryQueue.failed(jobID:error:retain:)")
     }
 
     public func cancel(jobID: JobID, retain: Bool) async throws {

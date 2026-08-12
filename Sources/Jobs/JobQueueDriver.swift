@@ -39,8 +39,10 @@ public protocol JobQueueDriver: AsyncSequence, Sendable where Element == JobQueu
     ///   - options: JobOptions
     func retry<Parameters>(_ id: JobID, jobRequest: JobRequest<Parameters>, options: JobRetryOptions) async throws
     /// This is called to say job has finished processing and it can be deleted
+    @available(*, deprecated, renamed: "finished(jobID:retain:)")
     func finished(jobID: JobID) async throws
     /// This is called to say job has failed to run and should be put aside
+    @available(*, deprecated, message: "failed(jobID:error:retain:)")
     func failed(jobID: JobID, error: any Error) async throws
     /// This is called to say job has finished processing and it can be deleted
     func finished(jobID: JobID, retain: Bool) async throws
@@ -68,10 +70,12 @@ extension JobQueueDriver {
     }
 
     /// This is called to say job has finished processing and it can be deleted
+    @available(*, deprecated, message: "Default version uses deprecated API.")
     public func finished(jobID: JobID, retain: Bool) async throws {
         try await self.finished(jobID: jobID)
     }
     /// This is called to say job has failed to run and should be put aside
+    @available(*, deprecated, message: "Default version uses deprecated API.")
     public func failed(jobID: JobID, error: any Error, retain: Bool) async throws {
         try await self.failed(jobID: jobID, error: error)
     }
