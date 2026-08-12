@@ -151,7 +151,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
             default:
                 logger.debug("Job failed to decode")
             }
-            try await self.queue.failed(jobID: jobResult.id, error: error)
+            try await self.queue.failed(jobID: jobResult.id, error: error, retain: true)
             await self.middleware.onPopJob(
                 result: .failure(error),
                 context: .init(jobID: jobResult.id.description)
