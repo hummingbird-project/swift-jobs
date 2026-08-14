@@ -34,6 +34,8 @@ public protocol JobInstanceProtocol: Sendable {
     var nextScheduledAt: Date? { get }
     /// Timeout
     var timeout: Duration? { get }
+    /// Job Options
+    var options: JobDefinitionOptions { get }
     /// Function to execute the job
     func execute(context: JobExecutionContext) async throws
 }
@@ -53,6 +55,9 @@ extension JobInstanceProtocol {
         }
         return nil
     }
+
+    /// default job options
+    public var options: JobDefinitionOptions { [] }
 }
 
 extension JobInstanceProtocol where Parameters: JobParameters {
@@ -84,6 +89,8 @@ struct JobInstance<Parameters: Sendable & Codable>: JobInstanceProtocol {
     var nextScheduledAt: Date? { self.data.nextScheduledAt }
     /// Timeout for long running jobs
     var timeout: Duration? { self.job.timeout }
+    /// Job Options
+    var options: JobDefinitionOptions { self.job.options }
 
     func execute(context: JobExecutionContext) async throws {
         try await self.job.execute(self.data.parameters, context: context)

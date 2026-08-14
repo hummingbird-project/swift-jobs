@@ -151,7 +151,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
             default:
                 logger.debug("Job failed to decode")
             }
-            try await self.queue.failed(jobID: jobResult.id, error: error)
+            try await self.queue.failed(jobID: jobResult.id, error: error, retain: true)
             await self.middleware.onPopJob(
                 result: .failure(error),
                 context: .init(jobID: jobResult.id.description)
@@ -179,7 +179,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
                 // as soon as we create it so can guarantee the Task is done when we leave the
                 // function.
                 try await Task {
-                    try await self.queue.failed(jobID: jobID, error: error)
+                    try await self.queue.failed(jobID: jobID, error: error, retain: !job.options.contains(.doNotRetainFailed))
                 }.value
                 await self.middleware.onCompletedJob(job: job, result: .failure(error), context: .init(jobID: jobID.description))
                 return
@@ -211,7 +211,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
             } catch {
                 if !job.shouldRetry(error: error) {
                     logger.debug("Job: failed")
-                    try await self.queue.failed(jobID: jobID, error: error)
+                    try await self.queue.failed(jobID: jobID, error: error, retain: !job.options.contains(.doNotRetainFailed))
                     await self.middleware.onCompletedJob(job: job, result: .failure(error), context: .init(jobID: jobID.description))
                     return
                 }
@@ -245,7 +245,7 @@ public final class JobQueueProcessor<Queue: JobQueueDriver>: Service {
                 return
             }
             logger.debug("Finished Job")
-            try await self.queue.finished(jobID: jobID)
+            try await self.queue.finished(jobID: jobID, retain: !job.options.contains(.doNotRetainCompleted))
             await self.middleware.onCompletedJob(job: job, result: .success(()), context: .init(jobID: jobID.description))
         } catch {
             logger.debug("Failed to set job status")

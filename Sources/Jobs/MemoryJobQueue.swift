@@ -94,16 +94,29 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
         try await self.queue.retry(id, buffer: buffer, options: options)
     }
 
-    public func finished(jobID: JobID) async throws {
+    public func finished(jobID: JobID, retain: Bool) async throws {
         await self.queue.clearProcessingJob(jobID: jobID)
     }
 
-    public func failed(jobID: JobID, error: any Error) async throws {
-        if await self.queue.failJob(jobID: jobID) {
+    public func finished(jobID: JobID) async throws {
+        preconditionFailure("No longer used. Replaced by MemoryQueue.finished(jobID:retain:)")
+    }
+
+    public func failed(jobID: JobID, error: any Error, retain: Bool) async throws {
+        if await self.queue.failJob(jobID: jobID, retain: retain) {
             self.onFailedJob(jobID, error)
         }
     }
 
+    public func failed(jobID: JobID, error: any Error) async throws {
+        preconditionFailure("No longer used. Replaced by MemoryQueue.failed(jobID:error:retain:)")
+    }
+
+    public func cancel(jobID: JobID, retain: Bool) async throws {
+        await self.queue.cancelJob(jobID: jobID)
+    }
+
+    @available(*, deprecated, message: "Failed without a retain is no longer used")
     public func cancel(jobID: JobID) async throws {
         await self.queue.cancelJob(jobID: jobID)
     }
@@ -117,6 +130,12 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
     }
 
     public func scheduleQueueCleanup(_ schedule: inout JobSchedule, options: CleanupOptions) {}
+
+    var failedJobs: [JobID: ByteBuffer] {
+        get async {
+            await self.queue.failedJobs
+        }
+    }
 
     /// Internal actor managing the job queue
     internal actor Internal {
@@ -174,11 +193,13 @@ public final class MemoryQueue: JobQueueDriver, CancellableJobQueue, ResumableJo
             }
         }
 
-        func failJob(jobID: JobID) -> Bool {
+        func failJob(jobID: JobID, retain: Bool) -> Bool {
             let instance = self.processingJobs[jobID]
             self.clearProcessingJob(jobID: jobID)
             self.processingJobs[jobID] = nil
-            self.failedJobs[jobID] = instance
+            if retain {
+                self.failedJobs[jobID] = instance
+            }
             return instance != nil
         }
 
